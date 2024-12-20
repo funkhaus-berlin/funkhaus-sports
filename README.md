@@ -112,9 +112,9 @@ The output will be in the dist directory.
 
 ```
 ├── src
-│ ├── components
-│ │ └── my-component.ts
-│ └── main.ts
+│ ├── home.ts
+│ ├── index.scss
+│ └── index.ts
 ├── public
 │ └── assets
 ├── tailwind.config.js

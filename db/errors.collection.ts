@@ -1,7 +1,7 @@
 import { FirestoreService } from './firestore.service'
-export interface IError {
+export interface Error {
 	type: string
 	payload: any
 }
 
-export const ErrorsDB = new FirestoreService<IError>('errors')
+export const ErrorsDB = new FirestoreService<Error>('errors')

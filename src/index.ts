@@ -1,78 +1,71 @@
 import { $LitElement } from '@mhmo91/lit-mixins/src'
-import { $newSchmancyTheme, $notify, $schmancyTheme, area, fullHeight } from '@mhmo91/schmancy'
+import { $notify, area, fullHeight } from '@mhmo91/schmancy'
 import { html } from 'lit'
 import { customElement, query, state } from 'lit/decorators.js'
-import { when } from 'lit/directives/when.js'
-import { fromEvent, take } from 'rxjs'
-// import ZolaApp from './app/app'
-import { auth } from '@db/firebase'
-import Admin from './admin/admin'
-import { $user } from './context'
-import Login from './public/login/login'
-import '@lit-labs/virtualizer'
-import { User } from '@db/users.collection'
-import { UsersDB } from '@db/users.collection'
-import AppLanding from './landing/landing'
+import { fromEvent, switchMap, take, takeUntil, tap } from 'rxjs'
+// import '@lit-labs/virtualizer' // uncomment this line to use lit-virtualizer
+import { default as AppLanding, default as Home } from './home'
 @customElement('app-index')
 export class AppIndex extends $LitElement() {
-	@state() rehydrated = false
+	@state() activeRoute: string = 'home'
 	@query('schmancy-surface') surface!: HTMLElement
-
 	async connectedCallback() {
 		super.connectedCallback()
+		// Example of rxjs usage to notify user when they are offline
+		fromEvent(window, 'offline')
+			.pipe(
+				tap(() => {
+					$notify.error('You are offline')
+				}),
+				switchMap(() => {
+					return fromEvent(window, 'online').pipe(
+						take(1),
+						tap(() => {
+							$notify.success('You are online')
+						}),
+					)
+				}),
+				takeUntil(this.disconnecting), // available from BaseElement
+			)
+			.subscribe()
 
-		this.rehydrated = true
-
-		if (!navigator.onLine) {
-			$notify.error('No internet connection')
-			fromEvent(window, 'online')
-				.pipe(take(1))
-				.subscribe(() => {
-					// this.init()
-				})
-		} else {
-			// this.init()
-		}
-	}
-
-	init() {
-		auth.onAuthStateChanged(user => {
-			console.log('user', user)
-			if (!user) {
-				area.push({
-					component: Login,
-					area: 'root',
-				})
-				this.rehydrated = true
-			} else {
-				user &&
-					UsersDB.get(user?.uid as string).subscribe({
-						next: u => {
-							$user.next(Object.assign(user, u))
-							this.rehydrated = true
-						},
-					})
-				$user.next(Object.assign(user, new User()))
-
-				area.push({
-					component: Admin,
-					area: 'root',
-				})
-			}
+		// Example of using area to determine active route
+		area.$current.subscribe(current => {
+			this.activeRoute = current.get('root')?.component ?? 'home'
+			console.log('activeRoute', this.activeRoute)
 		})
 	}
 
 	render() {
 		return html`
-			<schmancy-theme-button> </schmancy-theme-button>
+			<!-- Showcase of M3 dynamic theme -->
+			<schmancy-theme-button class="absolute left-4 bottom-4"> </schmancy-theme-button>
 			<schmancy-surface ${fullHeight()} type="container">
-				${when(
-					this.rehydrated,
-					() => html` <schmancy-area class="h-full w-full" name="root" .default=${AppLanding}></schmancy-area> `,
-					() => html` <schmancy-busy></schmancy-busy> `,
-				)}
-				<schmancy-notification-outlet></schmancy-notification-outlet>
+				<schmancy-nav-drawer minWidth="1080">
+					<schmancy-nav-drawer-navbar width="180px">
+						<schmancy-list .hidden=${false}>
+							<schmancy-list-item
+								.selected=${this.activeRoute === 'APP-HOME'}
+								@click=${() => {
+									area.push({
+										component: Home,
+										area: 'root',
+									})
+								}}
+								rounded
+								variant="container"
+							>
+								Home
+							</schmancy-list-item>
+						</schmancy-list>
+					</schmancy-nav-drawer-navbar>
+					<schmancy-nav-drawer-content>
+						<schmancy-area class="h-full w-full" name="root" .default=${AppLanding}></schmancy-area>
+					</schmancy-nav-drawer-content>
+				</schmancy-nav-drawer>
 			</schmancy-surface>
+
+			<schmancy-notification-outlet></schmancy-notification-outlet>
 		`
 	}
 }
