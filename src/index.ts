@@ -1,9 +1,9 @@
-import { $LitElement } from '@mhmo91/lit-mixins/src'
 import { $notify, area, fullHeight } from '@mhmo91/schmancy'
 import { html } from 'lit'
 import { customElement, query, state } from 'lit/decorators.js'
 import { fromEvent, switchMap, take, takeUntil, tap } from 'rxjs'
 // import '@lit-labs/virtualizer' // uncomment this line to use lit-virtualizer
+import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { default as AppLanding, default as Home } from './home'
 @customElement('app-index')
 export class AppIndex extends $LitElement() {

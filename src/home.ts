@@ -1,4 +1,5 @@
-import { $LitElement } from '@mhmo91/lit-mixins/src'
+import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
+
 import { fullHeight } from '@mhmo91/schmancy'
 import { html } from 'lit'
 import { customElement } from 'lit/decorators.js'

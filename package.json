@@ -1,7 +1,7 @@
 {
 	"name": "mo-template",
 	"private": true,
-	"version": "0.0.13",
+	"version": "0.0.14",
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
@@ -10,8 +10,7 @@
 	},
 	"dependencies": {
 		"@lit-labs/virtualizer": "^2.0.14",
-		"@mhmo91/lit-mixins": "^0.3.14",
-		"@mhmo91/schmancy": "^0.0.275",
+		"@mhmo91/schmancy": "^0.0.283",
 		"@netlify/functions": "^2.8.2",
 		"@reduxjs/toolkit": "^2.4.0",
 		"@supabase/supabase-js": "^2.46.2",
