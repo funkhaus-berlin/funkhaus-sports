@@ -23,10 +23,9 @@ export const basePWAConfig: Partial<VitePWAOptions> = {
 			},
 		],
 
-		name: 'Zola Pizzaria',
-		short_name: 'Zola',
-		description:
-			"Enjoy authentic Neapolitan pizza in the city's heart. Our pizzeria blends traditional Italian ambiance with fresh, local ingredients like San Marzano tomatoes and buffalo mozzarella. Experience the art of wood-fired pizza, from classic Margherita to spicy Diavola. Perfect for family or a romantic evening, each bite transports you to Naples.",
+		name: 'Mo Template',
+		short_name: 'Momo',
+		description: 'Description goes here',
 		theme_color: '#ffffff',
 		icons: [
 			{

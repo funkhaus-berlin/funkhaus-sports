@@ -20,14 +20,6 @@
   force = true
 
 
-
-[[scheduled.functions]]
-  name = "ngteco-sync"
-  schedule = "0 0 * * *" # Runs every day at midnight UTC
-
-
-
-
 [[redirects]]
   from = "/api/create-user"
   to = "/.netlify/functions/create-user"

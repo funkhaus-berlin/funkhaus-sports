@@ -1,7 +1,9 @@
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
+// import { VitePWA } from 'vite-plugin-pwa'
 import Sitemap from 'vite-plugin-sitemap'
 import webfontDownload from 'vite-plugin-webfont-dl'
+// import { basePWAConfig } from './vite.pwa-config'
 
 export default defineConfig({
 	resolve: {
@@ -17,7 +19,7 @@ export default defineConfig({
 	plugins: [
 		// Turn the app into a PWA with default options
 		// VitePWA({
-		//   ...basePWAConfig,
+		// 	...basePWAConfig,
 		// }),
 		webfontDownload([
 			'https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Kanit:wght@400;700&display=swap',
