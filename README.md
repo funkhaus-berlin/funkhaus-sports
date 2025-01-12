@@ -179,7 +179,13 @@ Use your components in index.html:
 </body>
 ```
 
-Contributing
+# update all packages
+
+```bash
+npm run ncu
+```
+
+# Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request.
 
