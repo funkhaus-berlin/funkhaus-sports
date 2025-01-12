@@ -32,7 +32,6 @@ export class AppIndex extends $LitElement() {
 		// Example of using area to determine active route
 		area.$current.subscribe(current => {
 			this.activeRoute = current.get('root')?.component ?? 'home'
-			console.log('activeRoute', this.activeRoute)
 		})
 	}
 
@@ -43,7 +42,7 @@ export class AppIndex extends $LitElement() {
 			<schmancy-surface ${fullHeight()} type="container">
 				<schmancy-nav-drawer minWidth="1080">
 					<schmancy-nav-drawer-navbar width="180px">
-						<schmancy-list .hidden=${false}>
+						<schmancy-list>
 							<schmancy-list-item
 								.selected=${this.activeRoute === 'APP-HOME'}
 								@click=${() => {
