@@ -1,5 +1,6 @@
 import { VitePWAOptions } from 'vite-plugin-pwa'
 
+//
 export const basePWAConfig: Partial<VitePWAOptions> = {
 	registerType: 'autoUpdate',
 	devOptions: {
@@ -12,14 +13,14 @@ export const basePWAConfig: Partial<VitePWAOptions> = {
 				sizes: '1862x1290',
 				type: 'image/webp',
 				form_factor: 'wide',
-				label: 'Homescreen of Zola App',
+				label: 'Homescreen of My App',
 			},
 			{
 				src: 'pwa/narrow.webp',
 				sizes: '690x1260',
 				type: 'image/webp',
 				form_factor: 'narrow',
-				label: 'Homescreen of Zola App',
+				label: 'Homescreen of My App',
 			},
 		],
 

@@ -9,8 +9,6 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			src: resolve(__dirname, './src'),
-			'@db': resolve(__dirname, './db'),
-			'app.settings': resolve(__dirname, './app.settings.ts'),
 		},
 	},
 	build: {

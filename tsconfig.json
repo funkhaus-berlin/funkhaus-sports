@@ -15,7 +15,7 @@
 		"noEmit": true,
 
 		/* Linting */
-		"strict": true,
+		"strict": false,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
 		"noFallthroughCasesInSwitch": true,
@@ -27,11 +27,6 @@
 					"no-missing-import": "off"
 				}
 			}
-		],
-		"paths": {
-			"@db/*": ["db/*"]
-		},
-		"baseUrl": "."
-	},
-	"include": ["src", "app.settings.ts"]
+		]
+	}
 }
