@@ -1,7 +1,6 @@
-import { $notify, area, fullHeight } from '@mhmo91/schmancy'
+import { area, fullHeight } from '@mhmo91/schmancy'
 import { html } from 'lit'
 import { customElement, query, state } from 'lit/decorators.js'
-import { fromEvent, switchMap, take, takeUntil, tap } from 'rxjs'
 // import '@lit-labs/virtualizer' // uncomment this line to use lit-virtualizer
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { default as AppLanding, default as Home } from './home'
@@ -11,24 +10,6 @@ export class AppIndex extends $LitElement() {
 	@query('schmancy-surface') surface!: HTMLElement
 	async connectedCallback() {
 		super.connectedCallback()
-		// Example of rxjs usage to notify user when they are offline
-		fromEvent(window, 'offline')
-			.pipe(
-				tap(() => {
-					$notify.error('You are offline')
-				}),
-				switchMap(() => {
-					return fromEvent(window, 'online').pipe(
-						take(1),
-						tap(() => {
-							$notify.success('You are online')
-						}),
-					)
-				}),
-				takeUntil(this.disconnecting), // available from BaseElement
-			)
-			.subscribe()
-
 		// Example of using area to determine active route
 		area.$current.subscribe(current => {
 			this.activeRoute = current.get('root')?.component ?? 'home'
@@ -40,7 +21,7 @@ export class AppIndex extends $LitElement() {
 			<!-- Showcase of M3 dynamic theme -->
 			<schmancy-theme-button class="absolute left-4 bottom-4"> </schmancy-theme-button>
 			<schmancy-surface ${fullHeight()} type="container">
-				<schmancy-nav-drawer minWidth="1080">
+				<schmancy-nav-drawer breakpoint="1080">
 					<schmancy-nav-drawer-navbar width="180px">
 						<schmancy-list>
 							<schmancy-list-item

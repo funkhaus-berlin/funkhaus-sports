@@ -15,17 +15,12 @@ export default defineConfig({
 		target: 'esnext',
 	},
 	plugins: [
-		// Turn the app into a PWA with default options
-		// VitePWA({
-		// 	...basePWAConfig,
-		// }),
 		webfontDownload([
 			'https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Kanit:wght@400;700&display=swap',
 		]),
 		Sitemap({
 			generateRobotsTxt: true,
 			outDir: resolve(__dirname, './public'),
-			hostname: 'https://mo-template.netlify.app/',
 		}),
 	],
 })

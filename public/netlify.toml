@@ -1,17 +1,8 @@
 [build]
   command = "npm run build"
-  functions = "netlify/functions"
-  publish = "."
+  publish = "dist"
   functions_timeout = 24
 
-
-[dev]
-  autoLaunch = false
-  functions_timeout = 24
-
-[functions]
-  node_bundler = "esbuild"
-  external_node_modules = []
 
 [[redirects]]
   from = "/.well-known/apple-developer-merchantid-domain-association"
@@ -19,12 +10,6 @@
   status = 200
   force = true
 
-
-[[redirects]]
-  from = "/api/create-user"
-  to = "/.netlify/functions/create-user"
-  status = 200
-  force = true
 
 [[redirects]]
   from = "/*"
