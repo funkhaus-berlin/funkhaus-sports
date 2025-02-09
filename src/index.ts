@@ -18,34 +18,35 @@ export class AppIndex extends $LitElement() {
 
 	render() {
 		return html`
-			<!-- Showcase of M3 dynamic theme -->
-			<schmancy-theme-button class="absolute left-4 bottom-4"> </schmancy-theme-button>
-			<schmancy-surface ${fullHeight()} type="container">
-				<schmancy-nav-drawer breakpoint="1080">
-					<schmancy-nav-drawer-navbar width="180px">
-						<schmancy-list>
-							<schmancy-list-item
-								.selected=${this.activeRoute === 'APP-HOME'}
-								@click=${() => {
-									area.push({
-										component: Home,
-										area: 'root',
-									})
-								}}
-								rounded
-								variant="container"
-							>
-								Home
-							</schmancy-list-item>
-						</schmancy-list>
-					</schmancy-nav-drawer-navbar>
-					<schmancy-nav-drawer-content>
-						<schmancy-area class="h-full w-full" name="root" .default=${AppLanding}></schmancy-area>
-					</schmancy-nav-drawer-content>
-				</schmancy-nav-drawer>
-			</schmancy-surface>
+			<schmancy-theme root>
+				<!-- Showcase of M3 dynamic theme -->
+				<schmancy-surface ${fullHeight()} type="container">
+					<schmancy-nav-drawer breakpoint="1080">
+						<schmancy-nav-drawer-navbar width="180px">
+							<schmancy-list>
+								<schmancy-list-item
+									.selected=${this.activeRoute === 'APP-HOME'}
+									@click=${() => {
+										area.push({
+											component: Home,
+											area: 'root',
+										})
+									}}
+									rounded
+									variant="container"
+								>
+									Home
+								</schmancy-list-item>
+							</schmancy-list>
+						</schmancy-nav-drawer-navbar>
+						<schmancy-nav-drawer-content>
+							<schmancy-area class="h-full w-full" name="root" .default=${AppLanding}></schmancy-area>
+						</schmancy-nav-drawer-content>
+					</schmancy-nav-drawer>
+				</schmancy-surface>
 
-			<schmancy-notification-outlet></schmancy-notification-outlet>
+				<schmancy-notification-outlet></schmancy-notification-outlet>
+			</schmancy-theme>
 		`
 	}
 }
