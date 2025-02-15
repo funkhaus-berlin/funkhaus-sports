@@ -21,6 +21,8 @@ export default defineConfig({
 		Sitemap({
 			generateRobotsTxt: true,
 			outDir: resolve(__dirname, './public'),
+			hostname: 'https://das-schmoeckwitz.de', // Your site url
+
 		}),
 	],
 })
