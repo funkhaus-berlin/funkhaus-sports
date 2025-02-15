@@ -1,6 +1,6 @@
 # Mo Template
 
-Tech Stack
+## Tech Stack
 
 - **Lit**: For building fast, reusable Web Components.
 - **Vite**: For a lightning-fast development experience.
@@ -9,6 +9,7 @@ Tech Stack
 - **TypeScript**: For type-safe code.
 - **ESLint and Prettier**: For code quality and formatting.
 - **Husky and Commitlint**: For enforcing commit conventions and pre-commit hooks.
+- **Yarn 4**: For fast and efficient package management.
 
 ## Table of Contents
 
@@ -34,6 +35,7 @@ Tech Stack
 - **Tailwind CSS**: Style your application rapidly with TW utility classes out of the box.
 - **TypeScript Support**: Write type-safe code with TypeScript.
 - **ESLint and Prettier**: Maintain code quality and consistency.
+- **Yarn 4**: Modern package management with Plug'n'Play support.
 
 ---
 
@@ -47,8 +49,8 @@ Check out the live demo [here](https://mo-template.netlify.app/).
 
 ### Prerequisites
 
-- **Node.js** (version 14 or higher)
-- **npm** or **Yarn**
+- **Node.js** (version 16 or higher recommended)
+- **Yarn 4** (recommended for package management)
 
 ---
 
@@ -66,31 +68,17 @@ Check out the live demo [here](https://mo-template.netlify.app/).
    cd mo-template
    ```
 
-3. Install dependencies:
+3. Enable Yarn 4 and install dependencies:
 
-Using npm:
-
-```bash
-npm install
-```
-
-Or using Yarn:
-
-```bash
-yarn install
-```
+   ```bash
+   corepack enable
+   yarn set version stable
+   yarn install
+   ```
 
 ## Running the Development Server
 
 Start the development server with hot module replacement:
-
-Using npm:
-
-```bash
-npm run dev
-```
-
-Using Yarn:
 
 ```bash
 yarn dev
@@ -102,21 +90,21 @@ Open your browser and navigate to http://localhost:3000.
 
 Build the application for production:
 
-Using npm: `bash npm run build`
+```bash
+yarn build
+```
 
-Using Yarn: `bash yarn build`
-
-The output will be in the dist directory.
+The output will be in the `dist` directory.
 
 ## Project Structure
 
 ```
 ├── src
-│ ├── home.ts
-│ ├── index.scss
-│ └── index.ts
+│   ├── home.ts
+│   ├── index.scss
+│   └── index.ts
 ├── public
-│ └── assets
+│   └── assets
 ├── tailwind.config.js
 ├── vite.config.ts
 ├── tsconfig.json
@@ -125,70 +113,79 @@ The output will be in the dist directory.
 └── index.md
 ```
 
-    •	src/: Main source directory.
-    •	index.html: Entry HTML file.
-    •	main.ts: Entry TypeScript file.
-    •	public/: Static assets.
-    •	tailwind.config.js: Tailwind CSS configuration.
-    •	vite.config.ts: Vite configuration in TypeScript.
-    •	tsconfig.json: TypeScript configuration.
-    •	package.json: Project dependencies and scripts.
+- `src/`: Main source directory.
+- `index.html`: Entry HTML file.
+- `main.ts`: Entry TypeScript file.
+- `public/`: Static assets.
+- `tailwind.config.js`: Tailwind CSS configuration.
+- `vite.config.ts`: Vite configuration in TypeScript.
+- `tsconfig.json`: TypeScript configuration.
+- `package.json`: Project dependencies and scripts.
 
 ## Usage
 
-1. Customize the Template
+### 1. Customize the Template
 
-   • Update package.json with your project details.
-   • Modify the README.md to reflect your project.
-   • Customize the components in the src/components directory.
+- Update `package.json` with your project details.
+- Modify the `README.md` to reflect your project.
+- Customize the components in the `src/components` directory.
 
-2. Add New Components
+### 2. Add New Components
 
-Create new components in the src/ directory using Lit:
+Create new components in the `src/` directory using Lit:
 
 ```ts
-import { LitElement, html, css, customElement } from 'lit'
+import { LitElement, html, css, customElement } from 'lit';
 
 @customElement('my-new-component')
-export class MyNewComponent extends $litElement(
-	css`
-		/* Your styles here */
-	`,
-) {
-	render() {
-		return html` <!-- Your template here -->`
-	}
+export class MyNewComponent extends LitElement {
+    static styles = css`
+        /* Your styles here */
+    `;
+    
+    render() {
+        return html` <!-- Your template here --> `;
+    }
 }
 ```
 
-3. Import Components
+### 3. Import Components
 
-Import your components in index.ts:
+Import your components in `index.ts`:
 
 ```ts
-import './components/my-new-component'
+import './components/my-new-component';
 ```
 
-4. Use Components in HTML
+### 4. Use Components in HTML
 
-Use your components in index.html:
+Use your components in `index.html`:
 
 ```html
 <body>
-	<my-new-component></my-new-component>
+    <my-new-component></my-new-component>
 </body>
 ```
 
-# update all packages
+## Updating Packages
+
+To update dependencies:
 
 ```bash
-npm run ncu
+yarn up "*"
 ```
 
-# Contributing
+To upgrade all dependencies to the latest versions:
+
+```bash
+yarn upgrade-interactive --latest
+```
+
+## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request.
 
-License
+## License
 
 This project is licensed under the MIT License.
+
