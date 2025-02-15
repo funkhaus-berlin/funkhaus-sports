@@ -3,14 +3,10 @@ module.exports = {
 	// The 'content' key tells Tailwind where to scan for class names.
 	content: [
 		// If you're using JS/TS files
-		'./frontend/**/*.{js,ts,jsx,tsx}',
-		'./shared/**/*.{js,ts,jsx,tsx}',
-		'./firebase/**/*.{js,ts,jsx,tsx}',
+		'./src/**/*.{js,ts,jsx,tsx}',
 
 		// If you have HTML files in your subfolders
-		'./frontend/**/*.html',
-		'./shared/**/*.html',
-		'./firebase/**/*.html',
+		'./**/*.html',
 	],
 	theme: {
 		extend: {
