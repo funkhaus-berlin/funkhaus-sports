@@ -50,6 +50,12 @@ export const $bookingForm = new Subject<BookingFormData>()
 export default class GenericBookingForm extends $LitElement(css`
 	:host {
 		display: block;
+		position: relative;
+		inset-block-start: 0;
+		inset-inline-start: 0;
+		inset-block-end: 0;
+		inset-inline-end: 0;
+		overflow: hidden;
 	}
 `) {
 	@property({ type: Object }) bookingEvent: BookingEvent = {

@@ -31,9 +31,11 @@ export class AppIndex extends $LitElement() {
 		return html`
 			<schmancy-theme root>
 				<schmancy-surface ${fullHeight()} type="container">
-					<schmancy-area class="h-full w-full" name="root" .default=${FunkhausSportsApp}>
-						<slot slot="stripe-element" name="stripe-element"></slot>
-					</schmancy-area>
+					<schmancy-scroll ${fullHeight()}>
+						<schmancy-area name="root" .default=${FunkhausSportsApp}>
+							<slot slot="stripe-element" name="stripe-element"></slot>
+						</schmancy-area>
+					</schmancy-scroll>
 				</schmancy-surface>
 			</schmancy-theme>
 		`
