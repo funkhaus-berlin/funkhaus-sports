@@ -1,15 +1,45 @@
-:root {
-	font-family: 'Josefin Sans', sans-serif;
-	--md-ref-typeface-brand: 'Josefin Sans', sans-serif;
-	--md-ref-typeface-plain: 'Josefin Sans', sans-serif;
+@use 'tailwindcss';
+
+@font-face {
+	font-family: 'GT-Eesti-Display-Regular';
+	src: url('/public/GT-Eesti/GT-Eesti-Pro-Display-Regular.eot');
+	src: url('/public/GT-Eesti/GT-Eesti-Pro-Display-Regular.eot?#iefix') format('embedded-opentype'),
+		url('/public/GT-Eesti/GT-Eesti-Pro-Display-Regular.woff') format('woff'),
+		url('/public/GT-Eesti/GT-Eesti-Pro-Display-Regular.ttf') format('truetype');
+	font-weight: bold;
+	font-style: bold;
+}
+
+@font-face {
+	font-family: 'GT-Eesti-Text-Regular';
+	src: url('/public/GT-Eesti/GT-Eesti-Pro-Text-Regular.eot');
+	src: url('/public/GT-Eesti/GT-Eesti-Pro-Text-Regular.eot?#iefix') format('embedded-opentype'),
+		url('/public/GT-Eesti/GT-Eesti-Pro-Text-Regular.woff') format('woff'),
+		url('/public/GT-Eesti/GT-Eesti-Pro-Text-Regular.ttf') format('truetype');
+	font-weight: medium;
+	font-style: medium;
+}
+@font-face {
+	font-family: 'GT-Eesti-Text-Thin';
+	src: url('/public/GT-Eesti/GT-Eesti-Pro-Text-Thin.eot');
+	src: url('/public/GT-Eesti/GT-Eesti-Pro-Text-Thin.eot?#iefix') format('embedded-opentype'),
+		url('/public/GT-Eesti/GT-Eesti-Pro-Text-Thin.woff') format('woff'),
+		url('/public/GT-Eesti/GT-Eesti-Pro-Text-Thin.ttf') format('truetype');
+	font-weight: normal;
+	font-style: normal;
+}
+xx :root {
+	font-family: 'GT-Eesti-Display-Regular';
+	--md-ref-typeface-brand: 'GT-Eesti-Display-Regular';
+	--md-ref-typeface-plain: 'GT-Eesti-Display-Regular';
 	--md-sys-color-primary: var(--schmancy-sys-color-primary-default);
 	--md-sys-color-secondary: var(--schmancy-sys-color-secondary-default);
 
 	font-weight: 400;
 
 	color-scheme: light dark;
-	color: rgba(255, 255, 255, 0.87);
-	background-color: var(--schmancy-sys-color-surface-container);
+	color: #213547;
+	background-color: #fff;
 
 	font-synthesis: none;
 	text-rendering: optimizeLegibility;
@@ -21,5 +51,10 @@ html,
 body {
 	margin: 0;
 	padding: 0;
-	--schmancy-font-family: 'Josefin Sans', sans-serif;
+	--schmancy-font-family: 'GT-Eesti-Display-Regular';
+}
+@media (prefers-color-scheme: light) {
+	:root {
+		color: #213547;
+	}
 }

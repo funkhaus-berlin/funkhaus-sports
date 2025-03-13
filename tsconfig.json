@@ -1,6 +1,6 @@
 {
 	"compilerOptions": {
-		"target": "ES2020",
+		"target": "ES2018",
 		"experimentalDecorators": true,
 		"useDefineForClassFields": false,
 		"module": "ESNext",
@@ -15,7 +15,7 @@
 		"noEmit": true,
 
 		/* Linting */
-		"strict": false,
+		"strict": true,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
 		"noFallthroughCasesInSwitch": true,
@@ -27,6 +27,10 @@
 					"no-missing-import": "off"
 				}
 			}
-		]
-	}
+		],
+
+		"baseUrl": "."
+	},
+	"include": ["src"],
+	"exclude": ["node_modules", "dist", ".netlify"]
 }

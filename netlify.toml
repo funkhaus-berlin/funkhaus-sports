@@ -1,8 +1,20 @@
-[build]
-  command = "npm run build"
-  publish = "dist"
-  functions_timeout = 24
+[[redirects]]
+  from = "/api/create-payment-intent"
+  to = "/.netlify/functions/create-payment-intent"
+  status = 200
+  force = true
 
+[[redirects]]
+  from = "/api/stripe-webhook"
+  to = "/.netlify/functions/stripe-webhook"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/simple-checkout"
+  to = "/.netlify/functions/simple-checkout"
+  status = 200
+  force = true
 
 [[redirects]]
   from = "/.well-known/apple-developer-merchantid-domain-association"
