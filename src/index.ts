@@ -8,8 +8,11 @@ import { default as AppLanding, default as Home } from './home'
 export class AppIndex extends $LitElement() {
 	@state() activeRoute: string = 'home'
 	@query('schmancy-surface') surface!: HTMLElement
-	async connectedCallback() {
+
+	connectedCallback() {
 		super.connectedCallback()
+		console.log('AppIndex connected')
+
 		// Example of using area to determine active route
 		area.$current.subscribe(current => {
 			this.activeRoute = current.get('root')?.component ?? 'home'

@@ -2,11 +2,28 @@
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
-		<link rel="icon" type="image/svg+xml" href="/logo.png" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Mo Template</title>
+
+		<!-- Add the CSP meta tag -->
+		<meta
+			http-equiv="Content-Security-Policy"
+			content="default-src 'self'; worker-src 'self' blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://www.googleapis.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https://firebasestorage.googleapis.com data:; connect-src 'self' https://firebasestorage.googleapis.com https://firestore.googleapis.com https://www.googleapis.com https://www.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.cloudfunctions.net https://europe-west3-fatora-89775.cloudfunctions.net https://confirmdelivery-fjbpzorx3q-ey.a.run.app/; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self' https://fatora-89775.firebaseapp.com/ https://firebasestorage.googleapis.com/ https://storage.googleapis.com/; "
+		/>
+
+		<link rel="icon" type="image/png" href="/logo.png" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+		<title>Samwa AI</title>
+		<meta
+			name="description"
+			content="At Samwa AI, our mission is to develop human-centric AI solutions that simplify daily operations by automating routine tasks, reducing bureaucratic overhead, and alleviating operational pain. We empower organizations to unlock human potential, focus on strategic innovation, and enable management to make real-time, data-driven decisions."
+		/>
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+		<link rel="mask-icon" href="/apple-touch-icon.png" color="#000" />
+		<meta name="theme-color" content="#000" />
+
+		<title>Samwa</title>
 		<link rel="stylesheet" href="./src/index.scss" />
-		<script type="module" src="/src/index.ts"></script>
+		<script type="module" src="./src/splash.ts"></script>
+		<script async defer type="module" src="/src/index.ts"></script>
 	</head>
 	<body>
 		<app-index> </app-index>
