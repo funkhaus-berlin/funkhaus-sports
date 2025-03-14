@@ -168,7 +168,6 @@ export default class GenericBookingForm extends $LitElement(css`
 										label=${a}
 										@click=${() => {
 											// Update selected date
-											const date = dayjs().add(i, 'days')
 										}}
 									>
 										${a}

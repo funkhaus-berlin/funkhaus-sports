@@ -2952,9 +2952,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@mhmo91/schmancy@npm:^0.2.123":
-  version: 0.2.123
-  resolution: "@mhmo91/schmancy@npm:0.2.123"
+"@mhmo91/schmancy@npm:^0.2.124":
+  version: 0.2.124
+  resolution: "@mhmo91/schmancy@npm:0.2.124"
   dependencies:
     "@floating-ui/dom": "npm:^1.6.13"
     "@lit-labs/motion": "npm:^1.0.8"
@@ -2970,19 +2970,19 @@ __metadata:
     dayjs: "npm:^1.11.13"
     fastest-levenshtein: "npm:^1.0.16"
     lit: "npm:^3.2.1"
-    npm-check-updates: "npm:^17.1.14"
+    npm-check-updates: "npm:^17.1.15"
     playground-elements: "npm:^0.19.1"
-    rxjs: "npm:latest"
+    rxjs: "npm:^7.8.2"
     tippy.js: "npm:^6.3.7"
     ts-is-present: "npm:^1.2.2"
     typeit: "npm:^8.8.7"
-    typescript: "npm:^5.7.3"
+    typescript: "npm:^5.8.2"
     uuid: "npm:^11.1.0"
     web-component-analyzer: "npm:^2.0.0"
   peerDependencies:
     lit: ^3.2.1
     tailwindcss: ^4.0.0
-  checksum: 10c0/e03b25349d193357e7ffbfc7bace354df0aa5abf87fbbd9e90f4da1a63eec9b84bb355b47bb3d2cfa4217714babcb00295450b15e3a8c1268526fc41dc6f5e35
+  checksum: 10c0/5b5ccf61f18197b8e1bcdc9e85643a8354420837c7ae0b90cf76a17e2412a0f5ac5433fd7db2342f00204b66d186f256b7352005c54b4dd7091533e7bc4d0baf
   languageName: node
   linkType: hard
 
@@ -7145,7 +7145,7 @@ __metadata:
   resolution: "mo-template@workspace:."
   dependencies:
     "@lit-labs/virtualizer": "npm:^2.1.0"
-    "@mhmo91/schmancy": "npm:^0.2.123"
+    "@mhmo91/schmancy": "npm:^0.2.124"
     "@netlify/functions": "npm:^3.0.1"
     "@reduxjs/toolkit": "npm:^2.6.1"
     "@stripe/stripe-js": "npm:^6.0.0"
@@ -7172,7 +7172,7 @@ __metadata:
     type-fest: "npm:^4.37.0"
     typescript: "npm:^5.8.2"
     uuid: "npm:^11.1.0"
-    vite: "npm:^6.2.1"
+    vite: "npm:^6.2.2"
     vite-plugin-pwa: "npm:^0.21.1"
     vite-plugin-sitemap: "npm:^0.7.1"
     vite-plugin-webfont-dl: "npm:^3.10.4"
@@ -7306,16 +7306,6 @@ __metadata:
   version: 0.1.2
   resolution: "normalize-range@npm:0.1.2"
   checksum: 10c0/bf39b73a63e0a42ad1a48c2bd1bda5a07ede64a7e2567307a407674e595bcff0fa0d57e8e5f1e7fa5e91000797c7615e13613227aaaa4d6d6e87f5bd5cc95de6
-  languageName: node
-  linkType: hard
-
-"npm-check-updates@npm:^17.1.14":
-  version: 17.1.14
-  resolution: "npm-check-updates@npm:17.1.14"
-  bin:
-    ncu: build/cli.js
-    npm-check-updates: build/cli.js
-  checksum: 10c0/6af4c284e0c8aad4760d1e526a0015e6327f76000580cc2f558c2d143762e52ce4ce7bb806092e763a0008f4ab29b7db210994881aa0f78f4ac3d0ff323b9cb0
   languageName: node
   linkType: hard
 
@@ -8023,15 +8013,6 @@ __metadata:
   dependencies:
     tslib: "npm:^2.1.0"
   checksum: 10c0/1fcd33d2066ada98ba8f21fcbbcaee9f0b271de1d38dc7f4e256bfbc6ffcdde68c8bfb69093de7eeb46f24b1fb820620bf0223706cff26b4ab99a7ff7b2e2c45
-  languageName: node
-  linkType: hard
-
-"rxjs@npm:latest":
-  version: 7.8.1
-  resolution: "rxjs@npm:7.8.1"
-  dependencies:
-    tslib: "npm:^2.1.0"
-  checksum: 10c0/3c49c1ecd66170b175c9cacf5cef67f8914dcbc7cd0162855538d365c83fea631167cacb644b3ce533b2ea0e9a4d0b12175186985f89d75abe73dbd8f7f06f68
   languageName: node
   linkType: hard
 
@@ -8972,16 +8953,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"typescript@npm:^5.7.3":
-  version: 5.7.3
-  resolution: "typescript@npm:5.7.3"
-  bin:
-    tsc: bin/tsc
-    tsserver: bin/tsserver
-  checksum: 10c0/b7580d716cf1824736cc6e628ab4cd8b51877408ba2be0869d2866da35ef8366dd6ae9eb9d0851470a39be17cbd61df1126f9e211d8799d764ea7431d5435afa
-  languageName: node
-  linkType: hard
-
 "typescript@npm:^5.8.2":
   version: 5.8.2
   resolution: "typescript@npm:5.8.2"
@@ -8999,16 +8970,6 @@ __metadata:
     tsc: bin/tsc
     tsserver: bin/tsserver
   checksum: 10c0/91ae3e6193d0ddb8656d4c418a033f0f75dec5e077ebbc2bd6d76439b93f35683936ee1bdc0e9cf94ec76863aa49f27159b5788219b50e1cd0cd6d110aa34b07
-  languageName: node
-  linkType: hard
-
-"typescript@patch:typescript@npm%3A^5.7.3#optional!builtin<compat/typescript>":
-  version: 5.7.3
-  resolution: "typescript@patch:typescript@npm%3A5.7.3#optional!builtin<compat/typescript>::version=5.7.3&hash=5786d5"
-  bin:
-    tsc: bin/tsc
-    tsserver: bin/tsserver
-  checksum: 10c0/6fd7e0ed3bf23a81246878c613423730c40e8bdbfec4c6e4d7bf1b847cbb39076e56ad5f50aa9d7ebd89877999abaee216002d3f2818885e41c907caaa192cc4
   languageName: node
   linkType: hard
 
@@ -9240,9 +9201,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"vite@npm:^6.2.1":
-  version: 6.2.1
-  resolution: "vite@npm:6.2.1"
+"vite@npm:^6.2.2":
+  version: 6.2.2
+  resolution: "vite@npm:6.2.2"
   dependencies:
     esbuild: "npm:^0.25.0"
     fsevents: "npm:~2.3.3"
@@ -9288,7 +9249,7 @@ __metadata:
       optional: true
   bin:
     vite: bin/vite.js
-  checksum: 10c0/2c024376a840eae2ce9cfba98d62e9f1eae93caa8304875854dbc0740414aedcfbe157c2244567bd456cdb60a300312af02ae9b5c63c147d35cf4da3a0591312
+  checksum: 10c0/52f5b1c10cfe5e3b6382c6de1811ebbf76df9b5a8bab3d65169446c6b54a5f1528f775b1548009a6d8aad11def20fba046bb3e9abb10c0c2c9ccd78118623bb8
   languageName: node
   linkType: hard
 

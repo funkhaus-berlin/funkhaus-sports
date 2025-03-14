@@ -4,7 +4,6 @@ import { html } from 'lit'
 import { customElement, query } from 'lit/decorators.js'
 import { fromEvent, take } from 'rxjs'
 import FunkhausSportsApp from './public/app'
-
 @customElement('app-index')
 export class AppIndex extends $LitElement() {
 	@query('schmancy-surface') surface!: HTMLElement

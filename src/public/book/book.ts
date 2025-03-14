@@ -6,6 +6,7 @@ import { customElement, state } from 'lit/decorators.js'
 import { Booking, bookingContext } from './context'
 import './steps'
 import { Court, Duration, TimeSlot } from './types'
+import { generateAvailability } from './utils'
 /**
  * Simplified Court booking component
  * Utilizes Schmancy UI components for a consistent Material 3 experience
@@ -20,37 +21,11 @@ export class CourtBookingSystem extends $LitElement() {
 
 	@select(bookingContext) booking!: Booking
 	// Sample availability data - in a real app this would come from your API
-	private mockAvailability: Record<string, boolean> = {
-		'480': true, // 8:00 AM
-		'510': true, // 8:30 AM
-		'540': false, // 9:00 AM
-		'570': false, // 9:30 AM
-		'600': true, // 10:00 AM
-		'630': true,
-		'660': true,
-		'690': true,
-		'720': true,
-		'750': false,
-		'780': true,
-		'810': true,
-		'840': true,
-		'870': true,
-		'900': true,
-		'930': true,
-		'960': true,
-		'990': true,
-		'1020': true,
-		'1050': true,
-		'1080': true,
-		'1110': true,
-		'1140': true,
-		'1170': true,
-		'1200': true,
-		'1230': true,
-		'1260': true,
-		'1290': true,
-		'1320': true,
-	}
+	private mockAvailability: Record<string, boolean> = generateAvailability(
+		480, // 8:00 AM
+		1320, // 10:00 PM
+		[540, 570, 750], // 9:00 AM, 9:30 AM, 12:30 PM are unavailable
+	)
 
 	// Common durations for booking
 	private durations: Duration[] = [
@@ -142,9 +117,15 @@ export class CourtBookingSystem extends $LitElement() {
 
 	// Handle time slot selection
 	private handleTimeSlotSelect(timeSlot: TimeSlot) {
-		bookingContext.set({
-			startTime: dayjs(timeSlot.value).startOf('day').add(timeSlot.value, 'minute').toISOString(),
-		})
+		bookingContext.set(
+			{
+				startTime: dayjs(this.booking.startTime)
+					.hour(Math.floor(timeSlot.value / 60))
+					.minute(timeSlot.value % 60)
+					.toISOString(),
+			},
+			true,
+		)
 		this.step = 3 // Move to duration selection
 		this.selectedCourt = null
 	}
@@ -182,18 +163,19 @@ export class CourtBookingSystem extends $LitElement() {
 	}
 
 	// Go back to previous step
-	private goBack() {
-		if (this.step > 1) {
-			this.step -= 1
-		}
-	}
+	// private goBack() {
+	// 	if (this.step > 1) {
+	// 		this.step -= 1
+	// 	}
+	// }
 
-	// Get price based on selected duration
-	private getPrice(): number {
-		if (!this.duration) return 0
-		const duration = this.durations.find(d => d.value === this.duration)
-		return duration?.price || 0
-	}
+	// // Get price based on selected duration
+	// private getPrice(): number {
+	// 	if (!this.duration) return 0
+	// 	const duration = this.durations.find(d => d.value === this.duration)
+	// 	return duration?.price || 0
+	// }
+
 	private bookingSteps = [
 		{ label: 'Date', icon: 'event' },
 		{ label: 'Time', icon: 'schedule' },
@@ -222,8 +204,10 @@ export class CourtBookingSystem extends $LitElement() {
 	render() {
 		return html`
 			<schmancy-surface ${fullHeight()} type="container" rounded="all" elevation="1">
-				<schmancy-grid class="max-w-lg mx-auto" justify="stretch" gap="lg">
-					${this.renderProgressSteps()} ${this.renderCurrentStep()}
+				<schmancy-grid ${fullHeight()} rows="auto 1fr" class="max-w-lg mx-auto" justify="stretch" gap="md">
+					${this.renderProgressSteps()}
+
+					<schmancy-scroll> ${this.renderCurrentStep()} </schmancy-scroll>
 				</schmancy-grid>
 			</schmancy-surface>
 		`
@@ -235,21 +219,25 @@ export class CourtBookingSystem extends $LitElement() {
 				return html`
 					<date-selection-step
 						class="max-w-[100vw] sm:max-w-sm md:max-w-md lg:max-w-lg"
-						.value=${this.date}
+						.value=${this.booking.startTime}
 						@change=${(e: CustomEvent<string>) => this.handleDateSelect(e.detail)}
 					></date-selection-step>
 				`
 			case 2:
 				return html`
 					<time-selection-step
+						class="max-w-[100vw] sm:max-w-sm md:max-w-md lg:max-w-lg"
 						.slots=${this.getTimeSlots()}
-						.value=${this.booking.startTime!}
+						.value=${this.booking?.startTime
+							? dayjs(this.booking.startTime).hour() * 60 + dayjs(this.booking.startTime).minute()
+							: undefined}
 						@change=${(e: CustomEvent<TimeSlot>) => this.handleTimeSlotSelect(e.detail)}
 					></time-selection-step>
 				`
 			case 3:
 				return html`
 					<duration-selection-step
+						class="max-w-[100vw] sm:max-w-sm md:max-w-md lg:max-w-lg"
 						.durations=${this.durations}
 						.selectedDuration=${this.duration!}
 						@change=${(e: CustomEvent<Duration>) => this.handleDurationSelect(e.detail)}
@@ -258,6 +246,7 @@ export class CourtBookingSystem extends $LitElement() {
 			case 4:
 				return html`
 					<court-selection-step
+						class="max-w-[100vw] sm:max-w-sm md:max-w-md lg:max-w-lg"
 						.courts=${this.getAvailableCourts()}
 						.selectedCourt=${this.selectedCourt!}
 						@court-selected=${(e: CustomEvent<Court>) => this.handleCourtSelect(e.detail)}
