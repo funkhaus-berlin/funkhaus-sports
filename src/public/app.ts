@@ -8,7 +8,7 @@ import { distinctUntilChanged, take, tap } from 'rxjs'
 import './book/book'
 import { AppConfiguration, AppConfigurationContext } from './context'
 import './generic-booking-form'
-import stripe, { $stripe, $stripeElements, appearance } from './stripe'
+import stripePromise, { $stripe, $stripeElements, appearance } from './stripe'
 // Theme configuration for styling consistency
 export const appTheme: {
 	color: string
@@ -50,7 +50,7 @@ export default class GenericBookingApp extends $LitElement(
 		slot.name = 'stripe-element'
 		slot.slot = 'stripe-element'
 		this.append(slot)
-
+		const stripe = await stripePromise
 		// Initialize Stripe elements when payment amount is available
 		$stripe.pipe(distinctUntilChanged(), take(1)).subscribe(amount => {
 			this.elements = stripe?.elements({

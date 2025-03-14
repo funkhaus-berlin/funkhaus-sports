@@ -169,13 +169,6 @@ export class CourtBookingSystem extends $LitElement() {
 	// 	}
 	// }
 
-	// // Get price based on selected duration
-	// private getPrice(): number {
-	// 	if (!this.duration) return 0
-	// 	const duration = this.durations.find(d => d.value === this.duration)
-	// 	return duration?.price || 0
-	// }
-
 	private bookingSteps = [
 		{ label: 'Date', icon: 'event' },
 		{ label: 'Time', icon: 'schedule' },

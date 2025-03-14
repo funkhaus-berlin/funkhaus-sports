@@ -25,7 +25,7 @@ export default defineConfig({
 	},
 	plugins: [
 		legacy({
-			targets: ['defaults', 'not IE 11'],
+			targets: ['chrome89', 'edge89', 'firefox79', 'safari15'],
 			additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
 		}),
 		// Turn the app into a PWA with updated manifest

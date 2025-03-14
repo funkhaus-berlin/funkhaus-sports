@@ -125,8 +125,8 @@ export class FunkhausBookingSteps extends $LitElement() {
 		// Classes for the icon container
 		const iconClasses = {
 			'step-icon': true,
-			'w-12': true,
-			'h-12': true,
+			'w-10': true,
+			'h-10': true,
 			flex: true,
 			'items-center': true,
 			'justify-center': true,
@@ -235,7 +235,7 @@ export class FunkhausBookingSteps extends $LitElement() {
 					if (index < this.steps.length - 1) {
 						return html`
 							<div class="flex items-center flex-shrink-0 min-w-max">${this.renderStep(step, index)}</div>
-							<div class="flex-grow min-w-4 max-w-24">${this.renderConnector(index + 2)}</div>
+							<div class="flex-grow min-w-2 max-w-24">${this.renderConnector(index + 2)}</div>
 						`
 					}
 
