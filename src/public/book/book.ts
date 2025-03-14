@@ -233,7 +233,6 @@ export class CourtBookingSystem extends $LitElement() {
 		switch (this.step) {
 			case 1:
 				return html`
-					${this.date}
 					<date-selection-step
 						class="max-w-[100vw] sm:max-w-sm md:max-w-md lg:max-w-lg"
 						.value=${this.date}
