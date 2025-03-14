@@ -9,6 +9,7 @@ export interface Court {
 	id: string
 	name: string
 	available: boolean
+	hourlyRate?: number
 }
 
 export interface Duration {

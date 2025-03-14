@@ -21,7 +21,7 @@ import { Subject, catchError, from, map, retry, startWith, switchMap, timer } fr
 import { auth } from 'src/firebase/firebase'
 import { FunkhausTermsAndConditions } from './book/terms-and-conditions'
 import { BookingFormData } from './interface'
-import stripe, { $stripe, $stripeElements, createPaymentIntent } from './stripe'
+import { $stripe, $stripeElements, createPaymentIntent, stripePromise } from './stripe'
 
 // Type for booking item data
 export interface BookingItem {
@@ -445,7 +445,11 @@ export default class GenericBookingForm extends $LitElement(css`
 		e.preventDefault()
 
 		const elements = $stripeElements.value as StripeElements
-
+		const stripe = await stripePromise
+		if (!stripe || !elements) {
+			$notify.error('Payment processing failed. Please try again.')
+			return
+		}
 		// Validate payment form
 		this.processing = true
 		const { error } = await elements?.submit()
@@ -547,7 +551,7 @@ export default class GenericBookingForm extends $LitElement(css`
 	}
 
 	// Check payment status for returning from Stripe
-	checkPaymentStatus() {
+	async checkPaymentStatus() {
 		const clientSecret = new URLSearchParams(window.location.search).get('payment_intent_client_secret')
 
 		if (!clientSecret) {
@@ -559,6 +563,7 @@ export default class GenericBookingForm extends $LitElement(css`
 			})
 			return
 		}
+		const stripe = await stripePromise
 
 		if (!stripe) {
 			this.onValidationChange(true)
