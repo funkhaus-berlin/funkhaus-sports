@@ -5,6 +5,7 @@ import { css, html } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, take, tap } from 'rxjs'
+import './book/book'
 import { AppConfiguration, AppConfigurationContext } from './context'
 import './generic-booking-form'
 import stripe, { $stripe, $stripeElements, appearance } from './stripe'
@@ -106,9 +107,9 @@ export default class GenericBookingApp extends $LitElement(
 	protected render(): unknown {
 		return html`
 			${when(this.busy, () => html`<schmancy-busy></schmancy-busy>`)}
-			<generic-booking-form>
+			<court-booking-system>
 				<slot slot="stripe-element" name="stripe-element"></slot>
-			</generic-booking-form>
+			</court-booking-system>
 		`
 	}
 }

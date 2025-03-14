@@ -19,7 +19,7 @@ import { when } from 'lit/directives/when.js'
 import moment from 'moment'
 import { Subject, catchError, from, map, retry, startWith, switchMap, timer } from 'rxjs'
 import { auth } from 'src/firebase/firebase'
-import { FunkhausTermsAndConditions } from './buy/terms-and-conditions'
+import { FunkhausTermsAndConditions } from './book/terms-and-conditions'
 import { BookingFormData } from './interface'
 import stripe, { $stripe, $stripeElements, createPaymentIntent } from './stripe'
 
