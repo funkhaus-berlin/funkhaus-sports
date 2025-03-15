@@ -8,10 +8,10 @@ import { Booking, bookingContext } from './context'
 import './steps'
 import { Court, Duration, TimeSlot } from './types'
 // Import Stripe related dependencies
+import { when } from 'lit/directives/when.js'
 import { firstValueFrom } from 'rxjs'
 import { courtsContext } from 'src/admin/courts/context'
 import { CourtAssignmentService, CourtAssignmentStrategy } from './court-assignment.service' // ← Add this import
-import { when } from 'lit/directives/when.js'
 
 /**
  * Court booking component with Stripe integration
@@ -54,16 +54,10 @@ export class CourtBookingSystem extends $LitElement() {
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
-		// initiate the current step based on the current booking state
-		if (this.booking.endTime) {
-			this.step = 4
-		} else if (this.booking.startTime && this.booking.startTime !== '' && this.booking.endTime === '') {
-			this.step = 3
-		} else if (this.booking.date) {
-			this.step = 2
-		} else {
-			this.step = 1
-		}
+		// increment steps based on selections
+		if (this.booking.date) this.step = 2
+		if (this.booking.date && this.booking.startTime) this.step = 3
+		if (this.booking.date && this.booking.startTime && this.booking.endTime) this.step = 4
 	}
 
 	// Get total price for the booking

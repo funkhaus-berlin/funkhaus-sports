@@ -229,12 +229,12 @@ export class BookingPaymentStep extends $LitElement() {
 							</schmancy-typography>
 						</div>
 
-						<div class=" flex-col justify-between w-full mb-1 hidden sm:flex">
+						<div class=" flex-col justify-between w-full mb-1">
 							<schmancy-typography type="label" token="sm">Duration:</schmancy-typography>
 							<schmancy-typography type="body" weight="bold">${duration} ${durationIn}</schmancy-typography>
 						</div>
 
-						<div class=" flex-col justify-between w-full mb-1 hidden sm:flex">
+						<div class=" flex-col justify-between w-full mb-1">
 							<schmancy-typography type="label" token="sm">Court:</schmancy-typography>
 							<schmancy-typography type="body" weight="bold"
 								>${this.selectedCourt

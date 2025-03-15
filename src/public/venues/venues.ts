@@ -175,7 +175,9 @@ export class VenueLandingPage extends $LitElement() {
 														.venue=${venue}
 														@click=${() => this.handleVenueClick(venue)}
 														class=" absolute inset-0 w-full h-full transform transition-transform duration-300 hover:-translate-y-1"
-													></funkhaus-venue-card>
+													>
+														<slot slot="stripe-element" name="stripe-element"></slot>
+													</funkhaus-venue-card>
 												</div>
 											`
 										},
