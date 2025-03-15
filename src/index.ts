@@ -3,12 +3,14 @@ import { $notify, area, fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, query } from 'lit/decorators.js'
-import { fromEvent, take, takeUntil } from 'rxjs'
+import { fromEvent, take, takeUntil, tap, zip } from 'rxjs'
 import FunkhausAdmin from './admin/admin'
 import { courtsContext } from './admin/courts/context'
 import { CourtsDB } from './db/courts.collection'
 import GenericBookingApp from './public/app'
 import './schmancy'
+import { VenuesDB } from './db/venue-collection'
+import { venuesContext } from './admin/venues/venue-context'
 @customElement('app-index')
 export class AppIndex extends $LitElement() {
 	@query('schmancy-surface') surface!: HTMLElement
@@ -35,15 +37,37 @@ export class AppIndex extends $LitElement() {
 	}
 
 	firstUpdated() {
-		CourtsDB.subscribeToCollection()
-			.pipe(takeUntil(this.disconnecting))
-			.subscribe({
-				next: courtsMap => {
-					console.log('Courts updated', courtsMap)
-					courtsContext.replace(courtsMap)
-					courtsContext.ready = true
-				},
-			})
+		zip(
+			CourtsDB.subscribeToCollection().pipe(
+				takeUntil(this.disconnecting),
+				tap({
+					next: courtsMap => {
+						console.log('Courts updated', courtsMap)
+						courtsContext.replace(courtsMap)
+						courtsContext.ready = true
+					},
+				}),
+			),
+			VenuesDB.subscribeToCollection().pipe(
+				takeUntil(this.disconnecting),
+				tap({
+					next: venues => {
+						console.log('Venues updated', venues)
+						venuesContext.replace(venues)
+						venuesContext.ready = true
+					},
+				}),
+			),
+		).subscribe({
+			next: () => {
+				this.dispatchEvent(
+					new CustomEvent('ready', {
+						bubbles: true,
+						composed: true,
+					}),
+				)
+			},
+		})
 	}
 
 	render() {

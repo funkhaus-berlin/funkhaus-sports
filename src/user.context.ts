@@ -1,7 +1,7 @@
 import { createContext } from '@mhmo91/schmancy'
 
 export class User {
-	email: string
+	email: string | null
 	name: string
 	emailVerified: boolean
 	organizationID?: string | null

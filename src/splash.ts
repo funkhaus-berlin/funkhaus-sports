@@ -4,9 +4,9 @@ import { customElement, state } from 'lit/decorators.js'
 import { styleMap } from 'lit/directives/style-map.js'
 import { fromEvent, timer, zip } from 'rxjs'
 import { switchMap, tap } from 'rxjs/operators'
-import img from '/logo.png?inline' // replace with your actual logo path
+import img from '/logo.svg?inline' // replace with your actual logo path
 
-@customElement('samwa-splash-screen')
+@customElement('schmancy-splash')
 export default class SamwaSplashScreen extends $LitElement() {
 	@state() showLogo: boolean = true
 	@state() showMainContent: boolean = false
@@ -105,6 +105,6 @@ export default class SamwaSplashScreen extends $LitElement() {
 
 declare global {
 	interface HTMLElementTagNameMap {
-		'samwa-splash-screen': SamwaSplashScreen
+		'schmancy-splash': SamwaSplashScreen
 	}
 }

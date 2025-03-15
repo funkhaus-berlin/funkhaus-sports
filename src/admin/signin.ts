@@ -1,4 +1,4 @@
-import { $notify, area, SchmancyInputChangeEvent } from '@mhmo91/schmancy'
+import { $notify, area, fullHeight, SchmancyInputChangeEvent } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth'
 import { html } from 'lit'
@@ -26,7 +26,7 @@ export default class FunkhausSportsSignin extends $LitElement() {
 				console.log(auth)
 				area.push({
 					component: CourtManagement,
-					area: 'root',
+					area: 'admin',
 				})
 			})
 			.catch(error => {
@@ -54,7 +54,7 @@ export default class FunkhausSportsSignin extends $LitElement() {
 
 	protected render() {
 		return html`
-			<schmancy-surface>
+			<schmancy-surface type="container" ${fullHeight()}>
 				<schmancy-form
 					class="pt-0 md:pt-20 my-auto mx-auto max-w-md"
 					@submit=${(e: SubmitEvent) => {
@@ -63,7 +63,9 @@ export default class FunkhausSportsSignin extends $LitElement() {
 					}}
 				>
 					<schmancy-grid justify="center" class="mx-auto" gap="md">
-						<schmancy-typography align="center" token="lg"> Funkhaus Sports </schmancy-typography>
+						<schmancy-typography type="headline" align="center" token="lg">
+							<schmancy-animated-text duration="2000"> Funkhaus Sports </schmancy-animated-text>
+						</schmancy-typography>
 						<schmancy-input
 							name="email"
 							.value=${this.credentials.email}

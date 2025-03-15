@@ -1,72 +1,44 @@
 import { ActiveRoute, area, fullHeight, schmancyNavDrawer, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { html, nothing } from 'lit'
+import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
-import { filter, from, fromEvent, map, mergeMap, of, takeUntil, tap, zip } from 'rxjs'
+import { filter, from, fromEvent, map, takeUntil } from 'rxjs'
 import { auth } from 'src/firebase/firebase'
 import { User, userContext } from 'src/user.context'
 
-import { UsersDB } from 'src/db/users.collection'
 import { CourtManagement } from './courts/courts'
 import FunkhausSportsSignin from './signin'
+import { VenueManagement } from './venues/venues'
 
 @customElement('funkhaus-sports-admin')
 export default class FunkhausAdmin extends $LitElement() {
-	@state() activeTab: string = 'users'
+	@state() activeTab: string = 'courts'
 	@state() fullScreen = false
 	@state() activeRoute: string = 'home'
 
 	@select(userContext, user => user)
-	private user!: User
+	user!: User
 
 	connectedCallback(): void {
 		super.connectedCallback()
-
-		// Handle authentication state
-		this.handleAuthState()
-
+		from(auth.authStateReady())
+			.pipe(takeUntil(this.disconnecting))
+			.subscribe({
+				next: () => {
+					const user = auth.currentUser
+					console.log('User', user)
+					if (!user) {
+						this.redirectToLogin()
+					} else {
+						userContext.set(JSON.parse(JSON.stringify(user)))
+					}
+				},
+			})
 		// Handle fullscreen events
 		this.setupFullscreenListeners()
 
 		// Handle route changes
 		this.setupRouteListeners()
-	}
-
-	private handleAuthState(): void {
-		from(auth.authStateReady())
-			.pipe(
-				takeUntil(this.disconnecting),
-				mergeMap(() => this.getUserData()),
-			)
-			.subscribe({
-				next: () => {
-					if (!this.isUserAuthenticated()) {
-						this.redirectToLogin()
-					}
-				},
-			})
-	}
-
-	private getUserData() {
-		if (!auth.currentUser) {
-			return of(undefined)
-		}
-		return zip(UsersDB.get(auth.currentUser.uid), of(auth.currentUser)).pipe(
-			tap({
-				next: ([user, userAuth]) => {
-					if (!user || !user?.onboarded) {
-						this.redirectToLogin()
-					} else {
-						userContext.set({ ...user, ...userAuth.toJSON() }, false)
-						userContext.ready = true
-					}
-				},
-			}),
-		)
-	}
-
-	private isUserAuthenticated(): boolean {
-		return !!this.user && this.user.onboarded !== false
 	}
 
 	private redirectToLogin(): void {
@@ -111,10 +83,6 @@ export default class FunkhausAdmin extends $LitElement() {
 	}
 
 	protected render() {
-		if (!this.isUserAuthenticated()) {
-			return nothing
-		}
-
 		const contentDrawerClasses = {
 			'rounded-lg px-4 sm:px-6 md:px-8': this.fullScreen === false,
 		}
@@ -124,7 +92,7 @@ export default class FunkhausAdmin extends $LitElement() {
 				<schmancy-nav-drawer-navbar .hidden=${this.fullScreen} width="180px">
 					<schmancy-list>
 						<schmancy-list-item
-							.selected=${this.activeTab === 'owl-users'}
+							.selected=${this.activeTab === 'court-management'}
 							@click=${() => {
 								area.push({
 									component: CourtManagement,
@@ -135,10 +103,47 @@ export default class FunkhausAdmin extends $LitElement() {
 							rounded
 							variant="container"
 						>
-							Users
+							<schmancy-flex gap="md">
+								<schmancy-icon>sports_tennis</schmancy-icon>
+								Courts
+							</schmancy-flex>
 						</schmancy-list-item>
 
-						<samwa-logout></samwa-logout>
+						<schmancy-list-item
+							.selected=${this.activeTab === 'venue-management'}
+							@click=${() => {
+								area.push({
+									component: VenueManagement,
+									area: 'admin',
+								})
+								schmancyNavDrawer.close()
+							}}
+							rounded
+							variant="container"
+						>
+							<schmancy-flex gap="md">
+								<schmancy-icon>location_on</schmancy-icon>
+								Venues
+							</schmancy-flex>
+						</schmancy-list-item>
+
+						<schmancy-divider></schmancy-divider>
+
+						<schmancy-list-item
+							@click=${() => {
+								// Sign out user
+								auth.signOut().then(() => {
+									this.redirectToLogin()
+								})
+							}}
+							rounded
+							variant="container"
+						>
+							<schmancy-flex gap="md">
+								<schmancy-icon>logout</schmancy-icon>
+								Logout
+							</schmancy-flex>
+						</schmancy-list-item>
 					</schmancy-list>
 				</schmancy-nav-drawer-navbar>
 

@@ -18,12 +18,14 @@
 
 		<title>Samwa</title>
 		<link rel="stylesheet" href="./src/index.scss" />
-		<!-- <script type="module" src="./src/splash.ts"></script> -->
+		<script type="module" src="./src/splash.ts"></script>
 		<script async defer type="module" src="/src/index.ts"></script>
 	</head>
 	<body>
-		<app-index>
-			<div class="block" slot="stripe-element" id="stripe-element"></div>
-		</app-index>
+		<schmancy-splash>
+			<app-index>
+				<div class="block" slot="stripe-element" id="stripe-element"></div>
+			</app-index>
+		</schmancy-splash>
 	</body>
 </html>
