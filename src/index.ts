@@ -6,11 +6,11 @@ import { customElement, query } from 'lit/decorators.js'
 import { fromEvent, take, takeUntil, tap, zip } from 'rxjs'
 import FunkhausAdmin from './admin/admin'
 import { courtsContext } from './admin/courts/context'
-import { CourtsDB } from './db/courts.collection'
-import GenericBookingApp from './public/app'
-import './schmancy'
-import { VenuesDB } from './db/venue-collection'
 import { venuesContext } from './admin/venues/venue-context'
+import { CourtsDB } from './db/courts.collection'
+import { VenuesDB } from './db/venue-collection'
+import { VenueLandingPage } from './public/venues/venues'
+import './schmancy'
 @customElement('app-index')
 export class AppIndex extends $LitElement() {
 	@query('schmancy-surface') surface!: HTMLElement
@@ -75,7 +75,7 @@ export class AppIndex extends $LitElement() {
 			<schmancy-theme color="#008080" root>
 				<schmancy-surface ${fullHeight()} type="container">
 					<schmancy-scroll ${fullHeight()}>
-						<schmancy-area name="root" .default=${GenericBookingApp}>
+						<schmancy-area name="root" .default=${VenueLandingPage}>
 							<slot slot="stripe-element" name="stripe-element"></slot>
 						</schmancy-area>
 					</schmancy-scroll>

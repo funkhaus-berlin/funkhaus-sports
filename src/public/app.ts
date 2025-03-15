@@ -5,8 +5,8 @@ import { css, html } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, take, tap } from 'rxjs'
-import { AppConfiguration, AppConfigurationContext } from './context'
 import './book/book'
+import { AppConfiguration, AppConfigurationContext } from './context'
 import stripePromise, { $stripe, $stripeElements, appearance } from './stripe'
 // Theme configuration for styling consistency
 export const appTheme: {
