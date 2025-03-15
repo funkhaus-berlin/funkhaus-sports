@@ -166,11 +166,11 @@ export class CourtBookingSystem extends $LitElement() {
 	// Main render method
 	render() {
 		return html`
-			<schmancy-surface ${fullHeight()} type="container" rounded="all" elevation="1">
-				<schmancy-flex ${fullHeight()} flow="col" class="max-w-lg mx-auto" gap="sm">
+			<schmancy-surface ${fullHeight()} type="containerLow" rounded="all" elevation="1">
+				<schmancy-grid rows="auto 1fr" ${fullHeight()} flow="row" class="max-w-lg mx-auto" gap="sm">
 					${this.renderProgressSteps()}
 					<schmancy-scroll> ${this.renderCurrentStep()} </schmancy-scroll>
-				</schmancy-flex>
+				</schmancy-grid>
 			</schmancy-surface>
 		`
 	}
@@ -179,30 +179,32 @@ export class CourtBookingSystem extends $LitElement() {
 		switch (this.step) {
 			case 1:
 			case 2:
+			case 3:
 				return html`
 					<date-selection-step
-						class="max-w-full"
+						.active=${this.step === 1}
+						class="max-w-full sticky top-0 z-10"
 						.value=${this.booking.startTime}
 						@change=${(e: CustomEvent<string>) => this.handleDateSelect(e.detail)}
 					></date-selection-step>
 					<time-selection-step
+						.active=${this.step === 2}
 						class="max-w-full"
 						.value=${this.booking?.startTime
 							? dayjs(this.booking.startTime).hour() * 60 + dayjs(this.booking.startTime).minute()
 							: undefined}
 						@change=${(e: CustomEvent<TimeSlot>) => this.handleTimeSlotSelect(e.detail)}
 					></time-selection-step>
-				`
-
-			case 3:
-				return html`
 					<duration-selection-step
+						.hidden=${this.step !== 3}
 						class="max-w-full p-4"
 						.durations=${this.durations}
 						.selectedDuration=${this.duration}
 						@change=${(e: CustomEvent<Duration>) => this.handleDurationSelect(e.detail)}
 					></duration-selection-step>
 				`
+
+				return html``
 			case 4: // Payment is now step 4 instead of 5
 				return html`<booking-payment-step>
 					<slot slot="stripe-element" name="stripe-element"></slot>

@@ -11,9 +11,9 @@ export class DurationSelectionStep extends $LitElement() {
 
 	render() {
 		return html`
-			<div class="w-full max-w-full bg-surface-low py-4 rounded-lg">
+			<schmancy-surface type="containerLow" rounded="all" elevation="1">
 				<!-- Title -->
-				<schmancy-typography class="mb-4 px-4">
+				<schmancy-typography class="py-4 px-4 pt">
 					<schmancy-typewriter> Select Duration </schmancy-typewriter>
 				</schmancy-typography>
 
@@ -109,7 +109,7 @@ export class DurationSelectionStep extends $LitElement() {
 						`
 					})}
 				</div>
-			</div>
+			</schmancy-surface>
 		`
 	}
 }
