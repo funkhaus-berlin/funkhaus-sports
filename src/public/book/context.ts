@@ -2,22 +2,29 @@
 import { createContext } from '@mhmo91/schmancy'
 
 export interface Booking {
-	userId?: string
-	userName?: string
-	courtId?: string
-	courtName?: string
-	startTime?: string
-	endTime?: string
-	price?: number
-	date?: string
+	id: string
+	userId: string
+	userName: string
+	courtId: string
+	startTime: string
+	endTime: string
+	price: number
+	date: string
+	paymentStatus?: string
+	status?: string
 }
 
 // Create global context for booking information
 export const bookingContext = createContext<Booking>(
 	{
+		id: '',
+		userId: '',
+		userName: '',
+		courtId: '',
 		startTime: '',
 		endTime: '',
 		price: 0,
+		date: '',
 	},
 	'session',
 	'booking',

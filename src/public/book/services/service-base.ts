@@ -1,8 +1,7 @@
 // services/index.ts
-export * from './auth.service'
-export * from './availability.service'
+export * from '../../../firebase/auth.service'
+export * from '../availability.service'
 export * from './booking.service'
-export * from './court.service'
 
 // services/service-base.ts
 import { Observable } from 'rxjs'

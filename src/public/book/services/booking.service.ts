@@ -3,79 +3,54 @@ import { doc } from 'firebase/firestore'
 import { Observable, throwError } from 'rxjs'
 import { catchError, map, switchMap } from 'rxjs/operators'
 import { FirebaseServiceQuery, FirestoreService } from 'src/firebase/firestore.service'
-import { AuthService } from './auth.service'
-
-export interface FirebaseBooking {
-	id?: string
-	userId: string
-	userName: string
-	courtId: string
-	courtName: string
-	date: string
-	startTime: string
-	endTime: string
-	status: 'confirmed' | 'cancelled' | 'completed'
-	totalPrice: number
-	createdAt?: string
-	updatedAt?: string
-	paymentStatus: 'pending' | 'paid' | 'refunded' | 'cancelled'
-}
-
-export interface BookingRequest {
-	userId: string
-	userName: string
-	courtId: string
-	date: string
-	startTime: string
-	endTime: string
-	totalPrice: number
-}
+import { AuthService } from '../../../firebase/auth.service'
+import { Booking } from '../context'
 
 /**
  * Booking service using Firestore
  */
 export class BookingService {
-	private service: FirestoreService<FirebaseBooking>
+	private service: FirestoreService<Booking>
 	private authService: AuthService
 	private availabilityService: FirestoreService<any>
-	private courtService: FirestoreService<any>
+	private CourtsDB: FirestoreService<any>
 
 	constructor(authService?: AuthService) {
-		this.service = new FirestoreService<FirebaseBooking>('bookings')
+		this.service = new FirestoreService<Booking>('bookings')
 		this.authService = authService || new AuthService()
 		this.availabilityService = new FirestoreService<any>('availabilities')
-		this.courtService = new FirestoreService<any>('courts')
+		this.CourtsDB = new FirestoreService<any>('courts')
 	}
 
 	/**
 	 * Create a new booking
 	 */
-	createBooking(request: BookingRequest): Observable<FirebaseBooking> {
+	createBooking(request: Booking): Observable<Booking> {
 		// Generate a booking ID
 		const bookingId = doc(this.service['db'], 'bookings').id
 
 		// Check court exists
-		return this.courtService.get(request.courtId).pipe(
+		return this.CourtsDB.get(request.courtId!).pipe(
 			switchMap(court => {
 				if (!court) {
 					return throwError(() => new Error('Court not found'))
 				}
 
 				// Parse date to get month document ID
-				const [year, month] = request.date.split('-')
+				const [year, month] = request.date!.split('-')
 				const monthDocId = `${year}-${month}`
 
 				// Create booking data
-				const bookingData: FirebaseBooking = {
+				const bookingData: Booking = {
+					id: bookingId,
 					userId: request.userId,
 					userName: request.userName,
 					courtId: request.courtId,
-					courtName: court.name,
 					date: request.date,
 					startTime: request.startTime,
 					endTime: request.endTime,
 					status: 'confirmed',
-					totalPrice: request.totalPrice,
+					price: request.price,
 					paymentStatus: 'pending',
 				}
 
@@ -174,7 +149,7 @@ export class BookingService {
 		userId: string,
 		page: number = 1,
 		pageSize: number = 10,
-	): Observable<{ bookings: FirebaseBooking[]; total: number; page: number; pageSize: number }> {
+	): Observable<{ bookings: Booking[]; total: number; page: number; pageSize: number }> {
 		const query: FirebaseServiceQuery[] = [
 			{
 				key: 'userId',
@@ -208,7 +183,7 @@ export class BookingService {
 	/**
 	 * Cancel a booking
 	 */
-	cancelBooking(bookingId: string): Observable<FirebaseBooking> {
+	cancelBooking(bookingId: string): Observable<Booking> {
 		return this.service.get(bookingId).pipe(
 			switchMap(booking => {
 				if (!booking) {
@@ -294,9 +269,9 @@ export class BookingService {
 							// Update booking status
 							const updatedBooking = {
 								...booking,
-								status: 'cancelled' as FirebaseBooking['status'],
+								status: 'cancelled' as Booking['status'],
 								paymentStatus:
-									booking.paymentStatus === 'paid' ? 'refunded' : ('cancelled' as FirebaseBooking['paymentStatus']),
+									booking.paymentStatus === 'paid' ? 'refunded' : ('cancelled' as Booking['paymentStatus']),
 								updatedAt: new Date().toISOString(),
 							}
 
@@ -322,7 +297,7 @@ export class BookingService {
 	/**
 	 * Get a specific booking
 	 */
-	getBooking(bookingId: string): Observable<FirebaseBooking> {
+	getBooking(bookingId: string): Observable<Booking> {
 		return this.service.get(bookingId).pipe(
 			switchMap(booking => {
 				if (!booking) {

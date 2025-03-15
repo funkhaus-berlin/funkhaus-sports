@@ -7,7 +7,6 @@ import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, take, tap } from 'rxjs'
 import './book/book'
 import { AppConfiguration, AppConfigurationContext } from './context'
-import './generic-booking-form'
 import stripePromise, { $stripe, $stripeElements, appearance } from './stripe'
 // Theme configuration for styling consistency
 export const appTheme: {

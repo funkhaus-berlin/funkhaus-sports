@@ -52,6 +52,7 @@ body {
 	margin: 0;
 	padding: 0;
 	--schmancy-font-family: 'GT-Eesti-Display-Regular';
+	overflow: hidden;
 }
 @media (prefers-color-scheme: light) {
 	:root {

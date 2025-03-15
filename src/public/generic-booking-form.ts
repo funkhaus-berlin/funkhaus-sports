@@ -16,11 +16,10 @@ import { css, html } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import moment from 'moment'
 import { Subject, catchError, from, map, retry, startWith, switchMap, timer } from 'rxjs'
 import { auth } from 'src/firebase/firebase'
 import { FunkhausTermsAndConditions } from './book/terms-and-conditions'
-import { BookingFormData } from './interface'
+import { BookingFormData } from '../db/interface'
 import { $stripe, $stripeElements, createPaymentIntent, stripePromise } from './stripe'
 
 // Type for booking item data
@@ -222,8 +221,8 @@ export default class GenericBookingForm extends $LitElement(css`
 								</schmancy-typography>
 
 								<schmancy-typography class="z-10" type="title" token="sm">
-									${moment.unix(this.bookingEvent.date.start).format('DD MMM HH:mm')} -
-									${moment.unix(this.bookingEvent.date.end).format('HH:mm')}
+									${dayjs.unix(this.bookingEvent.date.start).format('DD MMM HH:mm')} -
+									${dayjs.unix(this.bookingEvent.date.end).format('HH:mm')}
 								</schmancy-typography>
 							</schmancy-flex>
 

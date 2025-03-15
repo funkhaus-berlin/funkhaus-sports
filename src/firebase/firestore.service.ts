@@ -140,7 +140,7 @@ export class FirestoreService<T extends DocumentData> {
 	/**
 	 * Create or update a document
 	 */
-	upsert(data: Partial<T>, id?: string): Observable<T> {
+	upsert(data: Partial<T>, id?: string, merge: boolean = true): Observable<T> {
 		const documentId = id || doc(collection(this.db, this.collectionName)).id
 		const docRef = doc(this.db, this.collectionName, documentId)
 
@@ -150,15 +150,7 @@ export class FirestoreService<T extends DocumentData> {
 			updatedAt: timestamp,
 		} as any
 
-		// For new documents, add createdAt
-		return from(getDoc(docRef)).pipe(
-			map(docSnap => {
-				if (!docSnap.exists()) {
-					return setDoc(docRef, { ...docData, createdAt: timestamp })
-				} else {
-					return updateDoc(docRef, docData)
-				}
-			}),
+		return from(setDoc(docRef, docData, { merge: merge })).pipe(
 			map(() => ({ id: documentId, ...docData } as any as T)),
 			catchError(error => {
 				console.error(`Error upserting document in ${this.collectionName}:`, error)

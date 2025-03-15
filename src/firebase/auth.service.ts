@@ -24,18 +24,29 @@ export class AuthService {
 
 		// Listen for auth state changes
 		onAuthStateChanged(this.auth, async user => {
-			if (user) {
-				const token = await user.getIdTokenResult()
-				const isAdmin = token.claims.admin === true
+			// if (user) {
+			// 	const token = await user.getIdTokenResult()
+			// 	const isAdmin = token.claims.admin === true
 
-				this.currentUser = {
-					id: user.uid,
-					email: user.email || '',
-					displayName: user.displayName || 'User',
-					isAdmin,
+			// 	this.currentUser = {
+			// 		id: user.uid,
+			// 		email: user.email || '',
+			// 		displayName: user.displayName || 'User',
+			// 		isAdmin,
+			// 	}
+			// } else {
+			// 	this.currentUser = null
+			// }
+
+			if (user) {
+				const token = await user!.getIdTokenResult()
+
+				return {
+					id: user!.uid,
+					email: user!.email || '',
+					displayName: user!.displayName || 'User',
+					isAdmin: true,
 				}
-			} else {
-				this.currentUser = null
 			}
 		})
 	}

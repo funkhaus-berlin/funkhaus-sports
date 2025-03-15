@@ -12,9 +12,8 @@
 	},
 	"dependencies": {
 		"@lit-labs/virtualizer": "^2.1.0",
-		"@mhmo91/schmancy": "^0.2.124",
+		"@mhmo91/schmancy": "^0.2.127",
 		"@netlify/functions": "^3.0.1",
-		"@reduxjs/toolkit": "^2.6.1",
 		"@stripe/stripe-js": "^6.0.0",
 		"@vitejs/plugin-legacy": "^6.0.2",
 		"cleave.js": "^1.6.0",
@@ -23,7 +22,6 @@
 		"firebase": "^11.4.0",
 		"firebase-admin": "^13.2.0",
 		"lit": "^3.2.1",
-		"moment": "^2.30.1",
 		"npm-check-updates": "^17.1.15",
 		"promise-polyfill": "^8.3.0",
 		"redux-persist": "^6.0.0",
