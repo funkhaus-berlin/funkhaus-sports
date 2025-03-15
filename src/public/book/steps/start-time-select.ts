@@ -34,7 +34,8 @@ export class TimeSelectionStep extends $LitElement() {
 
 	@state() timeSlots: TimeSlot[] = []
 	@state() hoveredTime: number | null = null
-	@state() viewMode: 'timeline' | 'list' = 'list'
+	// Always use timeline view for now
+	@state() viewMode: 'timeline' | 'list' = 'timeline'
 
 	private availabilityService: AvailabilityService
 
@@ -42,13 +43,8 @@ export class TimeSelectionStep extends $LitElement() {
 		super()
 		this.availabilityService = new AvailabilityService()
 
-		// Set initial view mode based on screen size
-		this.viewMode = window.innerWidth < 768 ? 'list' : 'timeline'
-
-		// Listen for window resize to adjust view mode
-		window.addEventListener('resize', () => {
-			this.viewMode = window.innerWidth < 768 ? 'list' : 'timeline'
-		})
+		// Always use timeline view for now
+		this.viewMode = 'timeline'
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
@@ -86,29 +82,9 @@ export class TimeSelectionStep extends $LitElement() {
 					// Convert the backend availability data to time slots
 					const slots: TimeSlot[] = []
 
-					// If no courts have availability, use default hours (8AM-10PM)
+					// If no courts have availability, use default hours (12PM-10PM)
 					if (!courtsAvailability || Object.keys(courtsAvailability).length === 0) {
-						// Create default time slots (8AM-10PM)
-						for (let hour = 8; hour < 22; hour++) {
-							const timeKey = `${hour.toString().padStart(2, '0')}:00`
-							const value = hour * 60
-
-							slots.push({
-								label: timeKey,
-								value,
-								available: true, // Default to available
-							})
-
-							// Add half-hour slots for more granular selection
-							const halfHourKey = `${hour.toString().padStart(2, '0')}:30`
-							const halfHourValue = hour * 60 + 30
-
-							slots.push({
-								label: halfHourKey,
-								value: halfHourValue,
-								available: true,
-							})
-						}
+						this._createDefaultTimeSlots()
 					} else {
 						// Get availability for first court as sample (we'll filter more specifically later)
 						const firstCourtId = Object.keys(courtsAvailability)[0]
@@ -125,11 +101,11 @@ export class TimeSelectionStep extends $LitElement() {
 								available: timeSlot.isAvailable,
 							})
 						})
-					}
 
-					// Sort by time
-					slots.sort((a, b) => a.value - b.value)
-					this.timeSlots = slots
+						// Sort by time
+						slots.sort((a, b) => a.value - b.value)
+						this.timeSlots = slots
+					}
 
 					// If we already have a selected value, make sure we scroll to it
 					if (this.value !== undefined) {
@@ -147,10 +123,11 @@ export class TimeSelectionStep extends $LitElement() {
 		}
 	}
 
-	// Create default time slots (8AM-10PM with half-hour intervals)
+	// Create default time slots (12PM-10PM with half-hour intervals)
 	private _createDefaultTimeSlots() {
 		const defaultSlots: TimeSlot[] = []
-		for (let hour = 8; hour < 22; hour++) {
+		// Start from 12PM (noon)
+		for (let hour = 12; hour < 22; hour++) {
 			const timeKey = `${hour.toString().padStart(2, '0')}:00`
 			const value = hour * 60
 
@@ -236,99 +213,96 @@ export class TimeSelectionStep extends $LitElement() {
 		})
 	}
 
-	// Helper to get the popularity level based on time
-	private _getPopularityLevel(slot: TimeSlot) {
-		const hour = Math.floor(slot.value / 60)
-		if (hour >= 17 && hour < 20) return 'high'
-		if (hour >= 11 && hour < 14) return 'medium'
-		return 'low'
-	}
+	// Helper function to group time slots into 2-hour blocks
+	private _getTimeSlotBlocks() {
+		const blocks: TimeSlot[][] = []
+		let currentBlock: TimeSlot[] = []
+		let currentBlockStartHour = -1
 
-	// Group time slots by period (Morning, Afternoon, Evening)
-	private _getSlotsByPeriod() {
-		return {
-			Morning: this.timeSlots.filter(slot => {
-				const hour = Math.floor(slot.value / 60)
-				return hour < 12
-			}),
-			Afternoon: this.timeSlots.filter(slot => {
-				const hour = Math.floor(slot.value / 60)
-				return hour >= 12 && hour < 17
-			}),
-			Evening: this.timeSlots.filter(slot => {
-				const hour = Math.floor(slot.value / 60)
-				return hour >= 17
-			}),
+		// Sort slots by time
+		const sortedSlots = [...this.timeSlots].sort((a, b) => a.value - b.value)
+
+		for (const slot of sortedSlots) {
+			const slotHour = Math.floor(slot.value / 60)
+			// Determine which 2-hour block this slot belongs to (0-1, 2-3, 4-5, etc.)
+			const blockIndex = Math.floor(slotHour / 2)
+
+			if (currentBlockStartHour === -1 || Math.floor(currentBlockStartHour / 2) !== blockIndex) {
+				// If we have slots in the current block, add it to our blocks array
+				if (currentBlock.length > 0) {
+					blocks.push([...currentBlock])
+				}
+
+				// Start a new block
+				currentBlock = [slot]
+				currentBlockStartHour = slotHour
+			} else {
+				// Add to current block
+				currentBlock.push(slot)
+			}
 		}
+
+		// Add the last block if it has slots
+		if (currentBlock.length > 0) {
+			blocks.push(currentBlock)
+		}
+
+		return blocks
 	}
 
 	render() {
-		// Determine start and end times from slots or use defaults
-		const startTime = this.timeSlots.length > 0 ? Math.min(...this.timeSlots.map(slot => slot.value)) : 8 * 60
-
-		const endTime = this.timeSlots.length > 0 ? Math.max(...this.timeSlots.map(slot => slot.value)) : 22 * 60
-
-		// Get display time (either hovered, selected, or prompt)
-		const displayTime =
-			this.hoveredTime !== null
-				? this._formatTimeDisplay(this.hoveredTime)
-				: this.value !== undefined
-				? this._formatTimeDisplay(this.value)
-				: 'Select a time'
-
-		// Group time slots by period for rendering
-		const periodTimes = this._getSlotsByPeriod()
-
 		// Container classes based on active state
 		const containerClasses = {
 			'w-full': true,
 			'max-w-full': true,
 			'bg-surface-low': true,
 			'rounded-lg': true,
+			'shadow-sm': true,
 			'py-6 px-4': this.active,
 			'py-3 px-2': !this.active,
 		}
+
+		// For inactive state, we'll just use the timeline view
+		const displayMode = !this.active ? 'timeline' : this.viewMode
 
 		return html`
 			<div class=${this.classMap(containerClasses)}>
 				<!-- Title and View Toggle - Only shown when active -->
 				${this.active
 					? html`
-							<!-- <div class="flex justify-between items-center mb-4">
-								<schmancy-typography type="title">
-									<schmancy-typewriter> Select Time </schmancy-typewriter>
-								</schmancy-typography>
-
-								<schmancy-button @click=${this._toggleViewMode}>
-									Switch to ${this.viewMode === 'timeline' ? 'List View' : 'Timeline View'}
-								</schmancy-button>
-							</div> -->
-
-							<!-- Time display -->
-							<!-- <div class="flex justify-center mb-6">
-								<div class="text-2xl font-bold text-primary-default">${displayTime}</div>
-							</div> -->
-
-							<!-- Active view uses selected view mode -->
-							${this.viewMode === 'timeline'
-								? this._renderTimeline(startTime, endTime, periodTimes)
-								: this._renderListView(periodTimes)}
+							<div class="flex justify-between items-center mb-5">
+								<div class="text-lg font-medium">Select Time</div>
+								<!-- View toggle button removed for now -->
+							</div>
+					  `
+					: this.value !== undefined
+					? html`
+							<!-- When inactive but has a selected time, show it -->
+							<div class="text-base font-medium mb-3 text-center">${this._formatTimeDisplay(this.value)}</div>
 					  `
 					: html`
-							<!-- When inactive, show compact time display -->
-							<div class="flex justify-center ${this.value !== undefined ? 'mb-2' : ''}">
-								<div class="text-lg font-bold text-primary-default">${displayTime}</div>
-							</div>
-
-							<!-- Compact view always uses timeline -->
-							${this._renderTimeline(startTime, endTime, periodTimes)}
+							<!-- When inactive with no selection -->
+							<div class="text-base font-medium mb-3 text-center">Time</div>
 					  `}
+
+				<!-- Always use timeline view -->
+				${this._renderTimeline()}
+
+				<!-- Simple time range indicator - only when active -->
+				${this.active && this.timeSlots.length > 0
+					? html`
+							<div class="flex justify-between text-xs text-gray-500 mt-4 px-4 pt-2 border-t">
+								<span>From ${this._formatTimeDisplay(this.timeSlots[0].value)}</span>
+								<span>To ${this._formatTimeDisplay(this.timeSlots[this.timeSlots.length - 1].value)}</span>
+							</div>
+					  `
+					: ''}
 			</div>
 		`
 	}
 
-	private _renderTimeline(startTime: number, endTime: number, periodTimes: Record<string, TimeSlot[]>) {
-		// Filter slots to include both hour and half-hour markers
+	private _renderTimeline() {
+		// Filter slots to include only the hour and half-hour markers
 		const timelineSlots = this.timeSlots.filter(slot => slot.value % 30 === 0)
 
 		return html`
@@ -341,8 +315,8 @@ export class TimeSelectionStep extends $LitElement() {
 						const isHalfHour = minute === 30
 						const isSelected = this.value === slot.value
 
-						// Build class map for time element - adjust size based on active state
-						const timeClasses = {
+						// Classes for time slots - adjust size based on active state
+						const slotClasses = {
 							'flex-none': true,
 							'rounded-lg': true,
 							flex: true,
@@ -350,13 +324,15 @@ export class TimeSelectionStep extends $LitElement() {
 							'items-center': true,
 							'justify-center': true,
 							'transition-colors': true,
+							'duration-200': true,
 							relative: true,
-							group: true,
 							'cursor-pointer': slot.available,
 							'cursor-not-allowed': !slot.available,
 							'bg-primary-default text-primary-on': isSelected,
 							'bg-surface-high text-surface-on': !isSelected && slot.available,
 							'bg-gray-200 text-gray-400': !slot.available,
+							'shadow-sm': isSelected,
+							'hover:shadow-sm': slot.available && !isSelected,
 							// Different sizes based on active state and whether it's an hour or half-hour marker
 							'w-16 h-20 py-3 px-1': this.active && !isHalfHour,
 							'w-14 h-16 py-2 px-1': this.active && isHalfHour,
@@ -364,162 +340,77 @@ export class TimeSelectionStep extends $LitElement() {
 							'w-10 h-12 py-1 px-1': !this.active && isHalfHour,
 						}
 
-						// State layer classes for hover effect
-						const stateLayerClasses = {
-							'absolute inset-0 z-0 rounded-lg transition-opacity duration-200': true,
-							'opacity-0 group-hover:opacity-8': slot.available, // Only show hover effect if available
-							'bg-primary-on': isSelected,
-							'bg-primary-default': !isSelected && slot.available,
-						}
-
-						// Determine popularity for the current time
-						const popularity = this._getPopularityLevel(slot)
-
-						// Adjust text sizes based on active state and hour/half-hour
-						const timeTextClasses = {
+						// Text size classes based on active state
+						const textClasses = {
 							'font-bold': true,
-							'text-lg': this.active && !isHalfHour,
-							'text-base': (this.active && isHalfHour) || (!this.active && !isHalfHour),
-							'text-sm': !this.active && isHalfHour,
+							'text-base': this.active && !isHalfHour,
+							'text-sm': (this.active && isHalfHour) || (!this.active && !isHalfHour),
+							'text-xs': !this.active && isHalfHour,
 						}
 
-						const amPmClasses = {
+						const subTextClasses = {
 							'font-medium': true,
-							'text-xs': true,
+							'text-xs': this.active,
+							'text-xs opacity-75': !this.active,
 						}
 
 						return html`
 							<div
-								class=${this.classMap(timeClasses)}
+								class=${this.classMap(slotClasses)}
 								@click=${() => slot.available && this._handleTimeSelect(slot)}
 								@mouseover=${() => slot.available && this._handleTimeHover(slot)}
 								@mouseleave=${this._handleTimeLeave}
 								data-time-value=${slot.value}
 							>
-								<!-- State layer for hover effects -->
-								<div class=${this.classMap(stateLayerClasses)}></div>
-
-								<!-- Time content with higher z-index -->
-								<div class="relative z-10 pointer-events-none flex flex-col items-center">
-									<div class=${this.classMap(timeTextClasses)}>
-										${isHalfHour ? html`${hour > 12 ? hour - 12 : hour}:30` : html`${hour > 12 ? hour - 12 : hour}`}
-									</div>
-									<div class=${this.classMap(amPmClasses)}>${hour >= 12 ? 'PM' : 'AM'}</div>
-
-									<!-- Popularity indicator dot - smaller or hidden in compact mode -->
-									${slot.available && (this.active || !isHalfHour)
-										? html`
-												<div
-													class="${isHalfHour ? 'w-2 h-2' : 'w-3 h-3'} rounded-full mt-1 ${popularity === 'high'
-														? 'bg-orange-400'
-														: popularity === 'medium'
-														? 'bg-yellow-300'
-														: 'bg-green-300'}"
-												></div>
-										  `
-										: ''}
+								<div class=${this.classMap(textClasses)}>
+									${isHalfHour ? html`${hour > 12 ? hour - 12 : hour}:30` : html`${hour > 12 ? hour - 12 : hour}`}
 								</div>
+								<div class=${this.classMap(subTextClasses)}>${hour >= 12 ? 'PM' : 'AM'}</div>
 							</div>
 						`
 					})}
 				</div>
 			</schmancy-scroll>
-
-			<!-- Period markers and other elements - only show when active -->
-			${this.active
-				? html`
-						<!-- Period markers -->
-						<div class="flex justify-between mt-4 mb-2 border-t pt-4">
-							${Object.entries(periodTimes).map(([period, slots]) => {
-								if (slots.length === 0) return ''
-
-								return html`
-									<div class="flex flex-col items-center">
-										<span class="text-sm font-medium text-gray-700">${period}</span>
-										<span class="text-xs text-gray-500 mt-1">
-											${slots.length > 0 ? this._formatTimeDisplay(slots[0].value) : ''} -
-											${slots.length > 0 ? this._formatTimeDisplay(slots[slots.length - 1].value) : ''}
-										</span>
-									</div>
-								`
-							})}
-						</div>
-
-						<!-- Time range details -->
-						<div class="flex justify-between text-xs text-gray-500 mb-4 px-4">
-							<span>${this._formatTimeDisplay(startTime)}</span>
-							<span>${this._formatTimeDisplay(endTime)}</span>
-						</div>
-
-						<!-- Popular times legend -->
-						${this.timeSlots.some(slot => slot.available)
-							? html`
-									<div class="mt-4 pt-4 border-t px-4">
-										<div class="flex justify-between items-center mb-2">
-											<div class="text-sm font-medium text-gray-700">Popular Times</div>
-											<div class="flex items-center space-x-4">
-												<div class="flex items-center">
-													<div class="w-3 h-3 rounded-full bg-green-300 mr-1"></div>
-													<span class="text-xs">Less busy</span>
-												</div>
-												<div class="flex items-center">
-													<div class="w-3 h-3 rounded-full bg-orange-400 mr-1"></div>
-													<span class="text-xs">Busy</span>
-												</div>
-											</div>
-										</div>
-									</div>
-							  `
-							: ''}
-				  `
-				: ''}
 		`
 	}
 
-	private _renderListView(periodTimes: Record<string, TimeSlot[]>) {
-		// Regular list view (only used when active)
+	private _renderListView() {
+		// Get time slots organized in 2-hour blocks
+		const timeBlocks = this._getTimeSlotBlocks()
+
 		return html`
-			<!-- List View -->
-			<div class="space-y-6">
-				${Object.entries(periodTimes).map(([period, slots]) => {
-					if (slots.length === 0) return ''
+			<div class="pb-4">
+				${timeBlocks.map(block => {
+					if (block.length === 0) return ''
+
+					const startTime = this._formatTimeDisplay(block[0].value)
+					const endTime = this._formatTimeDisplay(block[block.length - 1].value)
 
 					return html`
-						<div class="border-b pb-4 last:border-b-0">
-							<h3 class="text-lg font-medium text-gray-700 mb-3">${period}</h3>
-							<div class="grid grid-cols-2 gap-2">
-								${slots.map(slot => {
-									const popularity = this._getPopularityLevel(slot)
+						<div class="mb-5 last:mb-0">
+							<!-- Block header -->
+							<div class="text-sm font-medium text-primary-default mb-2">${startTime} - ${endTime}</div>
+
+							<!-- Block time slots grid -->
+							<div class="grid grid-cols-4 gap-2">
+								${block.map(slot => {
+									const isSelected = this.value === slot.value
 
 									return html`
 										<button
-											class="relative p-3 rounded-lg text-left transition-all duration-200
-                        ${this.value === slot.value
-												? 'bg-primary-default text-primary-on'
+											class="p-3 rounded-lg text-center transition-all duration-200
+                        ${isSelected
+												? 'bg-primary-default text-primary-on shadow-sm'
 												: slot.available
-												? 'bg-surface-high hover:bg-primary-default hover:bg-opacity-70 hover:text-primary-on'
+												? 'bg-surface-high hover:bg-primary-default hover:bg-opacity-70 hover:text-primary-on hover:shadow-sm'
 												: 'bg-gray-200 text-gray-400 cursor-not-allowed'}"
 											@click=${() => this._handleTimeSelect(slot)}
 											@mouseover=${() => this._handleTimeHover(slot)}
-											@mouseleave=${() => this._handleTimeLeave()}
+											@mouseleave=${this._handleTimeLeave}
 											?disabled=${!slot.available}
 											data-time-value=${slot.value}
 										>
-											<!-- Time text -->
-											<span class="block text-sm font-medium">${this._formatTimeDisplay(slot.value)}</span>
-
-											<!-- Popularity indicator -->
-											${slot.available
-												? html`
-														<span
-															class="absolute top-1 right-1 w-2 h-2 rounded-full ${popularity === 'high'
-																? 'bg-orange-400'
-																: popularity === 'medium'
-																? 'bg-yellow-300'
-																: 'bg-green-300'}"
-														></span>
-												  `
-												: ''}
+											<span class="block text-sm font-medium"> ${this._formatTimeDisplay(slot.value)} </span>
 										</button>
 									`
 								})}
@@ -527,27 +418,6 @@ export class TimeSelectionStep extends $LitElement() {
 						</div>
 					`
 				})}
-			</div>
-
-			<!-- Quick scroll indicators -->
-			<div class="flex justify-center space-x-2 mt-4">
-				${Object.keys(periodTimes).map(
-					period => html`
-						<button
-							@click=${() => {
-								// Scroll to section
-								const sectionElement = this.shadowRoot?.querySelector(`h3:first-of-type`)
-								if (sectionElement) {
-									sectionElement.scrollIntoView({ behavior: 'smooth' })
-								}
-							}}
-							class="w-8 h-8 flex items-center justify-center rounded-full
-                bg-surface-high text-xs font-medium hover:bg-primary-default hover:text-primary-on"
-						>
-							${period.substring(0, 1)}
-						</button>
-					`,
-				)}
 			</div>
 		`
 	}

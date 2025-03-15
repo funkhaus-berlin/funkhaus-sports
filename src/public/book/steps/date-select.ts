@@ -5,9 +5,6 @@ import { customElement, property, state } from 'lit/decorators.js'
 
 @customElement('date-selection-step')
 export class DateSelectionStep extends $LitElement() {
-	// Golden ratio constant
-	private readonly GOLDEN_RATIO = 1.618
-
 	// Use private backing field for the value property with custom getter/setter
 	private _value?: string
 
