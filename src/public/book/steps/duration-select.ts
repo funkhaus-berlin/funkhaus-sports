@@ -17,7 +17,7 @@ export class DurationSelectionStep extends $LitElement() {
 	]
 	render() {
 		return html`
-			<schmancy-surface type="containerLow" rounded="all" elevation="1">
+			<schmancy-surface type="containerLow" rounded="all">
 				<!-- Title -->
 				<schmancy-typography class="py-4 px-4 pt">
 					<schmancy-typewriter> Select Duration </schmancy-typewriter>
@@ -27,8 +27,8 @@ export class DurationSelectionStep extends $LitElement() {
 					${this.durations.map(duration => {
 						const isSelected = this.selectedDuration === duration.value
 						const isPopular = this.recommendedDuration === duration.value
-						const hourRate = duration.price / (duration.value / 60)
-						const showSavings = duration.value > 30
+						// const hourRate = duration.price / (duration.value / 60)
+						// const showSavings = duration.value > 30
 
 						const cardClasses = {
 							'flex-none': true,
@@ -97,18 +97,6 @@ export class DurationSelectionStep extends $LitElement() {
 										$${duration.price}
 									</schmancy-typography>
 
-									${showSavings
-										? html`
-												<schmancy-typography
-													type="label"
-													token="sm"
-													class="${isSelected ? 'text-primary-on/80' : 'text-tertiary-default'}"
-												>
-													$${hourRate.toFixed(2)}/hour
-													${duration.value >= 60 ? html` · Save ${Math.round(100 - (hourRate / 30) * 100)}% ` : ''}
-												</schmancy-typography>
-										  `
-										: ''}
 									${isSelected ? html` <schmancy-icon class="mt-1">check_circle</schmancy-icon> ` : ''}
 								</div>
 							</div>
@@ -119,3 +107,16 @@ export class DurationSelectionStep extends $LitElement() {
 		`
 	}
 }
+
+// ${showSavings
+// 	? html`
+// 			<schmancy-typography
+// 				type="label"
+// 				token="sm"
+// 				class="${isSelected ? 'text-primary-on/80' : 'text-tertiary-default'}"
+// 			>
+// 				$${hourRate.toFixed(2)}/hour
+// 				${duration.value >= 60 ? html` · Save ${Math.round(100 - (hourRate / 30) * 100)}% ` : ''}
+// 			</schmancy-typography>
+// 	  `
+// 	: ''}

@@ -294,24 +294,20 @@ export class TimeSelectionStep extends $LitElement() {
 				<!-- Title and View Toggle - Only shown when active -->
 				${this.active
 					? html`
-							<div class="flex justify-between items-center mb-4">
-								<schmancy-typography>
+							<!-- <div class="flex justify-between items-center mb-4">
+								<schmancy-typography type="title">
 									<schmancy-typewriter> Select Time </schmancy-typewriter>
 								</schmancy-typography>
 
-								<!-- View toggle button -->
-								<button
-									@click=${this._toggleViewMode}
-									class="text-sm text-primary-default hover:text-primary-hover focus:outline-none"
-								>
+								<schmancy-button @click=${this._toggleViewMode}>
 									Switch to ${this.viewMode === 'timeline' ? 'List View' : 'Timeline View'}
-								</button>
-							</div>
+								</schmancy-button>
+							</div> -->
 
 							<!-- Time display -->
-							<div class="flex justify-center mb-6">
+							<!-- <div class="flex justify-center mb-6">
 								<div class="text-2xl font-bold text-primary-default">${displayTime}</div>
-							</div>
+							</div> -->
 
 							<!-- Active view uses selected view mode -->
 							${this.viewMode === 'timeline'

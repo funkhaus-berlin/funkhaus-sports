@@ -212,40 +212,37 @@ export class BookingPaymentStep extends $LitElement() {
 					this.processPaymentBooking(e)
 				}}
 			>
-				<schmancy-grid gap="sm" class="w-full gap-2">
+				<schmancy-grid gap="sm" class="w-full">
 					<!-- Booking Summary -->
-					<div class="bg-surface-low p-2 rounded-lg">
-						<schmancy-typography type="body" weight="bold" class="mb-2">Booking Summary</schmancy-typography>
-
-						<div class="flex justify-between w-full mb-1">
-							<schmancy-typography type="body">Date:</schmancy-typography>
+					<schmancy-grid cols="1fr 1fr" class="bg-surface-low p-2 rounded-lg">
+						<div class="flex flex-col justify-between w-full mb-1">
+							<schmancy-typography type="label" token="sm">Date:</schmancy-typography>
 							<schmancy-typography type="body" weight="bold"
 								>${dayjs(this.booking.date, 'YYYY-MM-DD').format('ddd, MMM D')}</schmancy-typography
 							>
 						</div>
 
-						<div class="flex justify-between w-full mb-1">
-							<schmancy-typography type="body">Time:</schmancy-typography>
+						<div class="flex flex-col justify-between w-full mb-1">
+							<schmancy-typography type="label" token="sm">Time:</schmancy-typography>
 							<schmancy-typography type="body" weight="bold"
-								>${dayjs(this.booking.startTime).format('HH:mm')} -
-								${dayjs(this.booking.endTime).format('HH:mm')}</schmancy-typography
-							>
+								>${dayjs(this.booking.startTime).format('HH:mm')} - ${dayjs(this.booking.endTime).format('HH:mm')}
+							</schmancy-typography>
 						</div>
 
-						<div class="flex justify-between w-full mb-1">
-							<schmancy-typography type="body">Duration:</schmancy-typography>
+						<div class=" flex-col justify-between w-full mb-1 hidden sm:flex">
+							<schmancy-typography type="label" token="sm">Duration:</schmancy-typography>
 							<schmancy-typography type="body" weight="bold">${duration} ${durationIn}</schmancy-typography>
 						</div>
 
-						<div class="flex justify-between w-full mb-1">
-							<schmancy-typography type="body">Court:</schmancy-typography>
+						<div class=" flex-col justify-between w-full mb-1 hidden sm:flex">
+							<schmancy-typography type="label" token="sm">Court:</schmancy-typography>
 							<schmancy-typography type="body" weight="bold"
 								>${this.selectedCourt
 									? this.selectedCourt.name || `#${this.selectedCourt.id}`
 									: 'Auto-assigned'}</schmancy-typography
 							>
 						</div>
-					</div>
+					</schmancy-grid>
 
 					<!-- Contact Information -->
 					<schmancy-grid gap="sm" class="grid-cols-1 sm:grid-cols-2 gap-2">
@@ -286,9 +283,7 @@ export class BookingPaymentStep extends $LitElement() {
 					</schmancy-grid>
 
 					<!-- Payment Details -->
-					<div class="mb-4">
-						<schmancy-typography type="body" weight="bold" class="mb-2">Payment Details</schmancy-typography>
-
+					<div class="mb-3">
 						<section class="relative block">
 							<slot name="stripe-element"></slot>
 						</section>

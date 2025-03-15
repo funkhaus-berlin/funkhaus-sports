@@ -120,32 +120,5 @@ export interface Court {
 	lastUpdatedBy: string
 }
 
-export interface Venue {
-	id: string
-	name: string
-	address: {
-		street: string
-		city: string
-		state: string
-		postalCode: string
-		country: string
-		coordinates?: {
-			latitude: number
-			longitude: number
-		}
-	}
-	contactInfo: {
-		phone: string
-		email: string
-		website?: string
-	}
-	amenities: string[]
-	businessHours: AvailabilitySchedule[]
-	courts: string[] // Array of court IDs at this venue
-}
-
 // Service for managing courts
 export const CourtsDB = new FirestoreService<Court>('courts')
-
-// Service for managing venues
-export const VenuesDB = new FirestoreService<Venue>('venues')

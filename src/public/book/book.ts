@@ -11,6 +11,7 @@ import { Court, Duration, TimeSlot } from './types'
 import { firstValueFrom } from 'rxjs'
 import { courtsContext } from 'src/admin/courts/context'
 import { CourtAssignmentService, CourtAssignmentStrategy } from './court-assignment.service' // ← Add this import
+import { when } from 'lit/directives/when.js'
 
 /**
  * Court booking component with Stripe integration
@@ -194,48 +195,44 @@ export class CourtBookingSystem extends $LitElement() {
 	render() {
 		return html`
 			<schmancy-surface ${fullHeight()} type="containerLow" rounded="all" elevation="1">
-				<schmancy-grid rows="auto 1fr" ${fullHeight()} flow="row" class="max-w-lg mx-auto" gap="sm">
+				<schmancy-grid rows="auto 1fr" ${fullHeight()} flow="row" class="max-w-lg mx-auto pt-2">
 					${this.renderProgressSteps()}
-					<schmancy-scroll> ${this.renderCurrentStep()} </schmancy-scroll>
+					<schmancy-scroll hide> ${this.renderCurrentStep()} </schmancy-scroll>
 				</schmancy-grid>
 			</schmancy-surface>
 		`
 	}
 
 	private renderCurrentStep() {
-		switch (this.step) {
-			case 1:
-			case 2:
-			case 3:
-				return html`
-					<date-selection-step
-						.active=${this.step === 1}
-						class="max-w-full sticky top-0 z-10"
-						.value=${this.booking.startTime}
-						@change=${(e: CustomEvent<string>) => this.handleDateSelect(e.detail)}
-					></date-selection-step>
-					<time-selection-step
-						.active=${this.step === 2}
-						class="max-w-full"
-						.value=${this.booking?.startTime
-							? dayjs(this.booking.startTime).hour() * 60 + dayjs(this.booking.startTime).minute()
-							: undefined}
-						@change=${(e: CustomEvent<TimeSlot>) => this.handleTimeSlotSelect(e.detail)}
-					></time-selection-step>
-					<duration-selection-step
-						.hidden=${this.step !== 3}
-						class="max-w-full p-4"
-						.selectedDuration=${this.duration}
-						@change=${(e: CustomEvent<Duration>) => this.handleDurationSelect(e.detail)}
-					></duration-selection-step>
-				`
-
-				return html``
-			case 4: // Payment is now step 4 instead of 5
-				return html`<booking-payment-step>
-					<slot slot="stripe-element" name="stripe-element"></slot>
-				</booking-payment-step>`
-		}
+		return html`${when(
+			this.step <= 3,
+			() => html`
+				<date-selection-step
+					.active=${this.step === 1}
+					class="max-w-full sticky top-0 z-30"
+					.value=${this.booking.startTime}
+					@change=${(e: CustomEvent<string>) => this.handleDateSelect(e.detail)}
+				></date-selection-step>
+				<time-selection-step
+					.hidden=${this.step < 2}
+					.active=${this.step === 2}
+					class="max-w-full"
+					.value=${this.booking?.startTime
+						? dayjs(this.booking.startTime).hour() * 60 + dayjs(this.booking.startTime).minute()
+						: undefined}
+					@change=${(e: CustomEvent<TimeSlot>) => this.handleTimeSlotSelect(e.detail)}
+				></time-selection-step>
+				<duration-selection-step
+					.hidden=${this.step !== 3}
+					class="max-w-full p-4"
+					.selectedDuration=${this.duration}
+					@change=${(e: CustomEvent<Duration>) => this.handleDurationSelect(e.detail)}
+				></duration-selection-step>
+			`,
+			() => html`<booking-payment-step>
+				<slot slot="stripe-element" name="stripe-element"></slot>
+			</booking-payment-step>`,
+		)}`
 	}
 }
 

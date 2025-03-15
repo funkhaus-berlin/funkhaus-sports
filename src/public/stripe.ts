@@ -33,11 +33,14 @@ export function appearance(): Appearance {
 		theme: 'stripe',
 		rules: {
 			'.Tab': {
-				padding: '4px 8px',
+				padding: '3px 6px',
+			},
+			'.Label': {
+				display: 'none',
 			},
 		},
 		variables: {
-			spacingUnit: '4px',
+			spacingUnit: '3px',
 			fontFamily: 'GT-Eesti-Display-Regular',
 			fontSizeSm: '12px',
 			colorPrimary: getComputedStyle(document.body).getPropertyValue(
