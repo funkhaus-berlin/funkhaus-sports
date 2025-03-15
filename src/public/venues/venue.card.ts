@@ -1,11 +1,16 @@
+import { area, mutationObserver } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { mutationObserver } from '@mhmo91/schmancy'
 import { PropertyValueMap, html, nothing } from 'lit'
 import { customElement, property, query } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { delay, fromEvent, merge, startWith, takeUntil } from 'rxjs'
 import { Venue } from 'src/db/venue-collection'
+import { CourtBookingSystem } from '../book/book'
 import './logo'
+
+// Define golden ratio constant
+const GOLDEN_RATIO = 1.618
+
 @customElement('funkhaus-venue-card')
 export default class FunkhausVenueCard extends $LitElement() {
 	@query('section') card!: HTMLElement
@@ -21,8 +26,9 @@ export default class FunkhausVenueCard extends $LitElement() {
 			.pipe(startWith(1), delay(100), takeUntil(this.disconnecting))
 			.subscribe(() => {
 				this.card.removeAttribute('hidden')
-				// Set minimum height based on width with a 1.2 aspect ratio
-				this.card.style.height = `${Math.max(this.card.offsetWidth * 1.2, 320)}px`
+				// Set fixed height to match event card
+				this.card.style.height = '400px'
+				this.card.style.width = '280px'
 			})
 	}
 
@@ -61,11 +67,29 @@ export default class FunkhausVenueCard extends $LitElement() {
 
 		const primaryColor = this.theme.primary || '#5e808e'
 
+		// Calculate golden ratio based spacing
+		const basePadding = 16
+		const goldenPadding = Math.round(basePadding * GOLDEN_RATIO) // ~26px
+		const goldenSpacingSm = Math.round(8 * GOLDEN_RATIO) // ~13px
+		const goldenSpacingMd = Math.round(12 * GOLDEN_RATIO) // ~19px
+		const goldenIconSize = Math.round(18 * GOLDEN_RATIO) // ~29px
+
+		// Calculate logo position using golden ratio
+		const logoScale = 1.618
+		const logoTranslateX = Math.round((25 * GOLDEN_RATIO) / 2) // ~20%
+		const logoTranslateY = Math.round(25 * GOLDEN_RATIO) // ~40%
+
 		return html`
 			<schmancy-theme color="${primaryColor}">
 				<section
+					@click=${() => {
+						area.push({
+							component: new CourtBookingSystem(),
+							area: 'root',
+						})
+					}}
 					hidden
-					class="bg-primary-default text-primary-on group relative overflow-hidden cursor-pointer transition-all duration-300 ease-in-out hover:scale-105 w-full rounded-lg"
+					class="mx-auto bg-primary-default text-primary-on group relative overflow-hidden cursor-pointer transition-all duration-300 ease-in-out hover:scale-105 w-full rounded-lg"
 				>
 					<!-- Booking badge that appears on hover -->
 					<schmancy-button
@@ -75,18 +99,23 @@ export default class FunkhausVenueCard extends $LitElement() {
 						Book now
 					</schmancy-button>
 
-					<!-- Card content -->
-					<div class="relative p-6 h-full flex flex-col justify-between z-10">
+					<!-- Card content with golden ratio padding -->
+					<div class="relative h-full flex flex-col justify-between z-10" style="padding: ${goldenPadding}px;">
 						<!-- Top section with name and type -->
 						<div>
 							<schmancy-typography type="display" token="md" class="mb-2"> ${this.venue.name} </schmancy-typography>
 
-							<schmancy-typography type="label" token="sm" class="opacity-80 mb-6">
+							<schmancy-typography
+								type="label"
+								token="sm"
+								class="opacity-80"
+								style="margin-bottom: ${goldenSpacingMd}px;"
+							>
 								${this.venue.venueType.replace(/([A-Z])/g, ' $1').trim()}
 							</schmancy-typography>
 
 							<!-- Status indicator -->
-							<div class="mb-6">
+							<div style="margin-bottom: ${goldenSpacingMd}px;">
 								<schmancy-chip
 									.selected=${this.venue.status === 'active'}
 									.label=${this.venue.status === 'active'
@@ -114,11 +143,16 @@ export default class FunkhausVenueCard extends $LitElement() {
 						${when(
 							this.venue.facilities && this.venue.facilities.length > 0,
 							() => html`
-								<div class="flex flex-wrap gap-2 my-4">
+								<div class="flex flex-wrap gap-2" style="margin: ${goldenSpacingMd}px 0;">
 									${this.venue.facilities?.map(
 										facility => html`
-											<div class="w-8 h-8 flex items-center justify-center rounded-full ">
-												<schmancy-icon size="18px">${this.getFacilityIcon(facility)}</schmancy-icon>
+											<div
+												class="flex items-center justify-center rounded-full"
+												style="width: ${goldenIconSize}px; height: ${goldenIconSize}px;"
+											>
+												<schmancy-icon size="${Math.round(goldenIconSize * 0.618)}px"
+													>${this.getFacilityIcon(facility)}</schmancy-icon
+												>
 											</div>
 										`,
 									)}
@@ -138,8 +172,10 @@ export default class FunkhausVenueCard extends $LitElement() {
 							${when(
 								this.venue.maxCourtCapacity,
 								() => html`
-									<div class="flex items-center mt-2">
-										<schmancy-icon class="mr-1">sports_tennis</schmancy-icon>
+									<div class="flex items-center" style="margin-top: ${goldenSpacingSm}px">
+										<schmancy-icon class="mr-1" style="font-size: ${Math.round(goldenIconSize * 0.618)}px;"
+											>sports_tennis</schmancy-icon
+										>
 										<schmancy-typography type="label" token="sm">
 											${this.venue.maxCourtCapacity} courts
 										</schmancy-typography>
@@ -149,10 +185,10 @@ export default class FunkhausVenueCard extends $LitElement() {
 						</div>
 					</div>
 
-					<!-- Funkhaus Logo in the background (instead of just the tennis icon) -->
+					<!-- Funkhaus Logo in the background with adjusted positioning -->
 					<funkhaus-logo
-						style="transform: translateX(25%) translateY(35%) scale(1.5);"
-						class="z-0 absolute inset-0 select-none transition-all duration-300 opacity-30 pointer-events-none"
+						style="transform: translateX(${logoTranslateX}%) translateY(${logoTranslateY}%) scale(${logoScale});"
+						class="z-0 absolute inset-0 select-none transition-all duration-300 opacity-25 pointer-events-none"
 						width="100%"
 					></funkhaus-logo>
 				</section>

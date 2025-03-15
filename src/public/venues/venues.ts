@@ -9,6 +9,10 @@ import { venuesContext } from 'src/admin/venues/venue-context'
 import { Venue } from 'src/db/venue-collection'
 import { CourtBookingSystem } from 'src/public/book/book'
 import './venue.card'
+
+// Define golden ratio constant
+const GOLDEN_RATIO = 1.618
+
 @customElement('venue-landing-page')
 export class VenueLandingPage extends $LitElement() {
 	@select(venuesContext)
@@ -18,9 +22,9 @@ export class VenueLandingPage extends $LitElement() {
 	@state() error: string | null = null
 
 	@query('.logo-section') logoSection!: HTMLElement
-	@query('.venue-cards-container') cardsContainer!: HTMLElement
+	@query('.cards-container') cardsContainer!: HTMLElement
 
-	// Animation configurations
+	// Animation configurations with golden ratio timing
 	private logoAnimation: {
 		keyframes: Keyframe[]
 		options: AnimationEffectTiming
@@ -30,8 +34,8 @@ export class VenueLandingPage extends $LitElement() {
 			{ opacity: 1, transform: 'translateY(0)' },
 		],
 		options: {
-			duration: 1200,
-			easing: 'ease-out',
+			duration: Math.round(1000 * GOLDEN_RATIO), // ~1618ms
+			easing: 'cubic-bezier(0.618, 0, 0.382, 1)', // Golden ratio based easing
 			fill: 'forwards',
 		},
 	}
@@ -42,8 +46,8 @@ export class VenueLandingPage extends $LitElement() {
 			{ opacity: 1, transform: 'translateY(0)' },
 		],
 		options: {
-			duration: 800,
-			easing: 'ease-out',
+			duration: Math.round(500 * GOLDEN_RATIO), // ~809ms
+			easing: 'cubic-bezier(0.618, 0, 0.382, 1)', // Golden ratio based easing
 			fill: 'forwards',
 		},
 	}
@@ -90,9 +94,11 @@ export class VenueLandingPage extends $LitElement() {
 			card.style.opacity = '0'
 			card.style.transform = 'translateY(20px)'
 
+			// Apply golden ratio to animation timing
+			const baseDelay = 100
 			const options = {
 				...this.cardAnimation.options,
-				delay: index * 150, // Increased stagger for more visual appeal
+				delay: Math.round(index * baseDelay * GOLDEN_RATIO), // Golden ratio applied to stagger
 				fill: 'forwards' as FillMode,
 			}
 
@@ -117,15 +123,27 @@ export class VenueLandingPage extends $LitElement() {
 	}
 
 	render() {
+		// Calculate golden ratio based dimensions
+		const logoSize = Math.round(24 * GOLDEN_RATIO * 2) // ~78px
+		const sectionSpacing = Math.round(16 * GOLDEN_RATIO * 2) // ~52px
+		const cardGap = Math.round(6 * GOLDEN_RATIO) // ~10px
+		const loadingHeight = Math.round(48 * GOLDEN_RATIO) // ~78px
+		const spinnerSize = Math.round(32 * GOLDEN_RATIO) // ~52px
+
 		return html`
 			<schmancy-surface ${fullHeight()} type="container" rounded="all" elevation="0">
-				<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-					<!-- Logo Section -->
-					<div class="logo-section text-center mb-16 ">
-						<object type="image/svg+xml" data="/logo.svg" class="w-24 h-24 mb-4 mx-auto"></object>
+				<div class="max-w-sm mx-auto px-6 py-12 ">
+					<!-- Logo Section with golden ratio spacing -->
+					<div class="logo-section text-center mb-16" style="margin-bottom: ${sectionSpacing}px">
+						<object
+							type="image/svg+xml"
+							data="/logo.svg"
+							class="mx-auto mb-6"
+							style="width: ${logoSize}px; height: ${logoSize}px;"
+						></object>
 						<div class="inline-block">
-							<schmancy-typography type="headline" token="lg" class="mb-2">
-								<schmancy-animated-text> Funkhaus Sports </schmancy-animated-text>
+							<schmancy-typography type="display" token="sm" class="mb-4">
+								<schmancy-animated-text>Funkhaus Sports</schmancy-animated-text>
 							</schmancy-typography>
 						</div>
 					</div>
@@ -134,25 +152,35 @@ export class VenueLandingPage extends $LitElement() {
 					${when(
 						this.loading,
 						() => html`
-							<div class="flex justify-center items-center h-64">
-								<schmancy-spinner size="48px"></schmancy-spinner>
+							<div class="flex justify-center items-center" style="height: ${loadingHeight}px">
+								<schmancy-spinner style="width: ${spinnerSize}px; height: ${spinnerSize}px"></schmancy-spinner>
 							</div>
 						`,
 						() => html`
-							<div class=" mx-auto max-w-sm justify-center grid items-center gap-8">
-								${repeat(
-									Array.from(this.venues.values()),
-									venue => venue.id,
-									venue => {
-										return html`
-											<funkhaus-venue-card
-												.venue=${venue}
-												@click=${() => this.handleVenueClick(venue)}
-												style="transition: transform 0.3s ease, opacity 0.3s ease;"
-											></funkhaus-venue-card>
-										`
-									},
-								)}
+							<div class="cards-container mx-auto" style="max-width: ${Math.round(384 * GOLDEN_RATIO)}px;">
+								<div class="grid gap-8" style="gap: ${cardGap * 2}px">
+									${repeat(
+										Array.from(this.venues.values()),
+										venue => venue.id,
+										venue => {
+											// Calculate aspect ratio based on golden ratio
+											const aspectRatio = (1 / GOLDEN_RATIO) * 100
+
+											return html`
+												<div
+													class="venue-card-wrapper relative w-full max-w-sm mx-auto"
+													style="padding-bottom: ${aspectRatio}%; transition: transform 0.3s ease-in-out;"
+												>
+													<funkhaus-venue-card
+														.venue=${venue}
+														@click=${() => this.handleVenueClick(venue)}
+														class=" absolute inset-0 w-full h-full transform transition-transform duration-300 hover:-translate-y-1"
+													></funkhaus-venue-card>
+												</div>
+											`
+										},
+									)}
+								</div>
 							</div>
 						`,
 					)}
