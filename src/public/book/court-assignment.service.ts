@@ -1,59 +1,63 @@
 import dayjs from 'dayjs'
-import { Observable, map, of, catchError } from 'rxjs'
+import { map, Observable, of } from 'rxjs'
 
-// Keeping the interfaces and types from the original implementation
+// Preferences for court selection
 export interface CourtSelectionPreferencesType {
-	preferredSurface?: string
-	indoor?: boolean
-	preferredCourtId?: string
-	accessibilityRequired?: boolean
-	lightingRequired?: boolean
-	balancedSelection?: boolean
+	preferredSurface?: string // e.g., "clay", "grass", "hard"
+	indoor?: boolean // preference for indoor courts
+	preferredCourtId?: string // specific court if user has a favorite
+	accessibilityRequired?: boolean // need accessible facilities
+	lightingRequired?: boolean // need courts with lighting
+	balancedSelection?: boolean // try to distribute load across courts
 }
 
 export class CourtSelectionPreferences implements CourtSelectionPreferencesType {
-	preferredSurface: string | undefined = undefined
-	indoor: boolean | undefined = undefined
-	preferredCourtId: string | undefined = undefined
-	accessibilityRequired: boolean = false
-	lightingRequired: boolean = false
-	balancedSelection: boolean = false
+	preferredSurface: string | undefined = undefined // e.g., "clay", "grass", "hard"
+	indoor: boolean | undefined = undefined // preference for indoor courts
+	preferredCourtId: string | undefined = undefined // specific court if user has a favorite
+	accessibilityRequired: boolean = false // need accessible facilities
+	lightingRequired: boolean = false // need courts with lighting
+	balancedSelection: boolean = false // try to distribute load across courts
 
 	constructor(preferences: CourtSelectionPreferencesType = {}) {
 		Object.assign(this, preferences)
 	}
 }
 
+// Assignment strategy options
 export enum CourtAssignmentStrategy {
-	FIRST_AVAILABLE = 'first-available',
-	PREFERRED_SURFACE = 'preferred-surface',
-	BALANCED = 'balanced',
-	OPTIMAL = 'optimal',
+	FIRST_AVAILABLE = 'first-available', // Simple first available
+	PREFERRED_SURFACE = 'preferred-surface', // Prioritize surface type
+	BALANCED = 'balanced', // Distribute bookings evenly
+	OPTIMAL = 'optimal', // Use scoring algorithm
 }
 
+// Define Court interface to represent court object
 export interface Court {
 	id: string
+	name?: string
 	surface?: string
 	indoor?: boolean
 	accessible?: boolean
 	hasLighting?: boolean
 	available?: boolean
-	name?: string
+	// Add other court properties as needed
 }
 
-// Modified to work with Observables
+// Define AvailabilityService interface to type availabilityService dependency
 export interface AvailabilityService {
 	getAllCourtsAvailability: (
 		date: string,
-	) => Observable<{ [courtId: string]: { [timeSlot: string]: { isAvailable: boolean } } }>
+	) => Observable<{ [courtId: string]: { [timeSlot: string]: { isAvailable: boolean } } } | undefined>
 }
 
 /**
- * Modified CourtAssignmentService to use RxJS Observables instead of Promises
+ * RxJS-based service for court availability checking and assignment
+ * Provides multiple assignment strategies and preference options
  */
 export class CourtAssignmentService {
 	// Track booking frequency for balanced assignment
-	_courtBookingCounts: Map<string, number> = new Map()
+	private _courtBookingCounts: Map<string, number> = new Map()
 
 	/**
 	 * Initialize the service with a dependency
@@ -79,7 +83,6 @@ export class CourtAssignmentService {
 
 	/**
 	 * Checks court availability for a specific date, time slot and duration
-	 * Modified to return an Observable instead of a Promise
 	 *
 	 * @param {string} date - Booking date (YYYY-MM-DD format)
 	 * @param {number} startTime - Start time in minutes (e.g., 9:30 AM = 9*60 + 30 = 570)
@@ -97,7 +100,7 @@ export class CourtAssignmentService {
 			const endTimeMinutes = startTime + duration
 			const endHour = Math.floor(endTimeMinutes / 60)
 
-			// Get availability data from API using Observable
+			// Get availability data from API
 			return this.availabilityService.getAllCourtsAvailability(formattedDate).pipe(
 				map(courtsAvailability => {
 					// If no availability data, assume all courts are available
@@ -149,14 +152,9 @@ export class CourtAssignmentService {
 						return { ...court, available }
 					})
 				}),
-				catchError(error => {
-					console.error('Error checking court availability:', error)
-					// On error, assume all courts are available as fallback
-					return of(allCourts.map(court => ({ ...court, available: true })))
-				}),
 			)
 		} catch (error) {
-			console.error('Error setting up court availability check:', error)
+			console.error('Error checking court availability:', error)
 			// On error, assume all courts are available as fallback
 			return of(allCourts.map(court => ({ ...court, available: true })))
 		}
@@ -164,7 +162,6 @@ export class CourtAssignmentService {
 
 	/**
 	 * Assigns a court using the specified strategy
-	 * This method remains synchronous as it operates on already retrieved courts
 	 *
 	 * @param {Court[]} availableCourts - List of courts with availability status
 	 * @param {CourtAssignmentStrategy} strategy - Court assignment strategy to use
@@ -327,6 +324,8 @@ export class CourtAssignmentService {
 		// Sort by score (descending)
 		scoredCourts.sort((a, b) => b.score - a.score)
 
+		console.log('Scored courts:', scoredCourts)
+		console.log('Booking counts:', this._courtBookingCounts)
 		// Select the highest scoring court
 		const selectedCourt = scoredCourts[0].court
 		this.incrementCourtBookingCount(selectedCourt.id)
@@ -335,7 +334,6 @@ export class CourtAssignmentService {
 
 	/**
 	 * Combined method to check availability and assign a court in one call
-	 * Modified to return an Observable
 	 *
 	 * @param {string} date - Booking date
 	 * @param {number} startTime - Start time in minutes
@@ -356,6 +354,7 @@ export class CourtAssignmentService {
 		return this.getAvailableCourts(date, startTime, duration, allCourts).pipe(
 			map(availableCourts => {
 				const selectedCourt = this.assignCourt(availableCourts, strategy, preferences)
+
 				return {
 					availableCourts,
 					selectedCourt,

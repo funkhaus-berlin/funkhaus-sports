@@ -5,8 +5,8 @@ import { css, html } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, take, tap } from 'rxjs'
-import './book/book'
 import { AppConfiguration, AppConfigurationContext } from './context'
+import './book/book'
 import stripePromise, { $stripe, $stripeElements, appearance } from './stripe'
 // Theme configuration for styling consistency
 export const appTheme: {
@@ -49,6 +49,7 @@ export default class GenericBookingApp extends $LitElement(
 		slot.name = 'stripe-element'
 		slot.slot = 'stripe-element'
 		this.append(slot)
+
 		const stripe = await stripePromise
 		// Initialize Stripe elements when payment amount is available
 		$stripe.pipe(distinctUntilChanged(), take(1)).subscribe(amount => {
@@ -84,6 +85,7 @@ export default class GenericBookingApp extends $LitElement(
 				$stripeElements.next(this.elements)
 			})
 		})
+		$stripe.next(1000)
 
 		// Update payment amount when it changes
 		$stripe
@@ -106,6 +108,7 @@ export default class GenericBookingApp extends $LitElement(
 	protected render(): unknown {
 		return html`
 			${when(this.busy, () => html`<schmancy-busy></schmancy-busy>`)}
+
 			<court-booking-system>
 				<slot slot="stripe-element" name="stripe-element"></slot>
 			</court-booking-system>

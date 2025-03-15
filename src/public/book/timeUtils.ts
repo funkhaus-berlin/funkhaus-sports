@@ -1,4 +1,5 @@
 import dayjs from 'dayjs'
+import { Observable, of } from 'rxjs'
 
 /**
  * Convert minutes since midnight to HH:00 or HH:30 format
@@ -35,25 +36,25 @@ export function timeSlotToMinutes(timeSlot: string): number {
 }
 
 /**
- * Generate an array of time slots between start and end time
+ * Generate an observable of time slots between start and end time
  *
  * @param startTimeMinutes - Start time in minutes
  * @param endTimeMinutes - End time in minutes
  * @param intervalMinutes - Interval between slots in minutes (default: 30)
- * @returns Array of time slots in HH:MM format
+ * @returns Observable of time slots in HH:MM format
  */
 export function generateTimeSlots(
 	startTimeMinutes: number,
 	endTimeMinutes: number,
 	intervalMinutes: number = 30,
-): string[] {
-	const slots = []
+): Observable<string[]> {
+	const slots: string[] = []
 
 	for (let time = startTimeMinutes; time < endTimeMinutes; time += intervalMinutes) {
 		slots.push(minutesToTimeSlot(time))
 	}
 
-	return slots
+	return of(slots)
 }
 
 /**
@@ -79,4 +80,50 @@ export function formatDate(date: string | Date): string {
  */
 export function doTimeSlotsOverlap(start1: number, end1: number, start2: number, end2: number): boolean {
 	return start1 < end2 && end1 > start2
+}
+
+/**
+ * Convert an array of time slots from Firebase format to a formatted object
+ * suitable for the court assignment service
+ *
+ * @param firebaseSlots - Firebase time slots object
+ * @returns Formatted time slots object
+ */
+export function formatSlotsForCourtAssignment(
+	firebaseSlots: Record<string, { isAvailable: boolean; bookedBy?: string | null; bookingId?: string | null }>,
+): Record<string, { isAvailable: boolean }> {
+	const formattedSlots: Record<string, { isAvailable: boolean }> = {}
+
+	Object.entries(firebaseSlots).forEach(([timeKey, slot]) => {
+		formattedSlots[timeKey] = {
+			isAvailable: slot.isAvailable,
+		}
+	})
+
+	return formattedSlots
+}
+
+/**
+ * Generate default availability slots for a range of operating hours
+ *
+ * @param startHour - Start hour (e.g., 8 for 8:00 AM)
+ * @param endHour - End hour (e.g., 22 for 10:00 PM)
+ * @returns Record of default available time slots
+ */
+export function generateDefaultSlots(
+	startHour: number = 8,
+	endHour: number = 22,
+): Record<string, { isAvailable: boolean }> {
+	const slots: Record<string, { isAvailable: boolean }> = {}
+
+	for (let hour = startHour; hour < endHour; hour++) {
+		const timeKey = `${hour.toString().padStart(2, '0')}:00`
+		slots[timeKey] = { isAvailable: true }
+
+		// Add half-hour slots if needed
+		const halfHourKey = `${hour.toString().padStart(2, '0')}:30`
+		slots[halfHourKey] = { isAvailable: true }
+	}
+
+	return slots
 }

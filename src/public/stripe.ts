@@ -1,6 +1,6 @@
 import { SchmancyTheme } from '@mhmo91/schmancy'
 import { Appearance, Stripe, StripeElements, loadStripe } from '@stripe/stripe-js'
-import { BehaviorSubject, Subject, from, map, switchMap, tap } from 'rxjs'
+import { BehaviorSubject, from, map, switchMap, tap } from 'rxjs'
 
 export const PUBLISHABLE_KEY = import.meta.env.DEV
 	? 'pk_test_51QlYjPKb7GiQmYfukrVvsIDIC1khW2HQgv4Lh9AFn02ZoyCU9rauPkFOWkK4sYum7BUN2XI14yrkH23ivvqNiTqW00wynnT76j'
@@ -10,7 +10,7 @@ export const PUBLISHABLE_KEY = import.meta.env.DEV
 export const stripePromise: Promise<Stripe | null> = loadStripe(PUBLISHABLE_KEY, { locale: 'auto' })
 
 export const $stripeElements = new BehaviorSubject<StripeElements | undefined>(undefined)
-export const $stripe = new Subject<number>()
+export const $stripe = new BehaviorSubject<number>(100)
 
 export function createPaymentIntent(body: any) {
 	return from(
