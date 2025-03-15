@@ -24,7 +24,6 @@ export class CourtBookingSystem extends $LitElement() {
 	@state() step: number = 1 // 1: Date, 2: Time, 3: Duration, 4: Payment/Confirmation (removed court selection step)
 	@state() selectedCourt: Court | undefined = undefined
 	@state() bookingInProgress: boolean = false
-	@state() availableTimeSlots: TimeSlot[] = []
 	@select(courtsContext, (courtes: Map<string, Court>) => Array.from(courtes.values())) availableCourts: Court[] = []
 
 	@state() error: string | null = null
@@ -66,103 +65,12 @@ export class CourtBookingSystem extends $LitElement() {
 		return this.booking.price || 0
 	}
 
-	// Load time slots for selected date from backend API
-	async loadTimeSlots(date: string) {
-		try {
-			this.error = null
-			const formattedDate = dayjs(date).format('YYYY-MM-DD')
-
-			// Get all courts availability for the selected date
-			// Use default operating hours 8AM-10PM (8-22)
-			this.availabilityService.getAllCourtsAvailability(formattedDate).subscribe(
-				courtsAvailability => {
-					// Convert the backend availability data to time slots
-					const slots: TimeSlot[] = []
-
-					// If no courts have availability, use default hours (8AM-10PM)
-					if (!courtsAvailability || Object.keys(courtsAvailability).length === 0) {
-						// Create default time slots (8AM-10PM)
-						for (let hour = 8; hour < 22; hour++) {
-							const timeKey = `${hour.toString().padStart(2, '0')}:00`
-							const value = hour * 60
-
-							slots.push({
-								label: timeKey,
-								value,
-								available: true, // Default to available
-							})
-						}
-					} else {
-						// Get availability for first court as sample (we'll filter more specifically later)
-						const firstCourtId = Object.keys(courtsAvailability)[0]
-						const firstCourtSlots = courtsAvailability[firstCourtId]
-
-						// Convert backend time format (HH:00) to minutes for our UI
-						Object.entries(firstCourtSlots).forEach(([timeKey, timeSlot]) => {
-							const [hour, minute] = timeKey.split(':').map(Number)
-							const value = hour * 60 + (minute || 0)
-
-							slots.push({
-								label: timeKey,
-								value,
-								available: timeSlot.isAvailable,
-							})
-						})
-					}
-
-					// Sort by time
-					slots.sort((a, b) => a.value - b.value)
-					this.availableTimeSlots = slots
-				},
-				error => {
-					console.error('Error loading time slots:', error)
-					this.error = 'Failed to load availability. Please try again.'
-
-					// Create default time slots on error (8AM-10PM)
-					const defaultSlots: TimeSlot[] = []
-					for (let hour = 8; hour < 22; hour++) {
-						const timeKey = `${hour.toString().padStart(2, '0')}:00`
-						const value = hour * 60
-
-						defaultSlots.push({
-							label: timeKey,
-							value,
-							available: true, // Default to available
-						})
-					}
-
-					this.availableTimeSlots = defaultSlots
-				},
-			)
-		} catch (err) {
-			console.error('Error loading time slots:', err)
-			this.error = 'Failed to load availability. Please try again.'
-
-			// Create default time slots on error (8AM-10PM)
-			const defaultSlots: TimeSlot[] = []
-			for (let hour = 8; hour < 22; hour++) {
-				const timeKey = `${hour.toString().padStart(2, '0')}:00`
-				const value = hour * 60
-
-				defaultSlots.push({
-					label: timeKey,
-					value,
-					available: true, // Default to available
-				})
-			}
-
-			this.availableTimeSlots = defaultSlots
-		}
-	}
-
 	// Handle date selection
 	private async handleDateSelect(date: string) {
 		bookingContext.set({
+			date: dayjs(date).format('YYYY-MM-DD'),
 			startTime: dayjs(date).startOf('day').toISOString(),
 		})
-
-		// Load available time slots for this date
-		await this.loadTimeSlots(date)
 		this.step = 2
 	}
 
@@ -244,45 +152,24 @@ export class CourtBookingSystem extends $LitElement() {
 		return this.booking.startTime ? dayjs(this.booking.startTime).format('YYYY-MM-DD') : ''
 	}
 
-	private handleStepClick(stepNumber: number) {
-		// Only allow going back or to already completed steps
-		if (stepNumber <= this.step) {
-			this.step = stepNumber
-		}
-	}
-
 	private renderProgressSteps() {
 		return html`
 			<funkhaus-booking-steps
 				.steps=${this.bookingSteps}
 				.currentStep=${this.step}
 				?clickable=${true}
-				@step-click=${(e: CustomEvent) => this.handleStepClick(e.detail.step)}
-				class="pt-2"
+				@step-click=${(e: CustomEvent) => (this.step = e.detail.step)}
 			></funkhaus-booking-steps>
 		`
-	}
-
-	private renderError() {
-		return this.error ? html` <schmancy-alert type="error" class="mt-4"> ${this.error} </schmancy-alert> ` : null
-	}
-
-	private renderSuccess() {
-		return this.success
-			? html` <schmancy-alert type="success" class="mt-4"> Booking created successfully! </schmancy-alert> `
-			: null
 	}
 
 	// Main render method
 	render() {
 		return html`
 			<schmancy-surface ${fullHeight()} type="container" rounded="all" elevation="1">
-				<schmancy-flex ${fullHeight()} flow="col" class="max-w-lg mx-auto" gap="md">
+				<schmancy-flex ${fullHeight()} flow="col" class="max-w-lg mx-auto" gap="sm">
 					${this.renderProgressSteps()}
-
-					<schmancy-scroll flex> ${this.renderCurrentStep()} </schmancy-scroll>
-
-					${this.renderError()} ${this.renderSuccess()}
+					<schmancy-scroll> ${this.renderCurrentStep()} </schmancy-scroll>
 				</schmancy-flex>
 			</schmancy-surface>
 		`
@@ -291,24 +178,22 @@ export class CourtBookingSystem extends $LitElement() {
 	private renderCurrentStep() {
 		switch (this.step) {
 			case 1:
+			case 2:
 				return html`
 					<date-selection-step
 						class="max-w-full"
 						.value=${this.booking.startTime}
 						@change=${(e: CustomEvent<string>) => this.handleDateSelect(e.detail)}
 					></date-selection-step>
-				`
-			case 2:
-				return html`
 					<time-selection-step
 						class="max-w-full"
-						.slots=${this.availableTimeSlots}
 						.value=${this.booking?.startTime
 							? dayjs(this.booking.startTime).hour() * 60 + dayjs(this.booking.startTime).minute()
 							: undefined}
 						@change=${(e: CustomEvent<TimeSlot>) => this.handleTimeSlotSelect(e.detail)}
 					></time-selection-step>
 				`
+
 			case 3:
 				return html`
 					<duration-selection-step
@@ -320,7 +205,7 @@ export class CourtBookingSystem extends $LitElement() {
 				`
 			case 4: // Payment is now step 4 instead of 5
 				return html`<booking-payment-step>
-					<slot name="stripe-element"></slot>
+					<slot slot="stripe-element" name="stripe-element"></slot>
 				</booking-payment-step>`
 		}
 	}

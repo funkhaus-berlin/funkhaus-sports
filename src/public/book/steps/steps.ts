@@ -228,7 +228,7 @@ export class FunkhausBookingSteps extends $LitElement() {
 				justify="between"
 				align="center"
 				wrap="nowrap"
-				class="transition-all duration-500 w-full overflow-x-auto px-4 py-3"
+				class="transition-all duration-500 w-full overflow-x-auto px-2"
 			>
 				${this.steps.map((step, index) => {
 					// For all but the last step, create a combined step+connector group

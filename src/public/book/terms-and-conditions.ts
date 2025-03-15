@@ -3,8 +3,8 @@ import { sheet } from '@mhmo91/schmancy'
 import { html } from 'lit'
 import { customElement } from 'lit/decorators.js'
 
-@customElement('funkhaus-terms-and-conditions')
-export class FunkhausTermsAndConditions extends $LitElement() {
+@customElement('funkhaus-sports-terms-and-conditions')
+export class FunkhausSportsTermsAndConditions extends $LitElement() {
 	render() {
 		return html`
 			<div class="p-8">
