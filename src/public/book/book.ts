@@ -1,7 +1,7 @@
 import { fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
-import { html } from 'lit'
+import { html, PropertyValues } from 'lit'
 import { customElement, query, state } from 'lit/decorators.js'
 import { AvailabilityService } from './availability.service'
 import { Booking, bookingContext } from './context'
@@ -38,14 +38,6 @@ export class CourtBookingSystem extends $LitElement() {
 
 	private courtAssignmentService: CourtAssignmentService
 
-	// Common durations for booking
-	private durations: Duration[] = [
-		{ label: '30 min', value: 30, price: 15 },
-		{ label: '1 hour', value: 60, price: 30 },
-		{ label: '1.5 hours', value: 90, price: 45 },
-		{ label: '2 hours', value: 120, price: 60 },
-	]
-
 	// Updated booking steps (removed court selection)
 	private bookingSteps = [
 		{ label: 'Date', icon: 'event' },
@@ -58,6 +50,19 @@ export class CourtBookingSystem extends $LitElement() {
 		super()
 		this.availabilityService = new AvailabilityService()
 		this.courtAssignmentService = new CourtAssignmentService(this.availabilityService)
+	}
+
+	protected firstUpdated(_changedProperties: PropertyValues): void {
+		// initiate the current step based on the current booking state
+		if (this.booking.endTime) {
+			this.step = 4
+		} else if (this.booking.startTime && this.booking.startTime !== '' && this.booking.endTime === '') {
+			this.step = 3
+		} else if (this.booking.date) {
+			this.step = 2
+		} else {
+			this.step = 1
+		}
 	}
 
 	// Get total price for the booking
@@ -82,11 +87,11 @@ export class CourtBookingSystem extends $LitElement() {
 		const hour = Math.floor(timeSlot.value / 60)
 		const minute = timeSlot.value % 60
 
-		const newStartTime = selectedDate.hour(hour).minute(minute).toISOString()
+		const newStartTime = selectedDate.hour(hour).minute(minute)
 
 		bookingContext.set(
 			{
-				startTime: newStartTime,
+				startTime: dayjs(newStartTime).toISOString(),
 			},
 			true,
 		)
@@ -158,7 +163,29 @@ export class CourtBookingSystem extends $LitElement() {
 				.steps=${this.bookingSteps}
 				.currentStep=${this.step}
 				?clickable=${true}
-				@step-click=${(e: CustomEvent) => (this.step = e.detail.step)}
+				@step-click=${(e: CustomEvent) => {
+					this.step = e.detail.step
+					if (this.step === 3) {
+						// reset duration  and court selection
+						bookingContext.set({
+							endTime: '',
+							price: 0,
+							courtId: '',
+						})
+					} else if (this.step === 2) {
+						// reset court selection
+						bookingContext.set({
+							courtId: '',
+						})
+					} else if (this.step === 1) {
+						// reset date, start time and court selection
+						bookingContext.set({
+							date: '',
+							startTime: '',
+							courtId: '',
+						})
+					}
+				}}
 			></funkhaus-booking-steps>
 		`
 	}
@@ -198,7 +225,6 @@ export class CourtBookingSystem extends $LitElement() {
 					<duration-selection-step
 						.hidden=${this.step !== 3}
 						class="max-w-full p-4"
-						.durations=${this.durations}
 						.selectedDuration=${this.duration}
 						@change=${(e: CustomEvent<Duration>) => this.handleDurationSelect(e.detail)}
 					></duration-selection-step>

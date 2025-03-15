@@ -268,8 +268,6 @@ export class TimeSelectionStep extends $LitElement() {
 
 		const endTime = this.timeSlots.length > 0 ? Math.max(...this.timeSlots.map(slot => slot.value)) : 22 * 60
 
-		const totalDuration = endTime - startTime
-
 		// Get display time (either hovered, selected, or prompt)
 		const displayTime =
 			this.hoveredTime !== null
@@ -317,7 +315,7 @@ export class TimeSelectionStep extends $LitElement() {
 
 							<!-- Active view uses selected view mode -->
 							${this.viewMode === 'timeline'
-								? this._renderTimeline(startTime, endTime, totalDuration, periodTimes)
+								? this._renderTimeline(startTime, endTime, periodTimes)
 								: this._renderListView(periodTimes)}
 					  `
 					: html`
@@ -327,18 +325,13 @@ export class TimeSelectionStep extends $LitElement() {
 							</div>
 
 							<!-- Compact view always uses timeline -->
-							${this._renderTimeline(startTime, endTime, totalDuration, periodTimes)}
+							${this._renderTimeline(startTime, endTime, periodTimes)}
 					  `}
 			</div>
 		`
 	}
 
-	private _renderTimeline(
-		startTime: number,
-		endTime: number,
-		totalDuration: number,
-		periodTimes: Record<string, TimeSlot[]>,
-	) {
+	private _renderTimeline(startTime: number, endTime: number, periodTimes: Record<string, TimeSlot[]>) {
 		// Filter slots to include both hour and half-hour markers
 		const timelineSlots = this.timeSlots.filter(slot => slot.value % 30 === 0)
 

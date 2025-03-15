@@ -39,7 +39,7 @@ export class AuthService {
 			// }
 
 			if (user) {
-				const token = await user!.getIdTokenResult()
+				// const token = await user!.getIdTokenResult()
 
 				return {
 					id: user!.uid,

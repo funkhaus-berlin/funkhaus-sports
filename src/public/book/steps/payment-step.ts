@@ -198,9 +198,8 @@ export class BookingPaymentStep extends $LitElement() {
 		// if duration >= 60 minutes, show duration in hours
 		if (duration >= 60) {
 			durationIn = duration > 60 ? 'hours' : 'hour'
-			duration = dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'hours')
+			duration = duration / 60
 		}
-		const total = this.booking.price
 
 		return html`
 			<schmancy-form

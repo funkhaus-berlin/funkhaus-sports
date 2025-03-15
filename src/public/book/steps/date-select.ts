@@ -1,6 +1,6 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
-import { html } from 'lit'
+import { html, PropertyValues } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 
 @customElement('date-selection-step')
@@ -11,6 +11,13 @@ export class DateSelectionStep extends $LitElement() {
 	// Add a property to control whether the step is active
 	@property({ type: Boolean })
 	active = true
+
+	protected firstUpdated(_changedProperties: PropertyValues): void {
+		// Set default value to today if not provided
+		if (!this.value) {
+			this.value = dayjs().toISOString()
+		}
+	}
 
 	// Generate next 14 days for date selection
 	private getNext14Days(): Date[] {

@@ -121,7 +121,7 @@ export class CourtManagement extends $LitElement() {
 										</schmancy-button>
 									</schmancy-empty-state>`,
 									() => html`<schmancy-table-v2
-										.cols=${this.columns.map(col => '1fr').join(' ')}
+										.cols=${this.columns.map(_ => '1fr').join(' ')}
 										.columns=${this.columns}
 										.data=${Array.from(this.courts.values())}
 										sortable

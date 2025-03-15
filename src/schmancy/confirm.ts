@@ -262,7 +262,6 @@ export function confirm(options: ConfirmOptions): Promise<boolean> {
 		uid: dialogId,
 		title: options.title || (options.destructive ? 'Confirm Deletion' : 'Confirm Action'),
 		header: 'visible',
-		position: 'side',
 	})
 
 	// Return a promise that resolves when the user makes a choice

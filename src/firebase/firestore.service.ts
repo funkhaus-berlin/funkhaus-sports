@@ -13,7 +13,6 @@ import {
 	QueryConstraint,
 	runTransaction,
 	setDoc,
-	updateDoc,
 	where,
 	WhereFilterOp,
 } from 'firebase/firestore'

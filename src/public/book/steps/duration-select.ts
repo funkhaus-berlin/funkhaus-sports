@@ -1,14 +1,20 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
-import { customElement, property } from 'lit/decorators.js'
+import { customElement, property, state } from 'lit/decorators.js'
 import { Duration } from '../types'
 
 @customElement('duration-selection-step')
 export class DurationSelectionStep extends $LitElement() {
-	@property({ type: Array }) durations: Duration[] = []
 	@property({ type: Number }) selectedDuration!: number
-	@property({ type: Number }) recommendedDuration: number = 60 // Default to 1 hour as recommended
+	@state() recommendedDuration: number = 60 // Default to 1 hour as recommended
 
+	// Common durations for booking
+	private durations: Duration[] = [
+		{ label: '30 min', value: 30, price: 15 },
+		{ label: '1 hour', value: 60, price: 30 },
+		{ label: '1.5 hours', value: 90, price: 45 },
+		{ label: '2 hours', value: 120, price: 60 },
+	]
 	render() {
 		return html`
 			<schmancy-surface type="containerLow" rounded="all" elevation="1">
