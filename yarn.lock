@@ -2812,9 +2812,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@mhmo91/schmancy@npm:^0.2.128":
-  version: 0.2.128
-  resolution: "@mhmo91/schmancy@npm:0.2.128"
+"@mhmo91/schmancy@npm:^0.2.129":
+  version: 0.2.129
+  resolution: "@mhmo91/schmancy@npm:0.2.129"
   dependencies:
     "@floating-ui/dom": "npm:^1.6.13"
     "@lit-labs/motion": "npm:^1.0.8"
@@ -2842,7 +2842,7 @@ __metadata:
   peerDependencies:
     lit: ^3.2.1
     tailwindcss: ^4.0.0
-  checksum: 10c0/7f9b0efeac6f37dae0560b6f929137aa88612a5a98e3ca0bff03386476ce364ec64cbd0f74b4be2b5722fe8f512b4781262801cea2d6a223f961af840bbfb79a
+  checksum: 10c0/1d2d1df101f6d72a31cd2251d29e133a037dba06e871c4aa463a678f79084b234bb50d0767a69da60a407f1a8c80b9d31d779961f608f9c3f54135165ca15cec
   languageName: node
   linkType: hard
 
@@ -5449,7 +5449,7 @@ __metadata:
   resolution: "funkhaus-sports@workspace:."
   dependencies:
     "@lit-labs/virtualizer": "npm:^2.1.0"
-    "@mhmo91/schmancy": "npm:^0.2.128"
+    "@mhmo91/schmancy": "npm:^0.2.129"
     "@netlify/functions": "npm:^3.0.1"
     "@stripe/stripe-js": "npm:^6.0.0"
     "@tailwindcss/postcss": "npm:^4.0.14"

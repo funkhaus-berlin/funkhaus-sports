@@ -1,13 +1,13 @@
 // src/admin/venues/venues.ts
-import { fullHeight, select, sheet } from '@mhmo91/schmancy'
+import { area, fullHeight, select, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { Venue } from 'src/db/venue-collection'
 import './admin-venue-card' // Import admin venue card
-import { venueContext, venuesContext } from './venue-context'
-import { VenueForm } from './venue-form'
-import './venue-detail' // Import venue detail view
+import { VenueForm } from './components/venue-form'
+import { venuesContext } from './venue-context'
+import { VenueDetailView } from './venue-detail'
 // --- Venue Management Component ---
 @customElement('venue-management')
 export class VenueManagement extends $LitElement() {
@@ -20,17 +20,6 @@ export class VenueManagement extends $LitElement() {
 	@state() error: string | null = null
 	@state() selectedVenue: Venue | null = null
 	@state() searchQuery: string = ''
-
-	// Handle venue click to show detail view
-	handleVenueClick(venue: Venue) {
-		this.selectedVenue = venue
-		venueContext.set(venue)
-	}
-
-	// Handle back button click from detail view
-	handleBackToVenues() {
-		this.selectedVenue = null
-	}
 
 	// Get venues filtered by search query
 	getFilteredVenues(): Venue[] {
@@ -53,13 +42,6 @@ export class VenueManagement extends $LitElement() {
 	}
 
 	render() {
-		// If a venue is selected, show the detail view instead
-		if (this.selectedVenue) {
-			return html`
-				<venue-detail-view .venue=${this.selectedVenue} @back-to-venues=${this.handleBackToVenues}></venue-detail-view>
-			`
-		}
-
 		// Otherwise show the venues list
 		const venueCount = this.getFilteredVenues().length
 		const totalVenues = this.venues.size
@@ -120,7 +102,15 @@ export class VenueManagement extends $LitElement() {
 	renderVenueCard(venue: Venue) {
 		return html`
 			<div class="relative group">
-				<admin-venue-card .venue=${venue} @click=${() => this.handleVenueClick(venue)}></admin-venue-card>
+				<admin-venue-card
+					.venue=${venue}
+					@click=${() => {
+						area.push({
+							component: new VenueDetailView(venue),
+							area: 'admin',
+						})
+					}}
+				></admin-venue-card>
 
 				<!-- Floating Action Buttons - visible on hover -->
 				<div
@@ -138,18 +128,6 @@ export class VenueManagement extends $LitElement() {
 					>
 						<schmancy-icon>edit</schmancy-icon>
 						Edit
-					</schmancy-button>
-
-					<schmancy-button
-						variant="filled tonal"
-						@click=${(e: Event) => {
-							e.stopPropagation()
-							this.handleVenueClick(venue)
-						}}
-						title="View Courts"
-					>
-						<schmancy-icon>sports_tennis</schmancy-icon>
-						Courts
 					</schmancy-button>
 				</div>
 			</div>

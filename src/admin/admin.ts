@@ -77,6 +77,7 @@ export default class FunkhausAdmin extends $LitElement() {
 			.pipe(takeUntil(this.disconnecting))
 			.subscribe(event => {
 				this.fullScreen = event.detail
+				this.requestUpdate()
 			})
 
 		// Exit fullscreen automatically when user navigates away
@@ -87,7 +88,7 @@ export default class FunkhausAdmin extends $LitElement() {
 			)
 			.subscribe({
 				next: () => {
-					this.fullScreen = false
+					// this.fullScreen = false
 				},
 			})
 	}
@@ -108,10 +109,9 @@ export default class FunkhausAdmin extends $LitElement() {
 		const contentDrawerClasses = {
 			'rounded-lg px-4 sm:px-6 md:px-8': this.fullScreen === false,
 		}
-
 		return html`
 			<schmancy-nav-drawer .fullscreen=${this.fullScreen}>
-				<schmancy-nav-drawer-navbar .hidden=${this.fullScreen} width="180px">
+				<schmancy-nav-drawer-navbar .hidden=${!!this.fullScreen} width="180px">
 					<schmancy-list>
 						<schmancy-list-item
 							.selected=${this.activeTab === 'venue-management'}

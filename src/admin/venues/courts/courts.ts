@@ -6,7 +6,7 @@ import { when } from 'lit/directives/when.js'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { venuesContext } from '../venue-context'
-import { formatEnum } from '../venue-form'
+import { formatEnum } from '../components/venue-form'
 import { courtsContext } from './context'
 import { CourtForm } from './court-form'
 

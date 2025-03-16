@@ -2,7 +2,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { Venue } from 'src/db/venue-collection'
-import { formatEnum } from './venue-form'
+import { formatEnum } from './components/venue-form'
 
 @customElement('admin-venue-card')
 export class AdminVenueCard extends $LitElement() {

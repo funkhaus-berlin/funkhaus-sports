@@ -102,83 +102,39 @@ export default class FunkhausVenueCard extends $LitElement() {
 					<!-- Card content with golden ratio padding -->
 					<div class="relative h-full flex flex-col justify-between z-10" style="padding: ${goldenPadding}px;">
 						<!-- Top section with name and type -->
-						<div>
+						<div class="flex-1">
 							<schmancy-typography type="display" token="md" class="mb-2"> ${this.venue.name} </schmancy-typography>
-
-							<schmancy-typography
-								type="label"
-								token="sm"
-								class="opacity-80"
-								style="margin-bottom: ${goldenSpacingMd}px;"
-							>
-								${this.venue.venueType.replace(/([A-Z])/g, ' $1').trim()}
-							</schmancy-typography>
-
-							<!-- Status indicator -->
-							<div style="margin-bottom: ${goldenSpacingMd}px;">
-								<schmancy-chip
-									.selected=${this.venue.status === 'active'}
-									.label=${this.venue.status === 'active'
-										? 'Open Now'
-										: this.venue.status === 'maintenance'
-										? 'Under Maintenance'
-										: 'Closed'}
-									readOnly
-								>
-									${this.venue.status === 'active'
-										? 'check_circle'
-										: this.venue.status === 'maintenance'
-										? 'construction'
-										: 'cancel'}
-								</schmancy-chip>
-							</div>
-
-							<!-- Operating hours -->
-							<schmancy-typography class="mb-2" type="body" token="sm">
-								${this.formatOperatingHours()}
-							</schmancy-typography>
 						</div>
 
 						<!-- Facility icons -->
-						${when(
-							this.venue.facilities && this.venue.facilities.length > 0,
-							() => html`
-								<div class="flex flex-wrap gap-2" style="margin: ${goldenSpacingMd}px 0;">
-									${this.venue.facilities?.map(
-										facility => html`
-											<div
-												class="flex items-center justify-center rounded-full"
-												style="width: ${goldenIconSize}px; height: ${goldenIconSize}px;"
-											>
-												<schmancy-icon size="${Math.round(goldenIconSize * 0.618)}px"
-													>${this.getFacilityIcon(facility)}</schmancy-icon
-												>
-											</div>
-										`,
-									)}
-								</div>
-							`,
-						)}
 
 						<!-- Bottom section with location details -->
-						<div class="mt-auto">
-							<schmancy-typography class="mb-1" type="body" token="sm"> ${this.formatAddress()} </schmancy-typography>
-
-							<schmancy-typography class="opacity-70" type="label" token="sm">
-								${this.venue.address.postalCode} ${this.venue.address.city}
+						<div class="mt-auto grid gap-2">
+							<!-- Operating hours -->
+							<schmancy-typography class="" type="body" token="sm">
+								${this.formatOperatingHours()}
 							</schmancy-typography>
+							<section>
+								<schmancy-typography type="label" token="sm"> ${this.formatAddress()} </schmancy-typography>
 
+								<schmancy-typography class="opacity-70" type="label" token="sm">
+									${this.venue.address.postalCode} ${this.venue.address.city}
+								</schmancy-typography>
+							</section>
 							<!-- Court capacity -->
 							${when(
-								this.venue.maxCourtCapacity,
+								this.venue.facilities && this.venue.facilities.length > 0,
 								() => html`
-									<div class="flex items-center" style="margin-top: ${goldenSpacingSm}px">
-										<schmancy-icon class="mr-1" style="font-size: ${Math.round(goldenIconSize * 0.618)}px;"
-											>sports_tennis</schmancy-icon
-										>
-										<schmancy-typography type="label" token="sm">
-											${this.venue.maxCourtCapacity} courts
-										</schmancy-typography>
+									<div class="flex flex-wrap gap-2">
+										${this.venue.facilities?.map(
+											facility => html`
+												<div class="flex items-center justify-center rounded-full">
+													<schmancy-icon size="${Math.round(goldenIconSize * 0.618)}px"
+														>${this.getFacilityIcon(facility)}</schmancy-icon
+													>
+												</div>
+											`,
+										)}
 									</div>
 								`,
 							)}
