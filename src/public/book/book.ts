@@ -12,7 +12,7 @@ import { Duration, TimeSlot } from './types'
 // Import Stripe related dependencies
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { when } from 'lit/directives/when.js'
-import { catchError, finalize, firstValueFrom, of } from 'rxjs'
+import { catchError, distinctUntilChanged, finalize, firstValueFrom, of, take, tap } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { AvailabilityService } from 'src/bookingServices/availability'
 import {
@@ -21,6 +21,9 @@ import {
 	CourtPreferences,
 } from 'src/bookingServices/court-assignment.service'
 import { Court } from 'src/db/courts.collection'
+import bookingSummery from './steps/booking-summery'
+import { StripeElements, StripePaymentElement } from '@stripe/stripe-js'
+import stripePromise, { $stripe, appearance, $stripeElements } from '../stripe'
 
 /**
  * Court booking component with Stripe integration
@@ -82,6 +85,70 @@ export class CourtBookingSystem extends $LitElement() {
 		})
 	}
 
+	elements: StripeElements | undefined
+	paymentElement: StripePaymentElement | undefined
+
+	async connectedCallback() {
+		super.connectedCallback()
+		// Create and append the payment element slot
+		const slot = document.createElement('slot')
+		slot.name = 'stripe-element'
+		slot.slot = 'stripe-element'
+		this.append(slot)
+
+		const stripe = await stripePromise
+		// Initialize Stripe elements when payment amount is available
+		$stripe.pipe(distinctUntilChanged(), take(1)).subscribe(amount => {
+			this.elements = stripe?.elements({
+				fonts: [
+					{
+						src: 'url(https://ticket.funkhaus-berlin.net/assets/GT-Eesti-Pro-Display-Regular-Czpp09nv.woff)',
+						family: 'GT-Eesti-Display-Regular',
+						style: 'normal',
+					},
+				],
+				mode: 'payment',
+				appearance: appearance(),
+				currency: 'eur',
+				amount: amount * 100,
+			})
+
+			const paymentElementOptions = {
+				layout: 'tabs',
+				billingDetails: {},
+				fields: {
+					billingDetails: {
+						address: 'never',
+					},
+				},
+			}
+			// @ts-ignore
+			this.paymentElement = this.elements?.create('payment', {
+				...paymentElementOptions,
+			}) as StripePaymentElement
+			this.paymentElement.mount('#stripe-element')
+			this.paymentElement.on('ready', () => {
+				$stripeElements.next(this.elements)
+			})
+		})
+
+		// Update payment amount when it changes
+		$stripe
+			.pipe(
+				distinctUntilChanged(),
+				tap({
+					next: amount => {
+						const elements = $stripeElements.value
+						if (elements) {
+							elements.update({
+								amount: amount * 100,
+							})
+						}
+					},
+				}),
+			)
+			.subscribe()
+	}
 	protected firstUpdated(_changedProperties: PropertyValues): void {
 		// Load courts
 		this.loadingCourts = true
@@ -387,78 +454,7 @@ export class CourtBookingSystem extends $LitElement() {
 				></duration-selection-step>
 			`,
 			() => html`
-				<!-- Booking Summary -->
-				<div class="bg-surface-container p-4 rounded-lg mb-4">
-					<schmancy-typography type="title" token="sm" class="mb-2">Booking Summary</schmancy-typography>
-					<schmancy-grid cols="1fr 1fr" gap="sm">
-						<div>
-							<schmancy-typography type="label" token="sm">Date:</schmancy-typography>
-							<schmancy-typography type="body" weight="bold">
-								${dayjs(this.booking.date).format('ddd, MMM D, YYYY')}
-							</schmancy-typography>
-						</div>
-						<div>
-							<schmancy-typography type="label" token="sm">Time:</schmancy-typography>
-							<schmancy-typography type="body" weight="bold">
-								${dayjs(this.booking.startTime).format('h:mm A')} - ${dayjs(this.booking.endTime).format('h:mm A')}
-							</schmancy-typography>
-						</div>
-						<div>
-							<schmancy-typography type="label" token="sm">Duration:</schmancy-typography>
-							<schmancy-typography type="body" weight="bold">
-								${this.duration / 60} hour${this.duration / 60 !== 1 ? 's' : ''}
-							</schmancy-typography>
-						</div>
-						<div>
-							<schmancy-typography type="label" token="sm">Court:</schmancy-typography>
-							<schmancy-typography type="body" weight="bold">
-								${this.selectedCourt ? this.selectedCourt.name : 'Auto-assigned'}
-							</schmancy-typography>
-						</div>
-
-						<!-- Display court preferences summary -->
-						${this.courtPreferences.preferIndoor ||
-						this.courtPreferences.preferOutdoor ||
-						(this.courtPreferences.preferredCourtTypes && this.courtPreferences.preferredCourtTypes.length > 0)
-							? html`
-									<div class="col-span-2">
-										<schmancy-typography type="label" token="sm">Preferences:</schmancy-typography>
-										<schmancy-flex gap="sm" wrap="wrap" class="mt-1">
-											${this.courtPreferences.preferIndoor
-												? html`
-														<div class="bg-primary-container text-primary-on-container px-2 py-1 rounded-full text-xs">
-															Indoor
-														</div>
-												  `
-												: ''}
-											${this.courtPreferences.preferOutdoor
-												? html`
-														<div class="bg-primary-container text-primary-on-container px-2 py-1 rounded-full text-xs">
-															Outdoor
-														</div>
-												  `
-												: ''}
-											${(this.courtPreferences.preferredCourtTypes || []).map(
-												type => html`
-													<div class="bg-primary-container text-primary-on-container px-2 py-1 rounded-full text-xs">
-														${type.charAt(0).toUpperCase() + type.slice(1)}
-													</div>
-												`,
-											)}
-										</schmancy-flex>
-									</div>
-							  `
-							: ''}
-
-						<div class="col-span-2">
-							<schmancy-typography type="label" token="sm">Total:</schmancy-typography>
-							<schmancy-typography type="display" token="sm" class="text-primary-default">
-								€${this.booking.price.toFixed(2)}
-							</schmancy-typography>
-						</div>
-					</schmancy-grid>
-				</div>
-
+				${bookingSummery(this.booking, this.selectedCourt!, this.duration, this.courtPreferences)}
 				<booking-payment-step @booking-complete=${this.handleBookingComplete}>
 					<slot slot="stripe-element" name="stripe-element"></slot>
 				</booking-payment-step>

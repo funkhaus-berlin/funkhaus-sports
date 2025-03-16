@@ -14,6 +14,7 @@ import stripePromise, { $stripe, $stripeElements, createPaymentIntent } from 'sr
 import { BookingService } from 'src/bookingServices/booking.service'
 import { Booking, bookingContext } from '../context'
 import { FunkhausSportsTermsAndConditions } from '../terms-and-conditions'
+import { auth } from 'src/firebase/firebase'
 
 @customElement('booking-payment-step')
 export class BookingPaymentStep extends $LitElement() {
@@ -299,9 +300,7 @@ export class BookingPaymentStep extends $LitElement() {
 
 		// Process payment with anonymous auth if user isn't already authenticated
 		from(
-			this.auth.currentUser
-				? Promise.resolve({ user: { uid: this.auth.currentUser.uid } })
-				: signInAnonymously(this.auth),
+			this.auth.currentUser ? Promise.resolve({ user: { uid: this.auth.currentUser.uid } }) : signInAnonymously(auth),
 		)
 			.pipe(
 				map(userCredential => userCredential.user.uid),

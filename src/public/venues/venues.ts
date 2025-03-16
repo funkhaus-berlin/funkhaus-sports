@@ -75,7 +75,6 @@ export class VenueLandingPage extends $LitElement() {
 		})
 	}
 
-	// Lifecycle callbacks
 	firstUpdated() {
 		this.animateLogo()
 

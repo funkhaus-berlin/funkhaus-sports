@@ -8,6 +8,7 @@ import { distinctUntilChanged, take, tap } from 'rxjs'
 import './book/book'
 import { AppConfiguration, AppConfigurationContext } from './context'
 import stripePromise, { $stripe, $stripeElements, appearance } from './stripe'
+import { CourtBookingSystem } from './book/book'
 // Theme configuration for styling consistency
 export const appTheme: {
 	color: string
@@ -36,82 +37,14 @@ export default class GenericBookingApp extends $LitElement(
 	@state() busy = false
 	@state() activeTab: string = 'booking'
 
-	@state() clientSecret: string | undefined
-	elements: StripeElements | undefined
-	paymentElement: StripePaymentElement | undefined
-
-	async connectedCallback() {
-		super.connectedCallback()
-		console.count()
-
-		// Create and append the payment element slot
-		const slot = document.createElement('slot')
-		slot.name = 'stripe-element'
-		slot.slot = 'stripe-element'
-		this.append(slot)
-
-		const stripe = await stripePromise
-		// Initialize Stripe elements when payment amount is available
-		$stripe.pipe(distinctUntilChanged(), take(1)).subscribe(amount => {
-			this.elements = stripe?.elements({
-				fonts: [
-					{
-						src: 'url(https://ticket.funkhaus-berlin.net/assets/GT-Eesti-Pro-Display-Regular-Czpp09nv.woff)',
-						family: 'GT-Eesti-Display-Regular',
-						style: 'normal',
-					},
-				],
-				mode: 'payment',
-				appearance: appearance(),
-				currency: 'eur',
-				amount: amount * 100,
-			})
-
-			const paymentElementOptions = {
-				layout: 'tabs',
-				billingDetails: {},
-				fields: {
-					billingDetails: {
-						address: 'never',
-					},
-				},
-			}
-			// @ts-ignore
-			this.paymentElement = this.elements?.create('payment', {
-				...paymentElementOptions,
-			}) as StripePaymentElement
-			this.paymentElement.mount('#stripe-element')
-			this.paymentElement.on('ready', () => {
-				$stripeElements.next(this.elements)
-			})
-		})
-		$stripe.next(1000)
-
-		// Update payment amount when it changes
-		$stripe
-			.pipe(
-				distinctUntilChanged(),
-				tap({
-					next: amount => {
-						const elements = $stripeElements.value
-						if (elements) {
-							elements.update({
-								amount: amount * 100,
-							})
-						}
-					},
-				}),
-			)
-			.subscribe()
-	}
-
 	protected render(): unknown {
 		return html`
 			${when(this.busy, () => html`<schmancy-busy></schmancy-busy>`)}
-
-			<court-booking-system>
-				<slot slot="stripe-element" name="stripe-element"></slot>
-			</court-booking-system>
+			<schmancy-area name="booking">
+				<court-booking-system>
+					<slot slot="stripe-element" name="stripe-element"></slot>
+				</court-booking-system>
+			</schmancy-area>
 		`
 	}
 }

@@ -11,6 +11,7 @@ import { CourtsDB } from './db/courts.collection'
 import { VenuesDB } from './db/venue-collection'
 import { VenueLandingPage } from './public/venues/venues'
 import './schmancy'
+import GenericBookingApp from './public/app'
 @customElement('app-index')
 export class AppIndex extends $LitElement() {
 	@query('schmancy-surface') surface!: HTMLElement
