@@ -1,13 +1,14 @@
-import { area, fullHeight } from '@mhmo91/schmancy'
+import { ActiveRoute, area, fullHeight } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { css, html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
-import { takeUntil } from 'rxjs'
+import { filter, map, takeUntil } from 'rxjs'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import './components'
-import { VenueCourtsPreview } from './components'
+import { VenueAnalytics, VenueCourtsPreview } from './components'
 import { selectMyCourts } from './courts/context'
+import { VenueCourts } from './courts/courts'
 import { VenueManagement } from './venues'
 
 @customElement('venue-detail-view')
@@ -49,7 +50,7 @@ export class VenueDetailView extends $LitElement(css`
 	@state() loading: boolean = true
 	@state() error: string | null = null
 	@state() courts!: Map<string, Court>
-	@state() activeSection: string = 'overview'
+	@state() activeTab: string = 'venue-courts-preview'
 	@state() fullScreen = false
 
 	connectedCallback(): void {
@@ -60,6 +61,16 @@ export class VenueDetailView extends $LitElement(css`
 			this.loading = false
 			this.requestUpdate()
 		})
+
+		area.$current
+			.pipe(
+				filter(r => r.has('venue')),
+				map(r => r.get('venue') as ActiveRoute),
+				takeUntil(this.disconnecting),
+			)
+			.subscribe(r => {
+				this.activeTab = r.component.toLowerCase()
+			})
 	}
 
 	handleBackClick() {
@@ -80,11 +91,11 @@ export class VenueDetailView extends $LitElement(css`
 						<schmancy-list>
 							<!-- Courts Item -->
 							<schmancy-list-item
-								.selected=${this.activeSection === 'courts'}
+								.selected=${this.activeTab === 'funkhaus-venue-courts'}
 								@click=${() =>
 									area.push({
-										component: VenueCourtsPreview,
-										area: 'venue-content',
+										component: VenueCourts,
+										area: 'venue',
 									})}
 								rounded
 								variant="container"
@@ -97,11 +108,11 @@ export class VenueDetailView extends $LitElement(css`
 
 							<!-- Analytics Item -->
 							<schmancy-list-item
-								.selected=${this.activeSection === 'analytics'}
+								.selected=${this.activeTab === VenueCourtsPreview.name.toLowerCase()}
 								@click=${() =>
 									area.push({
-										component: 'venue-overview',
-										area: 'venue-content',
+										component: VenueAnalytics,
+										area: 'venue',
 									})}
 								rounded
 								variant="container"
@@ -130,17 +141,12 @@ export class VenueDetailView extends $LitElement(css`
 				</schmancy-nav-drawer-navbar>
 
 				<schmancy-nav-drawer-content class=${this.classMap(contentDrawerClasses)}>
-					<schmancy-grid ${fullHeight()} rows="auto 1fr" class="pt-4">
-						<!-- Top Bar with venue header info -->
-						<venue-detail-header .courtsCount=${courtsCount} class="animate-in"></venue-detail-header>
-
-						<!-- Content Area using schmancy-area -->
-						<schmancy-area
-							name="venue-content"
-							class="animate-in-delay-1"
-							.default=${VenueCourtsPreview}
-						></schmancy-area>
-					</schmancy-grid>
+					<schmancy-area
+						${fullHeight()}
+						name="venue"
+						class="animate-in-delay-1"
+						.default=${VenueCourts}
+					></schmancy-area>
 				</schmancy-nav-drawer-content>
 			</schmancy-nav-drawer>
 		`

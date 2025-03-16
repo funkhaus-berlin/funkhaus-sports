@@ -8,14 +8,13 @@ import { auth } from 'src/firebase/firebase'
 import { User, userContext } from 'src/user.context'
 
 import FunkhausSportsSignin from './signin'
-import { CourtManagement } from './venues/courts/courts'
 import { VenueManagement } from './venues/venues'
 
 @customElement('funkhaus-sports-admin')
 export default class FunkhausAdmin extends $LitElement() {
-	@state() activeTab: string = 'venues' // Changed default tab to venues
+	@state() activeTab: string = 'venues'
 	@state() fullScreen = false
-	@state() activeRoute: string = 'venues' // Changed default route
+	@state() activeRoute: string = 'venues'
 
 	@select(userContext, user => user)
 	user!: User
@@ -39,6 +38,7 @@ export default class FunkhausAdmin extends $LitElement() {
 					}
 				},
 			})
+
 		// Handle fullscreen events
 		this.setupFullscreenListeners()
 
@@ -60,15 +60,7 @@ export default class FunkhausAdmin extends $LitElement() {
 			component: VenueManagement,
 			area: 'admin',
 		})
-		this.activeTab = 'venue-management'
-	}
-
-	private navigateToCourts(): void {
-		area.push({
-			component: CourtManagement,
-			area: 'admin',
-		})
-		this.activeTab = 'court-management'
+		this.activeTab = 'venues'
 	}
 
 	private setupFullscreenListeners(): void {
@@ -87,9 +79,9 @@ export default class FunkhausAdmin extends $LitElement() {
 				filter(r => r.has('admin')),
 				tap(r => {
 					console.log('Route', r.get('admin'))
-					if (['venue-management'].includes(r.get('admin')!.component.toLowerCase())) {
+					if (r.get('admin')?.component.toLowerCase() === 'venue-management') {
 						this.fullScreen = false
-					} else {
+					} else if (r.get('admin')?.component.toLowerCase() === 'venue-detail-view') {
 						this.fullScreen = true
 					}
 				}),
@@ -113,12 +105,13 @@ export default class FunkhausAdmin extends $LitElement() {
 		const contentDrawerClasses = {
 			'rounded-lg px-4 sm:px-6 md:px-8': this.fullScreen === false,
 		}
+
 		return html`
 			<schmancy-nav-drawer .fullscreen=${this.fullScreen}>
 				<schmancy-nav-drawer-navbar .hidden=${!!this.fullScreen} width="180px">
 					<schmancy-list>
 						<schmancy-list-item
-							.selected=${this.activeTab === 'venue-management'}
+							.selected=${this.activeTab === 'venues-management'}
 							@click=${() => {
 								this.navigateToVenues()
 								schmancyNavDrawer.close()
@@ -129,21 +122,6 @@ export default class FunkhausAdmin extends $LitElement() {
 							<schmancy-flex gap="md">
 								<schmancy-icon>location_on</schmancy-icon>
 								Venues
-							</schmancy-flex>
-						</schmancy-list-item>
-
-						<schmancy-list-item
-							.selected=${this.activeTab === 'court-management'}
-							@click=${() => {
-								this.navigateToCourts()
-								schmancyNavDrawer.close()
-							}}
-							rounded
-							variant="container"
-						>
-							<schmancy-flex gap="md">
-								<schmancy-icon>sports_tennis</schmancy-icon>
-								Courts
 							</schmancy-flex>
 						</schmancy-list-item>
 

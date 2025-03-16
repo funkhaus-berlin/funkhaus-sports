@@ -10,7 +10,7 @@ import { VenueForm } from './components/venue-form'
 import { venuesContext } from './venue-context'
 import { VenueDetailView } from './venue-detail'
 // --- Venue Management Component ---
-@customElement('venue-management')
+@customElement('venues-management')
 export class VenueManagement extends $LitElement() {
 	@select(venuesContext, undefined, {
 		required: true,
@@ -96,6 +96,6 @@ export class VenueManagement extends $LitElement() {
 
 declare global {
 	interface HTMLElementTagNameMap {
-		'venue-management': VenueManagement
+		'venues-management': VenueManagement
 	}
 }

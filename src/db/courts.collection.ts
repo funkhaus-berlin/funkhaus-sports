@@ -1,54 +1,94 @@
 // src/db/courts.collection.ts
 import { Observable } from 'rxjs'
 import { FirestoreService } from 'src/firebase/firestore.service'
-
-// Court enums
+// src/db/courts.collection.ts
 export enum CourtTypeEnum {
 	indoor = 'indoor',
 	outdoor = 'outdoor',
-	roofed = 'roofed',
-	heated = 'heated',
+	covered = 'covered',
+	hybrid = 'hybrid',
 }
 
 export enum SportTypeEnum {
 	tennis = 'tennis',
-	pickleball = 'pickleball',
-	badminton = 'badminton',
-	squash = 'squash',
-	paddleTennis = 'paddleTennis',
-	tableTennis = 'tableTennis',
 	basketball = 'basketball',
 	volleyball = 'volleyball',
+	badminton = 'badminton',
+	pickleball = 'pickleball',
+	squash = 'squash',
+	tabletennis = 'tabletennis',
+	futsal = 'futsal',
 	handball = 'handball',
+	padel = 'padel',
 }
 
-// Court pricing model
+export enum SurfaceTypeEnum {
+	hardCourt = 'hardCourt',
+	clay = 'clay',
+	grass = 'grass',
+	carpet = 'carpet',
+	wood = 'wood',
+	synthetic = 'synthetic',
+	concrete = 'concrete',
+	turf = 'turf',
+	rubber = 'rubber',
+}
+
 export interface Pricing {
 	baseHourlyRate: number
 	peakHourRate?: number
 	weekendRate?: number
-	holidayRate?: number
-	memberDiscount?: number
+	memberDiscount?: number // percentage
+	specialRates?: {
+		[key: string]: {
+			name: string
+			description?: string
+			rate: number
+			applyDays?: string[] // e.g., ['monday', 'tuesday']
+			startTime?: string // e.g., '18:00'
+			endTime?: string // e.g., '22:00'
+		}
+	}
 }
 
-// Court interface with venue support
+export interface Maintenance {
+	lastMaintenanceDate?: string
+	nextMaintenanceDate?: string
+	maintenanceNotes?: string
+	maintenanceHistory?: {
+		date: string
+		description: string
+		cost?: number
+		performedBy?: string
+	}[]
+}
+
+export interface Dimensions {
+	length: number // in meters
+	width: number // in meters
+	unit: 'meters' | 'feet'
+}
+
 export interface Court {
 	id: string
+	venueId: string
 	name: string
-	venueId: string // Add reference to parent venue
-	courtType: string
-	sportTypes: string[]
-	surface?: string
-	indoor?: boolean
-	accessible?: boolean
-	hasLighting?: boolean
-	available?: boolean
+	number?: string // Court number (e.g., "Court 1")
+	description?: string
+	courtType: keyof typeof CourtTypeEnum
+	sportTypes: (keyof typeof SportTypeEnum)[]
+	surfaceType?: keyof typeof SurfaceTypeEnum
+	dimensions?: Dimensions
 	pricing: Pricing
+	maintenance?: Maintenance
 	status: 'active' | 'maintenance' | 'inactive'
-	createdAt?: string
-	updatedAt?: string
+	amenities?: string[] // e.g., ["lighting", "scoreboard", "seating"]
+	images?: string[]
+	createdAt: string
+	updatedAt: string
 }
 
+// CourtsDB implementation would remain the same as your current code
 // Create a Court firestore service
 class CourtsService extends FirestoreService<Court> {
 	constructor() {
