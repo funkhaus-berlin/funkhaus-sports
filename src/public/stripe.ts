@@ -14,7 +14,7 @@ export const $stripe = new BehaviorSubject<number>(100)
 
 export function createPaymentIntent(body: any) {
 	return from(
-		fetch(import.meta.env.VITE_NETLIFY_BASE_URL.concat('/api/create-payment-intent'), {
+		fetch('/api/create-payment-intent', {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',

@@ -15,7 +15,6 @@ const firebaseConfig = {
 	storageBucket: 'funkhaus-sports.firebasestorage.app',
 	messagingSenderId: '875370726862',
 	appId: '1:875370726862:web:7ce5237979f76c838f179f',
-	measurementId: 'G-J2YFQLJJNQ',
 }
 
 // Initialize Firebase
