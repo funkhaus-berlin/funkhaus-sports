@@ -24,47 +24,6 @@ export class VenueInfoCard extends $LitElement() {
 		return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`
 	}
 
-	// Calculate simple venue stats
-	private getOperationalDaysCount() {
-		if (!this.venue.operatingHours) return 0
-		return Object.values(this.venue.operatingHours).filter(hours => hours !== null).length
-	}
-
-	private getAverageHoursPerDay() {
-		if (!this.venue.operatingHours) return 0
-
-		const operationalDays = Object.values(this.venue.operatingHours).filter(hours => hours !== null)
-		if (operationalDays.length === 0) return 0
-
-		let totalMinutes = 0
-		operationalDays.forEach(hours => {
-			if (!hours) return
-			const openTime = hours.open.split(':').map(Number)
-			const closeTime = hours.close.split(':').map(Number)
-			const openMinutes = openTime[0] * 60 + (openTime[1] || 0)
-			const closeMinutes = closeTime[0] * 60 + (closeTime[1] || 0)
-			totalMinutes += closeMinutes - openMinutes
-		})
-
-		return (totalMinutes / 60 / operationalDays.length).toFixed(1)
-	}
-
-	private renderDescription() {
-		if (!this.venue.description) return ''
-
-		return html`
-			<schmancy-surface type="container" rounded="all">
-				<sch-flex flow="row" align="center" class="mb-2">
-					<schmancy-icon class="mr-2 text-primary-default">description</schmancy-icon>
-					<schmancy-typography type="title" token="md">About this Venue</schmancy-typography>
-				</sch-flex>
-				<schmancy-typography type="body" token="md" class="text-surface-onVariant">
-					${this.venue.description}
-				</schmancy-typography>
-			</schmancy-surface>
-		`
-	}
-
 	private renderOperatingHours() {
 		const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 

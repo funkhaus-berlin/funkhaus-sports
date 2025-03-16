@@ -444,7 +444,7 @@ export class VenueAnalytics extends $LitElement(css`
 
 					<div class="revenue-distribution">
 						${Object.entries(revenueMetrics.rateDistribution).map(
-							([label, data]) => html`
+							([_label, data]) => html`
 								<div
 									class="revenue-bar"
 									style="width: ${data.percentage}%; background-color: ${data.color};"

@@ -70,8 +70,6 @@ export default class FunkhausVenueCard extends $LitElement() {
 		// Calculate golden ratio based spacing
 		const basePadding = 16
 		const goldenPadding = Math.round(basePadding * GOLDEN_RATIO) // ~26px
-		const goldenSpacingSm = Math.round(8 * GOLDEN_RATIO) // ~13px
-		const goldenSpacingMd = Math.round(12 * GOLDEN_RATIO) // ~19px
 		const goldenIconSize = Math.round(18 * GOLDEN_RATIO) // ~29px
 
 		// Calculate logo position using golden ratio

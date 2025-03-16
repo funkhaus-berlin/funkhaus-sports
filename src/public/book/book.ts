@@ -3,7 +3,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { html, PropertyValues } from 'lit'
 import { customElement, query, state } from 'lit/decorators.js'
-import { AvailabilityService } from './availability.service'
+import { AvailabilityService } from '../../bookingServices/availability.service'
 import { Booking, bookingContext } from './context'
 import './steps'
 import { Court, Duration, TimeSlot } from './types'
@@ -11,7 +11,7 @@ import { Court, Duration, TimeSlot } from './types'
 import { when } from 'lit/directives/when.js'
 import { firstValueFrom } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
-import { CourtAssignmentService, CourtAssignmentStrategy } from './court-assignment.service' // ← Add this import
+import { CourtAssignmentService, CourtAssignmentStrategy } from '../../bookingServices/court-assignment.service' // ← Add this import
 
 /**
  * Court booking component with Stripe integration
@@ -25,7 +25,8 @@ export class CourtBookingSystem extends $LitElement() {
 	@state() step: number = 1 // 1: Date, 2: Time, 3: Duration, 4: Payment/Confirmation (removed court selection step)
 	@state() selectedCourt: Court | undefined = undefined
 	@state() bookingInProgress: boolean = false
-	@select(courtsContext, (courtes: Map<string, Court>) => Array.from(courtes.values())) availableCourts: Court[] = []
+	@select(courtsContext)
+	availableCourts: Court[] = []
 
 	@state() error: string | null = null
 	@state() success: boolean = false

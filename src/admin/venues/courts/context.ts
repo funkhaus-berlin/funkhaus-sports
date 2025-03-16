@@ -1,8 +1,8 @@
-import { createCollectionContext, createCompoundSelector } from '@mhmo91/schmancy'
+import { createCompoundSelector, createContext } from '@mhmo91/schmancy'
 import { Court } from 'src/db/courts.collection'
 import { venueContext } from '../venue-context'
 
-export const courtsContext = createCollectionContext<Court>(new Map(), 'courts', 'indexeddb')
+export const courtsContext = createContext<Map<string, Court>>(new Map(), 'indexeddb', 'courts')
 
 export const selectMyCourts = createCompoundSelector([courtsContext.$, venueContext.$], (courts, venue) => {
 	return Array.from(courts.values())

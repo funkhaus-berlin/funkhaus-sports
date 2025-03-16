@@ -3,8 +3,8 @@ import { doc } from 'firebase/firestore'
 import { Observable, throwError } from 'rxjs'
 import { catchError, map, switchMap } from 'rxjs/operators'
 import { FirebaseServiceQuery, FirestoreService } from 'src/firebase/firestore.service'
-import { AuthService } from '../../../firebase/auth.service'
-import { Booking } from '../context'
+import { AuthService } from '../../firebase/auth.service'
+import { Booking } from './context'
 
 /**
  * Booking service using Firestore

@@ -25,31 +25,54 @@ export class VenueLandingPage extends $LitElement() {
 	@query('.cards-container') cardsContainer!: HTMLElement
 
 	// Animation configurations with golden ratio timing
+	// Updated animation configurations with faster timing
 	private logoAnimation: {
 		keyframes: Keyframe[]
 		options: AnimationEffectTiming
 	} = {
 		keyframes: [
-			{ opacity: 0, transform: 'translateY(-20px)' },
+			{ opacity: 0, transform: 'translateY(-40px)' }, // Increased initial offset
 			{ opacity: 1, transform: 'translateY(0)' },
 		],
 		options: {
-			duration: Math.round(1000 * GOLDEN_RATIO), // ~1618ms
-			easing: 'cubic-bezier(0.618, 0, 0.382, 1)', // Golden ratio based easing
+			duration: 500, // Reduced from 1618ms to 500ms
+			easing: 'ease-out', // Snappier easing
 			fill: 'forwards',
 		},
 	}
 
 	private cardAnimation = {
 		keyframes: [
-			{ opacity: 0, transform: 'translateY(20px)' },
-			{ opacity: 1, transform: 'translateY(0)' },
+			{ opacity: 0, transform: 'translateY(40px) scale(0.95)' }, // Added scale for more dynamic effect
+			{ opacity: 1, transform: 'translateY(0) scale(1)' },
 		],
 		options: {
-			duration: Math.round(500 * GOLDEN_RATIO), // ~809ms
-			easing: 'cubic-bezier(0.618, 0, 0.382, 1)', // Golden ratio based easing
+			duration: 300, // Reduced from 809ms to 300ms
+			easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)', // Standard 'ease-out-quad'
 			fill: 'forwards',
 		},
+	}
+
+	// Updated animateCards method with tighter stagger
+	private animateCards() {
+		if (!this.cardsContainer) return
+
+		const cards = Array.from(this.cardsContainer.querySelectorAll('funkhaus-venue-card'))
+
+		cards.forEach((card, index) => {
+			card.style.opacity = '0'
+			card.style.transform = 'translateY(40px) scale(0.95)'
+
+			const options = {
+				...this.cardAnimation.options,
+				delay: index * 50, // Reduced stagger from 162ms to 50ms
+				fill: 'forwards' as FillMode,
+			}
+
+			card.animate(this.cardAnimation.keyframes, options as AnimationEffectTiming)
+			card.style.opacity = '1'
+			card.style.transform = 'translateY(0) scale(1)'
+		})
 	}
 
 	// Lifecycle callbacks
@@ -65,7 +88,7 @@ export class VenueLandingPage extends $LitElement() {
 			requestAnimationFrame(() => {
 				this.animateCards()
 			})
-		}, 1500)
+		}, 300)
 	}
 
 	updated(changedProps: Map<string, any>) {
@@ -82,32 +105,6 @@ export class VenueLandingPage extends $LitElement() {
 		if (this.logoSection) {
 			this.logoSection.animate(this.logoAnimation.keyframes, this.logoAnimation.options)
 		}
-	}
-
-	private animateCards() {
-		if (!this.cardsContainer) return
-
-		const cards = Array.from(this.cardsContainer.querySelectorAll('funkhaus-venue-card'))
-
-		cards.forEach((card, index) => {
-			// Make sure card is initially invisible
-			card.style.opacity = '0'
-			card.style.transform = 'translateY(20px)'
-
-			// Apply golden ratio to animation timing
-			const baseDelay = 100
-			const options = {
-				...this.cardAnimation.options,
-				delay: Math.round(index * baseDelay * GOLDEN_RATIO), // Golden ratio applied to stagger
-				fill: 'forwards' as FillMode,
-			}
-
-			card.animate(this.cardAnimation.keyframes, options as AnimationEffectTiming)
-
-			// Update final state to visible
-			card.style.opacity = '1'
-			card.style.transform = 'translateY(0)'
-		})
 	}
 
 	// Handle venue card click to navigate to booking
@@ -143,7 +140,7 @@ export class VenueLandingPage extends $LitElement() {
 						></object>
 						<div class="inline-block">
 							<schmancy-typography type="display" token="sm" class="mb-4">
-								<schmancy-animated-text>Funkhaus Sports</schmancy-animated-text>
+								<schmancy-animated-text stagger=${23}>Funkhaus Sports</schmancy-animated-text>
 							</schmancy-typography>
 						</div>
 					</div>
@@ -174,7 +171,7 @@ export class VenueLandingPage extends $LitElement() {
 													<funkhaus-venue-card
 														.venue=${venue}
 														@click=${() => this.handleVenueClick(venue)}
-														class=" absolute inset-0 w-full h-full transform transition-transform duration-300 hover:-translate-y-1"
+														class="absolute inset-0 w-full h-full transform transition-transform duration-150 hover:-translate-y-2"
 													>
 														<slot slot="stripe-element" name="stripe-element"></slot>
 													</funkhaus-venue-card>

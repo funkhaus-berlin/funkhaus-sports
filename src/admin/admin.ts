@@ -3,7 +3,7 @@ import { ActiveRoute, area, fullHeight, schmancyNavDrawer, select } from '@mhmo9
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
-import { filter, from, fromEvent, map, takeUntil } from 'rxjs'
+import { filter, from, fromEvent, map, takeUntil, tap } from 'rxjs'
 import { auth } from 'src/firebase/firebase'
 import { User, userContext } from 'src/user.context'
 
@@ -84,13 +84,17 @@ export default class FunkhausAdmin extends $LitElement() {
 		area.$current
 			.pipe(
 				takeUntil(this.disconnecting),
-				filter(r => r.has('admin') && r.get('admin')?.component !== this.tagName),
+				filter(r => r.has('admin')),
+				tap(r => {
+					console.log('Route', r.get('admin'))
+					if (['venue-management'].includes(r.get('admin')!.component.toLowerCase())) {
+						this.fullScreen = false
+					} else {
+						this.fullScreen = true
+					}
+				}),
 			)
-			.subscribe({
-				next: () => {
-					// this.fullScreen = false
-				},
-			})
+			.subscribe()
 	}
 
 	private setupRouteListeners(): void {

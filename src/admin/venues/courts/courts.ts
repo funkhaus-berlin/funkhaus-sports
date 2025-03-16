@@ -5,15 +5,15 @@ import { customElement, property, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
-import { venuesContext } from '../venue-context'
 import { formatEnum } from '../components/venue-form'
+import { venuesContext } from '../venue-context'
 import { courtsContext } from './context'
 import { CourtForm } from './court-form'
 
 // --- Court Management Component ---
 @customElement('court-management')
 export class CourtManagement extends $LitElement() {
-	@select<Court, Court>(courtsContext)
+	@select(courtsContext)
 	courts!: Map<string, Court>
 
 	@select(venuesContext, (venues: Map<string, Venue>) => Array.from(venues.values()))

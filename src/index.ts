@@ -7,7 +7,7 @@ import { fromEvent, take, takeUntil, tap, zip } from 'rxjs'
 import FunkhausAdmin from './admin/admin'
 import { courtsContext } from './admin/venues/courts/context'
 import { venuesContext } from './admin/venues/venue-context'
-import { Court, CourtsDB } from './db/courts.collection'
+import { CourtsDB } from './db/courts.collection'
 import { VenuesDB } from './db/venue-collection'
 import { VenueLandingPage } from './public/venues/venues'
 import './schmancy'
@@ -15,7 +15,7 @@ import './schmancy'
 export class AppIndex extends $LitElement() {
 	@query('schmancy-surface') surface!: HTMLElement
 
-	@select<Court, Court>(courtsContext)
+	@select(courtsContext)
 	courts!: Map<string, any>
 
 	async connectedCallback() {

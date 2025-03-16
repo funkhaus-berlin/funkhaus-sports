@@ -3,7 +3,7 @@ import dayjs from 'dayjs'
 import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { distinctUntilChanged, map, takeUntil } from 'rxjs'
-import { AvailabilityService } from '../availability.service'
+import { AvailabilityService } from '../../../bookingServices/availability.service'
 import { bookingContext } from '../context'
 import { TimeSlot } from '../types'
 
@@ -183,9 +183,9 @@ export class TimeSelectionStep extends $LitElement() {
 		return timeObj.format('h:mm A')
 	}
 
-	private _toggleViewMode() {
-		this.viewMode = this.viewMode === 'timeline' ? 'list' : 'timeline'
-	}
+	// private _toggleViewMode() {
+	// 	this.viewMode = this.viewMode === 'timeline' ? 'list' : 'timeline'
+	// }
 
 	// Scroll to the selected time slot and center it in the view
 	private _scrollToSelectedTime() {
@@ -214,41 +214,41 @@ export class TimeSelectionStep extends $LitElement() {
 	}
 
 	// Helper function to group time slots into 2-hour blocks
-	private _getTimeSlotBlocks() {
-		const blocks: TimeSlot[][] = []
-		let currentBlock: TimeSlot[] = []
-		let currentBlockStartHour = -1
+	// private _getTimeSlotBlocks() {
+	// 	const blocks: TimeSlot[][] = []
+	// 	let currentBlock: TimeSlot[] = []
+	// 	let currentBlockStartHour = -1
 
-		// Sort slots by time
-		const sortedSlots = [...this.timeSlots].sort((a, b) => a.value - b.value)
+	// 	// Sort slots by time
+	// 	const sortedSlots = [...this.timeSlots].sort((a, b) => a.value - b.value)
 
-		for (const slot of sortedSlots) {
-			const slotHour = Math.floor(slot.value / 60)
-			// Determine which 2-hour block this slot belongs to (0-1, 2-3, 4-5, etc.)
-			const blockIndex = Math.floor(slotHour / 2)
+	// 	for (const slot of sortedSlots) {
+	// 		const slotHour = Math.floor(slot.value / 60)
+	// 		// Determine which 2-hour block this slot belongs to (0-1, 2-3, 4-5, etc.)
+	// 		const blockIndex = Math.floor(slotHour / 2)
 
-			if (currentBlockStartHour === -1 || Math.floor(currentBlockStartHour / 2) !== blockIndex) {
-				// If we have slots in the current block, add it to our blocks array
-				if (currentBlock.length > 0) {
-					blocks.push([...currentBlock])
-				}
+	// 		if (currentBlockStartHour === -1 || Math.floor(currentBlockStartHour / 2) !== blockIndex) {
+	// 			// If we have slots in the current block, add it to our blocks array
+	// 			if (currentBlock.length > 0) {
+	// 				blocks.push([...currentBlock])
+	// 			}
 
-				// Start a new block
-				currentBlock = [slot]
-				currentBlockStartHour = slotHour
-			} else {
-				// Add to current block
-				currentBlock.push(slot)
-			}
-		}
+	// 			// Start a new block
+	// 			currentBlock = [slot]
+	// 			currentBlockStartHour = slotHour
+	// 		} else {
+	// 			// Add to current block
+	// 			currentBlock.push(slot)
+	// 		}
+	// 	}
 
-		// Add the last block if it has slots
-		if (currentBlock.length > 0) {
-			blocks.push(currentBlock)
-		}
+	// 	// Add the last block if it has slots
+	// 	if (currentBlock.length > 0) {
+	// 		blocks.push(currentBlock)
+	// 	}
 
-		return blocks
-	}
+	// 	return blocks
+	// }
 
 	render() {
 		// Container classes based on active state
@@ -263,7 +263,7 @@ export class TimeSelectionStep extends $LitElement() {
 		}
 
 		// For inactive state, we'll just use the timeline view
-		const displayMode = !this.active ? 'timeline' : this.viewMode
+		// const displayMode = !this.active ? 'timeline' : this.viewMode
 
 		return html`
 			<div class=${this.classMap(containerClasses)}>
@@ -374,51 +374,51 @@ export class TimeSelectionStep extends $LitElement() {
 		`
 	}
 
-	private _renderListView() {
-		// Get time slots organized in 2-hour blocks
-		const timeBlocks = this._getTimeSlotBlocks()
+	// private _renderListView() {
+	// 	// Get time slots organized in 2-hour blocks
+	// 	const timeBlocks = this._getTimeSlotBlocks()
 
-		return html`
-			<div class="pb-4">
-				${timeBlocks.map(block => {
-					if (block.length === 0) return ''
+	// 	return html`
+	// 		<div class="pb-4">
+	// 			${timeBlocks.map(block => {
+	// 				if (block.length === 0) return ''
 
-					const startTime = this._formatTimeDisplay(block[0].value)
-					const endTime = this._formatTimeDisplay(block[block.length - 1].value)
+	// 				const startTime = this._formatTimeDisplay(block[0].value)
+	// 				const endTime = this._formatTimeDisplay(block[block.length - 1].value)
 
-					return html`
-						<div class="mb-5 last:mb-0">
-							<!-- Block header -->
-							<div class="text-sm font-medium text-primary-default mb-2">${startTime} - ${endTime}</div>
+	// 				return html`
+	// 					<div class="mb-5 last:mb-0">
+	// 						<!-- Block header -->
+	// 						<div class="text-sm font-medium text-primary-default mb-2">${startTime} - ${endTime}</div>
 
-							<!-- Block time slots grid -->
-							<div class="grid grid-cols-4 gap-2">
-								${block.map(slot => {
-									const isSelected = this.value === slot.value
+	// 						<!-- Block time slots grid -->
+	// 						<div class="grid grid-cols-4 gap-2">
+	// 							${block.map(slot => {
+	// 								const isSelected = this.value === slot.value
 
-									return html`
-										<button
-											class="p-3 rounded-lg text-center transition-all duration-200
-                        ${isSelected
-												? 'bg-primary-default text-primary-on shadow-sm'
-												: slot.available
-												? 'bg-surface-high hover:bg-primary-default hover:bg-opacity-70 hover:text-primary-on hover:shadow-sm'
-												: 'bg-gray-200 text-gray-400 cursor-not-allowed'}"
-											@click=${() => this._handleTimeSelect(slot)}
-											@mouseover=${() => this._handleTimeHover(slot)}
-											@mouseleave=${this._handleTimeLeave}
-											?disabled=${!slot.available}
-											data-time-value=${slot.value}
-										>
-											<span class="block text-sm font-medium"> ${this._formatTimeDisplay(slot.value)} </span>
-										</button>
-									`
-								})}
-							</div>
-						</div>
-					`
-				})}
-			</div>
-		`
-	}
+	// 								return html`
+	// 									<button
+	// 										class="p-3 rounded-lg text-center transition-all duration-200
+	//                     ${isSelected
+	// 											? 'bg-primary-default text-primary-on shadow-sm'
+	// 											: slot.available
+	// 											? 'bg-surface-high hover:bg-primary-default hover:bg-opacity-70 hover:text-primary-on hover:shadow-sm'
+	// 											: 'bg-gray-200 text-gray-400 cursor-not-allowed'}"
+	// 										@click=${() => this._handleTimeSelect(slot)}
+	// 										@mouseover=${() => this._handleTimeHover(slot)}
+	// 										@mouseleave=${this._handleTimeLeave}
+	// 										?disabled=${!slot.available}
+	// 										data-time-value=${slot.value}
+	// 									>
+	// 										<span class="block text-sm font-medium"> ${this._formatTimeDisplay(slot.value)} </span>
+	// 									</button>
+	// 								`
+	// 							})}
+	// 						</div>
+	// 					</div>
+	// 				`
+	// 			})}
+	// 		</div>
+	// 	`
+	// }
 }
