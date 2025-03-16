@@ -1,12 +1,13 @@
-import { fullHeight, select, sheet, TableColumn } from '@mhmo91/schmancy'
+// src/admin/venues/venues.ts
+import { fullHeight, select, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
-import { when } from 'lit/directives/when.js'
-import { venuesContext } from './venue-context'
-import { formatEnum, VenueForm } from './venue-form'
 import { Venue } from 'src/db/venue-collection'
-
+import './admin-venue-card' // Import admin venue card
+import { venueContext, venuesContext } from './venue-context'
+import { VenueForm } from './venue-form'
+import './venue-detail' // Import venue detail view
 // --- Venue Management Component ---
 @customElement('venue-management')
 export class VenueManagement extends $LitElement() {
@@ -17,87 +18,57 @@ export class VenueManagement extends $LitElement() {
 
 	@state() loading: boolean = true
 	@state() error: string | null = null
+	@state() selectedVenue: Venue | null = null
+	@state() searchQuery: string = ''
 
-	// Status configuration
-	private statusConfig = {
-		active: { label: 'Active', icon: 'check_circle', next: 'maintenance', nextLabel: 'Under Maintenance' },
-		maintenance: { label: 'Maintenance', icon: 'construction', next: 'inactive', nextLabel: 'Inactive' },
-		inactive: { label: 'Inactive', icon: 'cancel', next: 'active', nextLabel: 'Active' },
+	// Handle venue click to show detail view
+	handleVenueClick(venue: Venue) {
+		this.selectedVenue = venue
+		venueContext.set(venue)
 	}
 
-	// Table columns definition
-	private columns: TableColumn[] = [
-		{ name: 'Name', key: 'name', align: 'left', sortable: true },
-		{
-			name: 'Type',
-			align: 'left',
-			render: (venue: Venue) => formatEnum(venue.venueType || ''),
-		},
-		{
-			name: 'Location',
-			align: 'left',
-			render: (venue: Venue) => html`${venue.address.city}, ${venue.address.country}`,
-		},
-		{
-			name: 'Facilities',
-			align: 'left',
-			render: (venue: Venue) => {
-				const facilitiesCount = venue.facilities?.length || 0
-				return html`
-					<div class="flex items-center gap-1">
-						<schmancy-icon>fitness_center</schmancy-icon>
-						<span>${facilitiesCount} ${facilitiesCount === 1 ? 'facility' : 'facilities'}</span>
-					</div>
-				`
-			},
-		},
-		{
-			name: 'Capacity',
-			align: 'left',
-			render: (venue: Venue) => (venue.maxCourtCapacity ? html`${venue.maxCourtCapacity} courts` : '-'),
-		},
-		{
-			name: 'Status',
-			align: 'left',
-			render: (venue: Venue) => {
-				const status = (venue.status as keyof typeof this.statusConfig) || 'inactive'
-				const config = this.statusConfig[status]
-				return html`
-					<schmancy-chip
-						@click=${(e: Event) => {
-							e.preventDefault()
-						}}
-						.selected=${status === 'active'}
-						.label=${config.label}
-						readOnly
-					>
-						${config.icon}
-					</schmancy-chip>
-				`
-			},
-		},
-		{
-			name: ' ',
-			align: 'right',
-			render: (venue: Venue) => html`
-				<schmancy-icon-button
-					@click=${() => {
-						sheet.open({
-							component: new VenueForm(venue),
-						})
-					}}
-					title="Edit"
-					>edit</schmancy-icon-button
-				>
-			`,
-		},
-	]
+	// Handle back button click from detail view
+	handleBackToVenues() {
+		this.selectedVenue = null
+	}
+
+	// Get venues filtered by search query
+	getFilteredVenues(): Venue[] {
+		const venues = Array.from(this.venues.values())
+
+		// Filter by search query if present
+		return this.searchQuery
+			? venues.filter(
+					venue =>
+						venue.name.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+						venue.address.city.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+						venue.venueType.toLowerCase().includes(this.searchQuery.toLowerCase()),
+			  )
+			: venues
+	}
+
+	// Handle search query changes
+	handleSearchChange(e: CustomEvent) {
+		this.searchQuery = e.detail.value
+	}
 
 	render() {
+		// If a venue is selected, show the detail view instead
+		if (this.selectedVenue) {
+			return html`
+				<venue-detail-view .venue=${this.selectedVenue} @back-to-venues=${this.handleBackToVenues}></venue-detail-view>
+			`
+		}
+
+		// Otherwise show the venues list
+		const venueCount = this.getFilteredVenues().length
+		const totalVenues = this.venues.size
+
 		return html`
 			<schmancy-surface ${fullHeight()} type="container" rounded="all" elevation="1">
-				<div ${fullHeight()} class="max-w-4xl mx-auto p-4 h-full grid grid-rows-[auto_1fr] gap-4">
-					<schmancy-flex justify="between" align="center" class="pb-4">
+				<div ${fullHeight()} class="max-w-6xl mx-auto p-6 h-full grid grid-rows-[auto_auto_1fr] gap-4">
+					<!-- Header with title -->
+					<div class="flex justify-between items-center mb-2">
 						<schmancy-typography type="headline">Venue Management</schmancy-typography>
 						<schmancy-button
 							variant="filled"
@@ -109,42 +80,79 @@ export class VenueManagement extends $LitElement() {
 						>
 							<schmancy-icon>add</schmancy-icon>Add Venue
 						</schmancy-button>
-					</schmancy-flex>
+					</div>
 
-					${when(
-						this.error,
-						() => html`<schmancy-alert variant="error">${this.error}</schmancy-alert>`,
-						() =>
-							when(venuesContext.ready === true, () =>
-								when(
-									this.venues.size === 0,
-									() => html`<schmancy-empty-state
-										icon="location_on"
-										title="No Venues Found"
-										description="Add a venue to get started managing your sports facilities."
-									>
-										<schmancy-button
-											variant="filled"
-											@click=${() => {
-												sheet.open({
-													component: new VenueForm(),
-												})
-											}}
-										>
-											Add Your First Venue
-										</schmancy-button>
-									</schmancy-empty-state>`,
-									() => html`<schmancy-table-v2
-										.cols=${this.columns.map(_ => '1fr').join(' ')}
-										.columns=${this.columns}
-										.data=${Array.from(this.venues.values())}
-										sortable
-									></schmancy-table-v2>`,
-								),
-							),
-					)}
+					<!-- Controls bar with search -->
+					<div class="rounded-lg p-3 mb-2">
+						<div class="flex flex-col md:flex-row justify-between gap-3">
+							<!-- Search input -->
+							<sch-input
+								placeholder="Search venues..."
+								class="w-full md:w-64"
+								.value=${this.searchQuery}
+								@change=${this.handleSearchChange}
+							></sch-input>
+
+							<div class="flex gap-2 items-center">
+								<!-- Filter info text -->
+								${this.searchQuery
+									? html`
+											<schmancy-typography type="label" token="sm" class="text-surface-on-variant mr-2">
+												Showing ${venueCount} of ${totalVenues} venues
+											</schmancy-typography>
+									  `
+									: ''}
+							</div>
+						</div>
+					</div>
+
+					<div class="overflow-y-auto">
+						<div class="flex flex-col gap-4 p-2">
+							${this.getFilteredVenues().map(venue => this.renderVenueCard(venue))}
+						</div>
+					</div>
 				</div>
 			</schmancy-surface>
+		`
+	}
+
+	// Render a single venue card with action buttons
+	renderVenueCard(venue: Venue) {
+		return html`
+			<div class="relative group">
+				<admin-venue-card .venue=${venue} @click=${() => this.handleVenueClick(venue)}></admin-venue-card>
+
+				<!-- Floating Action Buttons - visible on hover -->
+				<div
+					class="absolute top-5 right-5 z-10 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+				>
+					<schmancy-button
+						variant="filled tonal"
+						@click=${(e: Event) => {
+							e.stopPropagation() // Prevent venue card click
+							sheet.open({
+								component: new VenueForm(venue),
+							})
+						}}
+						title="Edit Venue"
+					>
+						<schmancy-icon>edit</schmancy-icon>
+						Edit
+					</schmancy-button>
+
+					<schmancy-button
+						variant="filled tonal"
+						@click=${(e: Event) => {
+							e.stopPropagation()
+							this.handleVenueClick(venue)
+						}}
+						title="View Courts"
+					>
+						<schmancy-icon>sports_tennis</schmancy-icon>
+						Courts
+					</schmancy-button>
+				</div>
+			</div>
 		`
 	}
 }

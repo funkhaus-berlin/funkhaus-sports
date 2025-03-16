@@ -1,3 +1,4 @@
+// src/admin/admin.ts
 import { ActiveRoute, area, fullHeight, schmancyNavDrawer, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
@@ -6,15 +7,15 @@ import { filter, from, fromEvent, map, takeUntil } from 'rxjs'
 import { auth } from 'src/firebase/firebase'
 import { User, userContext } from 'src/user.context'
 
-import { CourtManagement } from './courts/courts'
 import FunkhausSportsSignin from './signin'
+import { CourtManagement } from './venues/courts/courts'
 import { VenueManagement } from './venues/venues'
 
 @customElement('funkhaus-sports-admin')
 export default class FunkhausAdmin extends $LitElement() {
-	@state() activeTab: string = 'courts'
+	@state() activeTab: string = 'venues' // Changed default tab to venues
 	@state() fullScreen = false
-	@state() activeRoute: string = 'home'
+	@state() activeRoute: string = 'venues' // Changed default route
 
 	@select(userContext, user => user)
 	user!: User
@@ -31,6 +32,10 @@ export default class FunkhausAdmin extends $LitElement() {
 						this.redirectToLogin()
 					} else {
 						userContext.set(JSON.parse(JSON.stringify(user)))
+						// Initialize with venues as default
+						if (!area.current.get('admin')) {
+							this.navigateToVenues()
+						}
 					}
 				},
 			})
@@ -47,6 +52,23 @@ export default class FunkhausAdmin extends $LitElement() {
 			area: 'root',
 			historyStrategy: 'silent',
 		})
+	}
+
+	// Helper methods to navigate
+	private navigateToVenues(): void {
+		area.push({
+			component: VenueManagement,
+			area: 'admin',
+		})
+		this.activeTab = 'venue-management'
+	}
+
+	private navigateToCourts(): void {
+		area.push({
+			component: CourtManagement,
+			area: 'admin',
+		})
+		this.activeTab = 'court-management'
 	}
 
 	private setupFullscreenListeners(): void {
@@ -92,30 +114,9 @@ export default class FunkhausAdmin extends $LitElement() {
 				<schmancy-nav-drawer-navbar .hidden=${this.fullScreen} width="180px">
 					<schmancy-list>
 						<schmancy-list-item
-							.selected=${this.activeTab === 'court-management'}
-							@click=${() => {
-								area.push({
-									component: CourtManagement,
-									area: 'admin',
-								})
-								schmancyNavDrawer.close()
-							}}
-							rounded
-							variant="container"
-						>
-							<schmancy-flex gap="md">
-								<schmancy-icon>sports_tennis</schmancy-icon>
-								Courts
-							</schmancy-flex>
-						</schmancy-list-item>
-
-						<schmancy-list-item
 							.selected=${this.activeTab === 'venue-management'}
 							@click=${() => {
-								area.push({
-									component: VenueManagement,
-									area: 'admin',
-								})
+								this.navigateToVenues()
 								schmancyNavDrawer.close()
 							}}
 							rounded
@@ -124,6 +125,21 @@ export default class FunkhausAdmin extends $LitElement() {
 							<schmancy-flex gap="md">
 								<schmancy-icon>location_on</schmancy-icon>
 								Venues
+							</schmancy-flex>
+						</schmancy-list-item>
+
+						<schmancy-list-item
+							.selected=${this.activeTab === 'court-management'}
+							@click=${() => {
+								this.navigateToCourts()
+								schmancyNavDrawer.close()
+							}}
+							rounded
+							variant="container"
+						>
+							<schmancy-flex gap="md">
+								<schmancy-icon>sports_tennis</schmancy-icon>
+								Courts
 							</schmancy-flex>
 						</schmancy-list-item>
 
@@ -149,7 +165,7 @@ export default class FunkhausAdmin extends $LitElement() {
 
 				<schmancy-nav-drawer-content class=${this.classMap(contentDrawerClasses)}>
 					<schmancy-grid ${fullHeight()} rows="${this.fullScreen ? '1fr' : 'auto 1fr'}">
-						<schmancy-area name="admin" .default=${CourtManagement}></schmancy-area>
+						<schmancy-area name="admin" .default=${VenueManagement}></schmancy-area>
 					</schmancy-grid>
 				</schmancy-nav-drawer-content>
 			</schmancy-nav-drawer>

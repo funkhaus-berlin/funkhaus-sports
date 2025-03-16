@@ -1,10 +1,13 @@
-import { $notify, SchmancyInputChangeEvent, SchmancySelectChangeEvent, sheet } from '@mhmo91/schmancy'
+// src/admin/courts/form.ts
+import { $notify, SchmancyInputChangeEvent, SchmancySelectChangeEvent, select, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
-import { customElement, state } from 'lit/decorators.js'
+import { customElement, property, state } from 'lit/decorators.js'
 import { takeUntil } from 'rxjs'
 import { Court, CourtsDB, CourtTypeEnum, Pricing, SportTypeEnum } from 'src/db/courts.collection'
+import { Venue } from 'src/db/venue-collection'
 import { confirm } from 'src/schmancy'
+import { venuesContext } from '../venue-context'
 
 // Format enum values to display labels
 export const formatEnum = (value: string): string =>
@@ -21,7 +24,13 @@ export class CourtForm extends $LitElement() {
 		courtType: 'indoor',
 		pricing: { baseHourlyRate: 0 },
 		status: 'active',
+		venueId: '', // Added venueId property
 	}
+
+	@property({ type: Boolean }) venueSelectionDisabled = false
+
+	@select(venuesContext, (venues: Map<string, Venue>) => Array.from(venues.values()))
+	venues: Venue[] = []
 
 	constructor(private editingCourt?: Court) {
 		super()
@@ -40,6 +49,19 @@ export class CourtForm extends $LitElement() {
 							<schmancy-typography type="title">Basic Information</schmancy-typography>
 							<schmancy-divider></schmancy-divider>
 						</sch-grid>
+
+						<!-- Venue Selection -->
+						<schmancy-select
+							label="Venue"
+							required
+							?disabled=${this.venueSelectionDisabled}
+							.value=${this.court.venueId || ''}
+							@change=${(e: SchmancySelectChangeEvent) => this.updateProps('venueId', e.detail.value as string)}
+						>
+							${this.venues.map(
+								venue => html`<schmancy-option .value=${venue.id} .label=${venue.name}>${venue.name}</schmancy-option>`,
+							)}
+						</schmancy-select>
 
 						<sch-input
 							label="Court Name"
@@ -167,6 +189,11 @@ export class CourtForm extends $LitElement() {
 		// Basic validation
 		if (!this.court.name?.trim()) {
 			$notify.error('Court name is required')
+			return
+		}
+
+		if (!this.court.venueId) {
+			$notify.error('Please select a venue for this court')
 			return
 		}
 

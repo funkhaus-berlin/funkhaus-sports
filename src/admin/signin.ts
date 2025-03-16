@@ -4,7 +4,8 @@ import { sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/aut
 import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { auth } from 'src/firebase/firebase'
-import { CourtManagement } from './courts/courts'
+import { VenueManagement } from './venues/venues'
+import { userContext } from 'src/user.context'
 @customElement('funkhaus-sports-signin')
 export default class FunkhausSportsSignin extends $LitElement() {
 	@state() credentials = {
@@ -24,8 +25,9 @@ export default class FunkhausSportsSignin extends $LitElement() {
 				this.busy = false
 				console.log('logged in')
 				console.log(auth)
+				userContext.set(auth.user)
 				area.push({
-					component: CourtManagement,
+					component: VenueManagement,
 					area: 'admin',
 				})
 			})

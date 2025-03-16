@@ -10,7 +10,7 @@ import { Court, Duration, TimeSlot } from './types'
 // Import Stripe related dependencies
 import { when } from 'lit/directives/when.js'
 import { firstValueFrom } from 'rxjs'
-import { courtsContext } from 'src/admin/courts/context'
+import { courtsContext } from 'src/admin/venues/courts/context'
 import { CourtAssignmentService, CourtAssignmentStrategy } from './court-assignment.service' // ← Add this import
 
 /**

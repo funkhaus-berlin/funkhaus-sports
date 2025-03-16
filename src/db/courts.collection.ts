@@ -1,124 +1,70 @@
+// src/db/courts.collection.ts
+import { Observable } from 'rxjs'
 import { FirestoreService } from 'src/firebase/firestore.service'
 
-// Enums for better type safety
-export type CourtType = 'indoor' | 'outdoor' | 'covered'
-
+// Court enums
 export enum CourtTypeEnum {
-	INDOOR = 'indoor',
-	OUTDOOR = 'outdoor',
-	COVERED = 'covered',
+	indoor = 'indoor',
+	outdoor = 'outdoor',
+	roofed = 'roofed',
+	heated = 'heated',
 }
-
-export type SportType =
-	| 'paddleTennis'
-	| 'tennis'
-	| 'basketball'
-	| 'volleyball'
-	| 'badminton'
-	| 'soccer'
-	| 'pickleball'
-	| 'squash'
-	| 'racquetball'
-	| 'other'
 
 export enum SportTypeEnum {
-	PADDLE_TENNIS = 'paddleTennis',
-	TENNIS = 'tennis',
-	BASKETBALL = 'basketball',
-	VOLLEYBALL = 'volleyball',
-	BADMINTON = 'badminton',
-	SOCCER = 'soccer',
-	PICKLEBALL = 'pickleball',
-	SQUASH = 'squash',
-	RACQUETBALL = 'racquetball',
-	OTHER = 'other',
+	tennis = 'tennis',
+	pickleball = 'pickleball',
+	badminton = 'badminton',
+	squash = 'squash',
+	paddleTennis = 'paddleTennis',
+	tableTennis = 'tableTennis',
+	basketball = 'basketball',
+	volleyball = 'volleyball',
+	handball = 'handball',
 }
 
-export type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
-
-export enum DayOfWeekEnum {
-	MONDAY = 'monday',
-	TUESDAY = 'tuesday',
-	WEDNESDAY = 'wednesday',
-	THURSDAY = 'thursday',
-	FRIDAY = 'friday',
-	SATURDAY = 'saturday',
-	SUNDAY = 'sunday',
-}
-
-// Structured interfaces for better organization
-export interface TimeSlot {
-	startTime: string
-	endTime: string
-}
-
-export interface MaintenanceSchedule {
-	day: DayOfWeek
-	timeSlots: TimeSlot[]
-	recurrence?: 'weekly' | 'biweekly' | 'monthly'
-	notes?: string
-}
-
-export interface Facility {
-	id: string
-	name: string
-	description?: string
-	available: boolean
-}
-
+// Court pricing model
 export interface Pricing {
 	baseHourlyRate: number
 	peakHourRate?: number
 	weekendRate?: number
+	holidayRate?: number
 	memberDiscount?: number
-	minimumBookingTime?: number // in minutes
 }
 
-export interface AvailabilitySchedule {
-	day: DayOfWeek
-	openingTime: string
-	closingTime: string
-	isClosed?: boolean
-}
-
+// Court interface with venue support
 export interface Court {
 	id: string
 	name: string
-	venueId: string // Reference to the venue this court belongs to
-	sportTypes: SportType[] // Support multi-purpose courts
-	courtType: CourtType
-
-	// Dimensions and capacity
-	dimensions?: {
-		length: number
-		width: number
-		unit: 'meters' | 'feet'
-	}
-	capacity?: number
-
-	// Pricing structure
+	venueId: string // Add reference to parent venue
+	courtType: string
+	sportTypes: string[]
+	surface?: string
+	indoor?: boolean
+	accessible?: boolean
+	hasLighting?: boolean
+	available?: boolean
 	pricing: Pricing
-
-	// Facilities and features
-	facilities: Facility[]
-
-	// Scheduling information
-	regularSchedule: AvailabilitySchedule[]
-	maintenanceSchedule?: MaintenanceSchedule[]
-
-	// Status information
 	status: 'active' | 'maintenance' | 'inactive'
-
-	// Media
-	images?: string[] // URLs to images
-	virtualTourUrl?: string
-
-	// Metadata
-	createdAt: string
-	updatedAt: string
-	createdBy: string
-	lastUpdatedBy: string
+	createdAt?: string
+	updatedAt?: string
 }
 
-// Service for managing courts
-export const CourtsDB = new FirestoreService<Court>('courts')
+// Create a Court firestore service
+class CourtsService extends FirestoreService<Court> {
+	constructor() {
+		super('courts')
+	}
+
+	// Get courts by venue
+	getByVenue(venueId: string): Observable<Map<string, Court>> {
+		return this.getCollection([
+			{
+				key: 'venueId',
+				value: venueId,
+				operator: '==',
+			},
+		])
+	}
+}
+
+export const CourtsDB = new CourtsService()
