@@ -1,9 +1,8 @@
 import { SchmancyTheme } from '@mhmo91/schmancy'
 import { Appearance, Stripe, StripeElements, loadStripe } from '@stripe/stripe-js'
 import { BehaviorSubject, from, map, switchMap, tap } from 'rxjs'
-
 export const PUBLISHABLE_KEY = import.meta.env.DEV
-	? 'pk_test_51QlYjPKb7GiQmYfukrVvsIDIC1khW2HQgv4Lh9AFn02ZoyCU9rauPkFOWkK4sYum7BUN2XI14yrkH23ivvqNiTqW00wynnT76j'
+	? 'pk_test_51R2BaDDCyjpKeQTnOtoBfOdXM8ZoXzo6Ou8r9SyJLvEZUkWqiJLz50PXkfhhvzPfxFVcysLd0RNJz5CMJV3Jf4uU00JAAIVSYk'
 	: 'pk_live_51Om1siKOjLfImK4i9mR0y7bBT9o0dWqGOLjNpSJgkewp0Jz4Hfgpiyv4f2IlcZlLky1dKH3YkYub6FSEkpgAATUD00FsCFDsmV'
 
 // Export the promise directly.

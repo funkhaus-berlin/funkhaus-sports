@@ -2812,9 +2812,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@mhmo91/schmancy@npm:^0.2.129":
-  version: 0.2.129
-  resolution: "@mhmo91/schmancy@npm:0.2.129"
+"@mhmo91/schmancy@npm:^0.2.130":
+  version: 0.2.130
+  resolution: "@mhmo91/schmancy@npm:0.2.130"
   dependencies:
     "@floating-ui/dom": "npm:^1.6.13"
     "@lit-labs/motion": "npm:^1.0.8"
@@ -2842,7 +2842,7 @@ __metadata:
   peerDependencies:
     lit: ^3.2.1
     tailwindcss: ^4.0.0
-  checksum: 10c0/1d2d1df101f6d72a31cd2251d29e133a037dba06e871c4aa463a678f79084b234bb50d0767a69da60a407f1a8c80b9d31d779961f608f9c3f54135165ca15cec
+  checksum: 10c0/f66bc1b09bf5564ff44853398bfbe273a0a85da0c7ae6f30c8689e3f6ad09f8624b5348989216423710aa19d8c4d28f2c6d8a5d67afc8e40bb9a242ddcff49e9
   languageName: node
   linkType: hard
 
@@ -4328,9 +4328,9 @@ __metadata:
   linkType: hard
 
 "caniuse-lite@npm:^1.0.30001688, caniuse-lite@npm:^1.0.30001702":
-  version: 1.0.30001704
-  resolution: "caniuse-lite@npm:1.0.30001704"
-  checksum: 10c0/4efa0ece51ef58e7ce7e7c8cd7b50372bcb910581a47397be5c086c046c3cd436d123b734351fb20f638c322b339198edf89b5b632ff59bdd171c74ff7f4efcf
+  version: 1.0.30001705
+  resolution: "caniuse-lite@npm:1.0.30001705"
+  checksum: 10c0/f135a9075e36cc28a66a8f37145dca2bdc45ea18fd9fae2569e781e0f7156962d4fcac374640aa6421a70c6e8d23587bf9386f5561a1fe81bbbf36055b807243
   languageName: node
   linkType: hard
 
@@ -4785,9 +4785,9 @@ __metadata:
   linkType: hard
 
 "electron-to-chromium@npm:^1.5.73":
-  version: 1.5.118
-  resolution: "electron-to-chromium@npm:1.5.118"
-  checksum: 10c0/7082f349d2bf5cc04cc66b14d53caa198200e9bd7c80b57652e4c098ac3af64b9958d5b19b657a7b2048f3d1a3098978d6a63bcfe9ce2bdba38d418fbc309859
+  version: 1.5.119
+  resolution: "electron-to-chromium@npm:1.5.119"
+  checksum: 10c0/f4ca0eb3af21d16d2c1fd480c5a43428ce4423ca887338d69bd3eadae818b6d6e799c62b1baac1bc4f76e4226f5fb15a6b0dc8965f601ac053e86508d3e8e41c
   languageName: node
   linkType: hard
 
@@ -5449,7 +5449,7 @@ __metadata:
   resolution: "funkhaus-sports@workspace:."
   dependencies:
     "@lit-labs/virtualizer": "npm:^2.1.0"
-    "@mhmo91/schmancy": "npm:^0.2.129"
+    "@mhmo91/schmancy": "npm:^0.2.130"
     "@netlify/functions": "npm:^3.0.1"
     "@stripe/stripe-js": "npm:^6.0.0"
     "@tailwindcss/postcss": "npm:^4.0.14"
@@ -6423,11 +6423,11 @@ __metadata:
   linkType: hard
 
 "keyv@npm:^5.3.1":
-  version: 5.3.1
-  resolution: "keyv@npm:5.3.1"
+  version: 5.3.2
+  resolution: "keyv@npm:5.3.2"
   dependencies:
     "@keyv/serialize": "npm:^1.0.3"
-  checksum: 10c0/d5ffe3d2d547a50a5e1189d5acbc0480821c22c025082851a8eeb26667d789f3f7b7ee7beb933660d98c239f7e7c403c652a511693670a78a73f06cd411e04fa
+  checksum: 10c0/293ebd052e7889685b8b770b7b4c9047aaafd821f5446b5b5ffa1cc6e9b830ee752f7b2d108bd96e1277c644c89f02a39e09c45159a6cb87663e183c4405989a
   languageName: node
   linkType: hard
 
@@ -7004,11 +7004,11 @@ __metadata:
   linkType: hard
 
 "nanoid@npm:^3.3.8":
-  version: 3.3.9
-  resolution: "nanoid@npm:3.3.9"
+  version: 3.3.10
+  resolution: "nanoid@npm:3.3.10"
   bin:
     nanoid: bin/nanoid.cjs
-  checksum: 10c0/4515abe53db7b150cf77074558efc20d8e916d6910d557b5ce72e8bbf6f8e7554d3d7a0d180bfa65e5d8e99aa51b207aa8a3bf5f3b56233897b146d592e30b24
+  checksum: 10c0/34eca53d4d95cb538b05a9fa07e4b2ab941906852202edb00824c8004d71d34592704e40b0ae608bf756b1ffd91ff9359d2ea59f8d92e1a7b769e0ca46368e84
   languageName: node
   linkType: hard
 

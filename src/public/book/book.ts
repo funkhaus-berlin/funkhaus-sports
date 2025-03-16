@@ -1,18 +1,12 @@
-// src/public/book/book.ts
+// src/public/book/book.ts - Modified to use the new components
 
 import { $notify, fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { html, PropertyValues } from 'lit'
 import { customElement, query, state } from 'lit/decorators.js'
-import { BookingService } from 'src/bookingServices/booking.service'
-import { Booking, bookingContext } from './context'
-import './steps'
-import { Duration, TimeSlot } from './types'
-// Import Stripe related dependencies
-import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { when } from 'lit/directives/when.js'
-import { catchError, distinctUntilChanged, finalize, firstValueFrom, of, take, tap } from 'rxjs'
+import { catchError, distinctUntilChanged, finalize, firstValueFrom, of, take } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { AvailabilityService } from 'src/bookingServices/availability'
 import {
@@ -21,9 +15,13 @@ import {
 	CourtPreferences,
 } from 'src/bookingServices/court-assignment.service'
 import { Court } from 'src/db/courts.collection'
+import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
+import { Booking, bookingContext } from './context'
+import { Duration, TimeSlot } from './types'
+// Import our new components
+import { PaymentStatusHandler } from './payment-status-handler'
+import './steps'
 import bookingSummery from './steps/booking-summery'
-import { StripeElements, StripePaymentElement } from '@stripe/stripe-js'
-import stripePromise, { $stripe, appearance, $stripeElements } from '../stripe'
 
 /**
  * Court booking component with Stripe integration
@@ -44,16 +42,17 @@ export class CourtBookingSystem extends $LitElement() {
 	@state() error: string | null = null
 	@state() success: boolean = false
 	@state() courtPreferences: CourtPreferences = {}
+	@state() bookingComplete: boolean = false
 
 	@query('#timer') timer!: HTMLDivElement
+	@query('#stripe-element') stripeElement!: HTMLElement
 
 	@select(bookingContext) booking!: Booking
 
 	// API services
 	private availabilityService: AvailabilityService
 	private courtAssignmentService: CourtAssignmentService
-	bookingService: BookingService
-	private auth = getAuth()
+	private paymentStatusHandler: PaymentStatusHandler
 
 	// Updated booking steps with Court Preferences as a separate step
 	private bookingSteps = [
@@ -68,88 +67,73 @@ export class CourtBookingSystem extends $LitElement() {
 		super()
 		this.availabilityService = new AvailabilityService()
 		this.courtAssignmentService = new CourtAssignmentService(this.availabilityService)
-		this.bookingService = new BookingService()
+		this.paymentStatusHandler = new PaymentStatusHandler()
 
-		// Listen for auth state changes
-		onAuthStateChanged(this.auth, user => {
-			if (user) {
-				// User is signed in
-				bookingContext.set(
-					{
-						userId: user.uid,
-						userName: user.displayName || user.email || 'Anonymous User',
-					},
-					true,
-				)
-			}
-		})
+		// Show a welcome message when the component loads
+		setTimeout(() => {
+			$notify.info('Welcome to Funkhaus Sports! Select a date to start your booking.')
+		}, 1000)
 	}
-
-	elements: StripeElements | undefined
-	paymentElement: StripePaymentElement | undefined
 
 	async connectedCallback() {
 		super.connectedCallback()
+
 		// Create and append the payment element slot
 		const slot = document.createElement('slot')
 		slot.name = 'stripe-element'
 		slot.slot = 'stripe-element'
 		this.append(slot)
 
-		const stripe = await stripePromise
-		// Initialize Stripe elements when payment amount is available
-		$stripe.pipe(distinctUntilChanged(), take(1)).subscribe(amount => {
-			this.elements = stripe?.elements({
-				fonts: [
-					{
-						src: 'url(https://ticket.funkhaus-berlin.net/assets/GT-Eesti-Pro-Display-Regular-Czpp09nv.woff)',
-						family: 'GT-Eesti-Display-Regular',
-						style: 'normal',
-					},
-				],
-				mode: 'payment',
-				appearance: appearance(),
-				currency: 'eur',
-				amount: amount * 100,
-			})
+		// const stripe = await stripePromise
 
-			const paymentElementOptions = {
-				layout: 'tabs',
-				billingDetails: {},
-				fields: {
-					billingDetails: {
-						address: 'never',
-					},
-				},
+		// Initialize Stripe elements when payment amount is available
+		$stripe.pipe(distinctUntilChanged(), take(1)).subscribe(async amount => {
+			try {
+				const stripe = await stripePromise
+				if (!stripe) return
+
+				const elements = stripe?.elements({
+					fonts: [
+						{
+							src: 'url(https://ticket.funkhaus-berlin.net/assets/GT-Eesti-Pro-Display-Regular-Czpp09nv.woff)',
+							family: 'GT-Eesti-Display-Regular',
+							style: 'normal',
+						},
+					],
+					mode: 'payment',
+					appearance: appearance(),
+					currency: 'eur',
+					amount: amount * 100,
+				})
+
+				// Create payment element with options from handler
+				const paymentElement = elements.create('payment', this.paymentStatusHandler.getPaymentElementOptions())
+
+				// Mount the payment element after the component has rendered
+				this.updateComplete.then(() => {
+					if (this.stripeElement) {
+						paymentElement.mount('#stripe-element')
+						$stripeElements.next(elements)
+					}
+				})
+			} catch (error) {
+				console.error('Failed to initialize Stripe:', error)
+				$notify.error('Payment system initialization failed. Please try again later.')
 			}
-			// @ts-ignore
-			this.paymentElement = this.elements?.create('payment', {
-				...paymentElementOptions,
-			}) as StripePaymentElement
-			this.paymentElement.mount('#stripe-element')
-			this.paymentElement.on('ready', () => {
-				$stripeElements.next(this.elements)
-			})
+		})
+	}
+
+	protected firstUpdated(_changedProperties: PropertyValues): void {
+		// Check for returning payment status
+		this.paymentStatusHandler.checkUrlForPaymentStatus().subscribe(result => {
+			if (result.processed && result.success && result.bookingId) {
+				// If returning from a successful payment, show booking confirmation
+				this.bookingComplete = true
+				// Find the selected court for the confirmation page
+				this.selectedCourt = Array.from(this.availableCourts.values()).find(court => court.id === this.booking.courtId)
+			}
 		})
 
-		// Update payment amount when it changes
-		$stripe
-			.pipe(
-				distinctUntilChanged(),
-				tap({
-					next: amount => {
-						const elements = $stripeElements.value
-						if (elements) {
-							elements.update({
-								amount: amount * 100,
-							})
-						}
-					},
-				}),
-			)
-			.subscribe()
-	}
-	protected firstUpdated(_changedProperties: PropertyValues): void {
 		// Load courts
 		this.loadingCourts = true
 
@@ -158,6 +142,11 @@ export class CourtBookingSystem extends $LitElement() {
 		if (this.booking.date && this.booking.startTime) this.step = 3
 		if (this.booking.date && this.booking.startTime && this.courtPreferences) this.step = 4
 		if (this.booking.date && this.booking.startTime && this.courtPreferences && this.booking.endTime) this.step = 5
+
+		// Set initial price for Stripe
+		if (this.booking.price) {
+			$stripe.next(this.booking.price)
+		}
 	}
 
 	// Get total price for the booking
@@ -215,6 +204,9 @@ export class CourtBookingSystem extends $LitElement() {
 			endTime,
 			price: duration.price,
 		})
+
+		// Update Stripe with the new price
+		$stripe.next(duration.price)
 
 		// Begin automatic court assignment
 		this.bookingInProgress = true
@@ -347,9 +339,6 @@ export class CourtBookingSystem extends $LitElement() {
 		`
 	}
 
-	// Main render method
-	@state() bookingComplete: boolean = false
-
 	// Reset the booking and start a new one
 	private resetBooking() {
 		this.bookingComplete = false
@@ -361,13 +350,20 @@ export class CourtBookingSystem extends $LitElement() {
 		// Reset booking context
 		bookingContext.set({
 			id: '',
-			userId: this.auth.currentUser?.uid || '',
-			userName: this.auth.currentUser?.displayName || '',
+			userId: '',
+			userName: '',
 			courtId: '',
 			date: '',
 			startTime: '',
 			endTime: '',
 			price: 0,
+			customerPhone: '',
+			customerAddress: {
+				street: '',
+				city: '',
+				postalCode: '',
+				country: '',
+			},
 		})
 	}
 
@@ -412,7 +408,7 @@ export class CourtBookingSystem extends $LitElement() {
 		`
 	}
 
-	// Listen for booking complete event
+	// Handle booking complete event
 	private handleBookingComplete(_e: CustomEvent) {
 		this.bookingComplete = true
 		this.selectedCourt = Array.from(this.availableCourts.values()).find(court => court.id === this.booking.courtId)
@@ -455,9 +451,18 @@ export class CourtBookingSystem extends $LitElement() {
 			`,
 			() => html`
 				${bookingSummery(this.booking, this.selectedCourt!, this.duration, this.courtPreferences)}
-				<booking-payment-step @booking-complete=${this.handleBookingComplete}>
+
+				<!-- Replace the standard payment step with our improved checkout form -->
+				<funkhaus-checkout-form
+					.booking=${this.booking}
+					.selectedCourt=${this.selectedCourt}
+					@booking-complete=${this.handleBookingComplete}
+				>
 					<slot slot="stripe-element" name="stripe-element"></slot>
-				</booking-payment-step>
+				</funkhaus-checkout-form>
+
+				<!-- Stripe Element Container -->
+				<div id="stripe-element" class="mt-4"></div>
 			`,
 		)}`
 	}
