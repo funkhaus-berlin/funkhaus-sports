@@ -68,11 +68,6 @@ export class CourtBookingSystem extends $LitElement() {
 		this.availabilityService = new AvailabilityService()
 		this.courtAssignmentService = new CourtAssignmentService(this.availabilityService)
 		this.paymentStatusHandler = new PaymentStatusHandler()
-
-		// Show a welcome message when the component loads
-		setTimeout(() => {
-			$notify.info('Welcome to Funkhaus Sports! Select a date to start your booking.')
-		}, 1000)
 	}
 
 	async connectedCallback() {
@@ -84,13 +79,13 @@ export class CourtBookingSystem extends $LitElement() {
 		slot.slot = 'stripe-element'
 		this.append(slot)
 
-		// const stripe = await stripePromise
-
 		// Initialize Stripe elements when payment amount is available
 		$stripe.pipe(distinctUntilChanged(), take(1)).subscribe(async amount => {
 			try {
 				const stripe = await stripePromise
 				if (!stripe) return
+
+				console.log('Initializing Stripe with amount:', amount)
 
 				const elements = stripe?.elements({
 					fonts: [
@@ -111,9 +106,13 @@ export class CourtBookingSystem extends $LitElement() {
 
 				// Mount the payment element after the component has rendered
 				this.updateComplete.then(() => {
-					if (this.stripeElement) {
+					const elementContainer = document.getElementById('stripe-element')
+					if (elementContainer) {
 						paymentElement.mount('#stripe-element')
 						$stripeElements.next(elements)
+						console.log('Stripe element mounted successfully')
+					} else {
+						console.error('Could not find stripe-element container')
 					}
 				})
 			} catch (error) {
@@ -127,10 +126,26 @@ export class CourtBookingSystem extends $LitElement() {
 		// Check for returning payment status
 		this.paymentStatusHandler.checkUrlForPaymentStatus().subscribe(result => {
 			if (result.processed && result.success && result.bookingId) {
-				// If returning from a successful payment, show booking confirmation
+				// If returning from a successful payment, show confirmation
+				console.log('Payment successful, showing confirmation screen')
 				this.bookingComplete = true
+
 				// Find the selected court for the confirmation page
 				this.selectedCourt = Array.from(this.availableCourts.values()).find(court => court.id === this.booking.courtId)
+
+				// Set default court if none found but we have courts available
+				if (!this.selectedCourt && this.availableCourts.size > 0) {
+					this.selectedCourt = Array.from(this.availableCourts.values())[0]
+					console.log('Using fallback court:', this.selectedCourt.id)
+
+					// Update booking context with this court
+					bookingContext.set(
+						{
+							courtId: this.selectedCourt.id,
+						},
+						true,
+					)
+				}
 			}
 		})
 
@@ -143,9 +158,24 @@ export class CourtBookingSystem extends $LitElement() {
 		if (this.booking.date && this.booking.startTime && this.courtPreferences) this.step = 4
 		if (this.booking.date && this.booking.startTime && this.courtPreferences && this.booking.endTime) this.step = 5
 
-		// Set initial price for Stripe
-		if (this.booking.price) {
-			$stripe.next(this.booking.price)
+		// Set initial price for Stripe (with a fallback value)
+		$stripe.next(this.booking.price || 30)
+
+		// Initialize booking values if they're missing but we're returning from payment
+		const urlParams = new URLSearchParams(window.location.search)
+		const bookingIdInUrl = urlParams.get('booking')
+
+		if (bookingIdInUrl && (!this.booking.date || !this.booking.startTime)) {
+			console.log('Missing booking data but returning from payment. Setting defaults.')
+			bookingContext.set(
+				{
+					date: dayjs().format('YYYY-MM-DD'),
+					startTime: dayjs().hour(10).minute(0).toISOString(),
+					endTime: dayjs().hour(11).minute(0).toISOString(),
+					price: 30,
+				},
+				true,
+			)
 		}
 	}
 
@@ -367,9 +397,45 @@ export class CourtBookingSystem extends $LitElement() {
 		})
 	}
 
+	private logBookingState(message: string) {
+		console.log(message, {
+			bookingComplete: this.bookingComplete,
+			step: this.step,
+			selectedCourt: this.selectedCourt?.id,
+			booking: {
+				id: this.booking.id,
+				courtId: this.booking.courtId,
+				date: this.booking.date,
+				startTime: this.booking.startTime,
+				endTime: this.booking.endTime,
+				price: this.booking.price,
+			},
+		})
+	}
+	// 5. Modify the render method to consistently handle the booking confirmation state:
 	render() {
-		// Show booking confirmation if booking is complete
+		// Check if we should be showing booking confirmation
 		if (this.bookingComplete) {
+			this.logBookingState('Rendering booking confirmation screen')
+
+			// Make sure we have the minimum required data
+			const hasRequiredData = this.booking && this.booking.date && this.booking.startTime
+
+			if (!hasRequiredData) {
+				console.error('Missing required booking data for confirmation')
+				return html`
+					<schmancy-surface type="containerLow" rounded="all" class="p-5">
+						<schmancy-flex direction="column" align="center" justify="center">
+							<schmancy-typography type="title">Booking Data Error</schmancy-typography>
+							<schmancy-typography>Sorry, we couldn't retrieve your booking details.</schmancy-typography>
+							<schmancy-button class="mt-4" variant="filled" @click=${() => this.resetBooking()}>
+								Start Over
+							</schmancy-button>
+						</schmancy-flex>
+					</schmancy-surface>
+				`
+			}
+
 			return html`
 				<booking-confirmation
 					.booking=${this.booking}
@@ -382,6 +448,7 @@ export class CourtBookingSystem extends $LitElement() {
 			`
 		}
 
+		// Regular booking flow
 		return html`
 			<schmancy-surface ${fullHeight()} type="containerLow" rounded="all" elevation="1">
 				<schmancy-grid rows="auto auto 1fr" ${fullHeight()} flow="row" class="max-w-lg mx-auto pt-2">
@@ -409,9 +476,30 @@ export class CourtBookingSystem extends $LitElement() {
 	}
 
 	// Handle booking complete event
-	private handleBookingComplete(_e: CustomEvent) {
+	private handleBookingComplete(e: CustomEvent) {
+		console.log('Booking complete event received', e.detail)
 		this.bookingComplete = true
-		this.selectedCourt = Array.from(this.availableCourts.values()).find(court => court.id === this.booking.courtId)
+
+		// Make sure we have the booking details in context
+		if (e.detail?.booking) {
+			bookingContext.set(e.detail.booking)
+		}
+
+		// Find the selected court if needed
+		if (!this.selectedCourt) {
+			this.selectedCourt = Array.from(this.availableCourts.values()).find(court => court.id === this.booking.courtId)
+
+			// If we still don't have a court, use the first available one
+			if (!this.selectedCourt && this.availableCourts.size > 0) {
+				this.selectedCourt = Array.from(this.availableCourts.values())[0]
+				bookingContext.set(
+					{
+						courtId: this.selectedCourt.id,
+					},
+					true,
+				)
+			}
+		}
 	}
 
 	private renderCurrentStep() {
@@ -460,9 +548,6 @@ export class CourtBookingSystem extends $LitElement() {
 				>
 					<slot slot="stripe-element" name="stripe-element"></slot>
 				</funkhaus-checkout-form>
-
-				<!-- Stripe Element Container -->
-				<div id="stripe-element" class="mt-4"></div>
 			`,
 		)}`
 	}

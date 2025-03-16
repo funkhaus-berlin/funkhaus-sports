@@ -16,6 +16,7 @@ import { Booking, bookingContext } from '../context'
 import { FunkhausSportsTermsAndConditions } from '../terms-and-conditions'
 import countries from 'src/assets/countries'
 import { repeat } from 'lit/directives/repeat.js'
+import { sheet } from '@mhmo91/schmancy'
 
 /**
  * Checkout form component with Stripe integration
@@ -159,6 +160,34 @@ export class CheckoutForm extends $LitElement() {
 
 	// Process the Stripe payment
 	private processStripePayment(userId: string) {
+		// First generate a booking ID if we don't have one yet
+		const bookingId = this.booking.id || `booking-${this.generateUUID()}`
+
+		// Update booking context with the ID and customer details
+		bookingContext.set(
+			{
+				id: bookingId,
+			},
+			true,
+		)
+
+		// Create the booking first
+		const bookingData: Booking = {
+			...this.booking,
+			id: bookingId,
+			userName: this.formData.name,
+			customerEmail: this.formData.email,
+			customerPhone: this.formData.phoneNumber,
+			customerAddress: {
+				street: this.formData.address,
+				city: this.formData.city,
+				postalCode: this.formData.postalCode,
+				country: this.formData.country,
+			},
+			userId: userId,
+			paymentStatus: 'pending',
+		}
+
 		// Prepare payment data with the correct structure
 		const paymentData = {
 			amount: Math.round(this.booking.price * 100), // Convert to cents
@@ -171,51 +200,62 @@ export class CheckoutForm extends $LitElement() {
 			city: this.formData.city,
 			country: this.formData.country,
 			courtId: this.booking.courtId,
-			eventID: this.booking.id || 'court-booking',
+			eventID: 'court-booking',
 			uid: userId,
-			bookingId: this.booking.id,
+			bookingId: bookingId, // Always use a booking ID
 			date: this.booking.date,
 			startTime: this.booking.startTime,
 			endTime: this.booking.endTime,
 		}
 
-		from(createPaymentIntent(paymentData))
+		// First create the booking, then process payment
+		from(this.bookingService.createBooking(bookingData))
 			.pipe(
-				switchMap(response => {
-					this.paymentIntentId = response.paymentIntentId
+				switchMap(createdBooking => {
+					console.log('Booking created:', createdBooking)
 
-					if (!this.stripe || !this.elements) {
-						throw new Error('Payment system not available')
-					}
+					// Update booking context with the created booking
+					bookingContext.set(createdBooking)
 
-					return from(
-						this.stripe.confirmPayment({
-							clientSecret: response.clientSecret,
-							elements: this.elements,
-							confirmParams: {
-								payment_method_data: {
-									billing_details: {
-										name: this.formData.name,
-										email: this.formData.email,
-										phone: this.formData.phoneNumber,
-										address: {
-											country: this.formData.country,
-											state: this.formData.city,
-											city: this.formData.city,
-											line1: this.formData.address,
-											line2: '',
-											postal_code: this.formData.postalCode,
+					// Now process the payment with Stripe
+					return from(createPaymentIntent(paymentData)).pipe(
+						switchMap(response => {
+							this.paymentIntentId = response.paymentIntentId
+
+							if (!this.stripe || !this.elements) {
+								throw new Error('Payment system not available')
+							}
+
+							return from(
+								this.stripe.confirmPayment({
+									clientSecret: response.clientSecret,
+									elements: this.elements,
+									confirmParams: {
+										payment_method_data: {
+											billing_details: {
+												name: this.formData.name,
+												email: this.formData.email,
+												phone: this.formData.phoneNumber,
+												address: {
+													country: this.formData.country,
+													state: this.formData.city,
+													city: this.formData.city,
+													line1: this.formData.address,
+													line2: '',
+													postal_code: this.formData.postalCode,
+												},
+											},
 										},
+										return_url: `${window.location.href.split('?')[0]}?booking=${bookingId}`,
+										receipt_email: this.formData.email,
 									},
-								},
-								return_url: `${window.location.href.split('?')[0]}?booking=${this.booking.id || ''}`,
-								receipt_email: this.formData.email,
-							},
+								}),
+							)
 						}),
 					)
 				}),
 				catchError(error => {
-					console.error('Payment error:', error)
+					console.error('Payment or booking error:', error)
 					this.error = this.getReadableErrorMessage(error)
 					$notify.error(this.error)
 					return of(null)
@@ -228,8 +268,19 @@ export class CheckoutForm extends $LitElement() {
 				if (result?.error) {
 					this.error = this.getReadableErrorMessage(result.error)
 					$notify.error(this.error)
+				} else if (!result) {
+					// Null result means we caught an error earlier
+					console.log('Error already handled')
+				} else {
+					// For successful payments that don't redirect (rare), we can trigger completion here
+					// But typically Stripe redirects to return_url
+					this.dispatchEvent(
+						new CustomEvent('booking-complete', {
+							detail: { booking: this.booking },
+							bubbles: true,
+						}),
+					)
 				}
-				// For successful confirmations, Stripe redirects to return_url
 			})
 	}
 
@@ -321,10 +372,8 @@ export class CheckoutForm extends $LitElement() {
 	// Show terms and conditions
 	private showTerms(e: Event) {
 		e.preventDefault()
-		import('@mhmo91/schmancy').then(module => {
-			module.sheet.open({
-				component: new FunkhausSportsTermsAndConditions(),
-			})
+		sheet.open({
+			component: new FunkhausSportsTermsAndConditions(),
 		})
 	}
 
