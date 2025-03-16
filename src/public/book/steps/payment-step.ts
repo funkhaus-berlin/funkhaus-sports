@@ -1,12 +1,14 @@
 // src/public/book/components/checkout-form.ts
 
-import { $notify, SchmancyAutocompleteChangeEvent } from '@mhmo91/schmancy'
+import { $notify, SchmancyAutocompleteChangeEvent, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { Stripe, StripeElements } from '@stripe/stripe-js'
 import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
+import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import { catchError, finalize, from, of, switchMap } from 'rxjs'
+import countries from 'src/assets/countries'
 import { BookingService } from 'src/bookingServices/booking.service'
 import { Court } from 'src/db/courts.collection'
 import { BookingFormData } from 'src/db/interface'
@@ -14,9 +16,6 @@ import { auth } from 'src/firebase/firebase'
 import { $stripeElements, createPaymentIntent } from 'src/public/stripe'
 import { Booking, bookingContext } from '../context'
 import { FunkhausSportsTermsAndConditions } from '../terms-and-conditions'
-import countries from 'src/assets/countries'
-import { repeat } from 'lit/directives/repeat.js'
-import { sheet } from '@mhmo91/schmancy'
 
 /**
  * Checkout form component with Stripe integration
@@ -49,7 +48,7 @@ export class CheckoutForm extends $LitElement() {
 	private elements?: StripeElements
 
 	// Keep track of payment intent for error handling
-	private paymentIntentId?: string
+	paymentIntentId?: string
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
 		// Set default country if not set

@@ -27,7 +27,6 @@ export class PaymentStatusHandler {
 	checkUrlForPaymentStatus(): Observable<{ processed: boolean; success: boolean; bookingId?: string }> {
 		const urlParams = new URLSearchParams(window.location.search)
 		const clientSecret = urlParams.get('payment_intent_client_secret')
-		const paymentIntentId = urlParams.get('payment_intent')
 		const bookingId = urlParams.get('booking')
 
 		if (!clientSecret || !bookingId) {
@@ -64,12 +63,12 @@ export class PaymentStatusHandler {
 						switch (paymentIntent.status) {
 							case 'succeeded':
 								$notify.success('Payment successful!')
-								this.updateBookingStatus(bookingId, 'paid', paymentIntent.id)
+								this.updateBookingStatus(bookingId, 'paid')
 								return { processed: true, success: true, bookingId }
 
 							case 'processing':
 								$notify.info("Payment is processing. We'll update you when payment is received.")
-								this.updateBookingStatus(bookingId, 'processing', paymentIntent.id)
+								this.updateBookingStatus(bookingId, 'processing')
 								return { processed: true, success: false, bookingId }
 
 							case 'requires_payment_method':
@@ -106,7 +105,7 @@ export class PaymentStatusHandler {
 	 * @param status New payment status
 	 * @param paymentIntentId Stripe payment intent ID
 	 */
-	private updateBookingStatus(bookingId: string, status: string, paymentIntentId: string): void {
+	private updateBookingStatus(bookingId: string, status: string): void {
 		this.bookingService
 			.updateBookingPaymentStatus(bookingId, status)
 			.pipe(

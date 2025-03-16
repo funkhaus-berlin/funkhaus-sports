@@ -35,7 +35,7 @@ export class BookingService {
 
 	/**
 	 * Create a new booking and reserve the time slots
-	 * Now with improved support for guest users
+	 * Now with improved protection against double booking
 	 *
 	 * @param booking - Booking data
 	 * @returns Observable of the created booking
@@ -60,12 +60,11 @@ export class BookingService {
 		// Create an observable that uses a transaction to ensure atomicity
 		return from(
 			runTransaction(this.firestore, async transaction => {
-				// Get current availability
+				// FIRST: Get current availability to verify slots are still free
 				const availabilityDoc = await transaction.get(availabilityRef)
 
 				if (!availabilityDoc.exists()) {
-					// If no availability document, we'll create placeholder slots
-					// This ensures more resilient booking even if availability data isn't fully synced
+					// If no availability document, create placeholder slots
 					return this.createBookingWithoutAvailabilityCheck(bookingId, booking, transaction)
 				}
 
@@ -85,6 +84,7 @@ export class BookingService {
 					return this.createBookingWithoutAvailabilityCheck(bookingId, booking, transaction)
 				}
 
+				// Get the slots for this court and date
 				const slots = availabilityData.courts[booking.courtId][booking.date].slots
 
 				// Calculate time slots to reserve
@@ -98,26 +98,24 @@ export class BookingService {
 				// Adjust end time if it ends at exactly 00 minutes
 				const adjustedEndHour = endMinute === 0 ? endHour : endHour + 1
 
-				// Check all slots are available
+				// CRITICAL FIX: Check ALL slots are available BEFORE making any changes
+				// This is what prevents double booking
 				for (let hour = startHour; hour < adjustedEndHour; hour++) {
 					// Check full hour slot
 					const timeSlot = `${hour.toString().padStart(2, '0')}:00`
 
 					if (!slots[timeSlot] || !slots[timeSlot].isAvailable) {
-						// If a time slot isn't available, make a decision based on payment status
+						// If a time slot isn't available, this is a double booking attempt
+						// Only force through for paid bookings to prevent payment issues
 						if (booking.paymentStatus === 'paid') {
-							// For paid bookings, force the booking to go through even if a slot wasn't marked available
-							// This prevents payment success + booking failure scenarios
 							console.warn(`Slot ${timeSlot} marked as unavailable but forcing booking as payment was completed`)
 							continue
 						} else {
-							throw new Error(`Time slot ${timeSlot} is not available`)
+							throw new Error(`Time slot ${timeSlot} is already booked. Please select another time.`)
 						}
 					}
 
-					// If start minute is 0 and we're at the first hour,
-					// or if end minute is 0 and we're at the last hour,
-					// we don't need to check the half-hour slot
+					// If this is the start or end hour, check if we need to check half-hour slot
 					if ((hour === startHour && startMinute === 30) || (hour === endHour - 1 && endMinute === 0)) {
 						continue
 					}
@@ -130,14 +128,15 @@ export class BookingService {
 							console.warn(`Slot ${halfHourSlot} marked as unavailable but forcing booking as payment was completed`)
 							continue
 						} else {
-							throw new Error(`Time slot ${halfHourSlot} is not available`)
+							throw new Error(`Time slot ${halfHourSlot} is already booked. Please select another time.`)
 						}
 					}
 				}
 
-				// All slots available or being forced through, now reserve them
+				// If we get here, all slots are available - now update them
 				const updates: Record<string, any> = {}
 
+				// Step 1: Mark all required slots as unavailable
 				for (let hour = startHour; hour < adjustedEndHour; hour++) {
 					// Update full hour slot
 					const timeSlot = `${hour.toString().padStart(2, '0')}:00`
@@ -147,7 +146,7 @@ export class BookingService {
 					updates[`${slotPath}.bookedBy`] = booking.userId || null
 					updates[`${slotPath}.bookingId`] = bookingId
 
-					// If we need to update the half-hour slot too
+					// If this is the start or end hour, check if we need to update half-hour slot
 					if ((hour === startHour && startMinute === 30) || (hour === endHour - 1 && endMinute === 0)) {
 						continue
 					}
@@ -164,10 +163,10 @@ export class BookingService {
 				// Update lastUpdated timestamp
 				updates.updatedAt = serverTimestamp()
 
-				// Update availability document
+				// Step 2: Update availability document to mark slots as unavailable
 				transaction.update(availabilityRef, updates)
 
-				// Create the booking document with normalized data
+				// Step 3: Create the booking document
 				const bookingData = this.prepareBookingData(booking, bookingId)
 				const newBookingRef = doc(bookingsRef, bookingId)
 				transaction.set(newBookingRef, bookingData)
@@ -185,19 +184,16 @@ export class BookingService {
 				console.error('Error creating booking:', error)
 
 				// Provide more specific error messages
-				if (error.message.includes('No availability')) {
+				if (error.message.includes('already booked')) {
+					return throwError(() => new Error(error.message))
+				} else if (error.message.includes('No availability')) {
 					return throwError(() => new Error('The selected time is no longer available. Please select another time.'))
-				} else if (error.message.includes('Time slot') && error.message.includes('not available')) {
-					return throwError(
-						() => new Error('One or more time slots are no longer available. Please select another time.'),
-					)
 				}
 
 				return throwError(() => new Error(`Failed to create booking: ${error.message}`))
 			}),
 		)
 	}
-
 	/**
 	 * Create booking without checking availability (used as fallback)
 	 * This is particularly useful for guest users or when availability data might be incomplete

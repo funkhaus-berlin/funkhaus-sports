@@ -1,14 +1,10 @@
 import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { StripeElements, StripePaymentElement } from '@stripe/stripe-js'
 import { css, html } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { distinctUntilChanged, take, tap } from 'rxjs'
 import './book/book'
 import { AppConfiguration, AppConfigurationContext } from './context'
-import stripePromise, { $stripe, $stripeElements, appearance } from './stripe'
-import { CourtBookingSystem } from './book/book'
 // Theme configuration for styling consistency
 export const appTheme: {
 	color: string

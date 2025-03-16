@@ -114,19 +114,7 @@ export class VenueCourts extends $LitElement() {
 		this.selectedVenueId = e.detail.value
 	}
 
-	// Get filtered courts based on venue selection
-	getFilteredCourts() {
-		if (!this.selectedVenueId) {
-			return Array.from(this.courts.values())
-		}
-
-		return Array.from(this.courts.values()).filter(court => court.venueId === this.selectedVenueId)
-	}
-
 	render() {
-		// Hide venue filter if venueId is provided as a property
-		const showVenueFilter = !this.venueId
-
 		return html`
 			<schmancy-grid class="py-4" gap="md" ${fullHeight()} rows="auto 1fr">
 				<schmancy-nav-drawer-appbar>
@@ -137,10 +125,6 @@ export class VenueCourts extends $LitElement() {
 							variant="filled"
 							@click=${() => {
 								const courtForm = new CourtForm()
-								// Pre-select venue if filtering
-								if (this.selectedVenueId) {
-									courtForm.court.venueId = this.selectedVenueId
-								}
 								sheet.open({
 									component: courtForm,
 								})
@@ -155,8 +139,8 @@ export class VenueCourts extends $LitElement() {
 					() =>
 						html`<schmancy-table-v2
 							.cols=${this.columns.map(_ => '1fr').join(' ')}
-							.columns=${showVenueFilter ? this.columns : this.columns.filter(col => col.name !== 'Venue')}
-							.data=${this.getFilteredCourts()}
+							.columns=${this.columns}
+							.data=${Array.from(this.courts.values())}
 							sortable
 						></schmancy-table-v2>`,
 				)}

@@ -1,5 +1,4 @@
-// src/public/book/book.ts - Modified to use the new components
-
+// src/public/book/book.ts
 import { $notify, fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
@@ -8,6 +7,7 @@ import { customElement, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { catchError, distinctUntilChanged, finalize, firstValueFrom, of, take } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
+import { venuesContext } from 'src/admin/venues/venue-context'
 import { AvailabilityService } from 'src/bookingServices/availability'
 import {
 	CourtAssignmentService,
@@ -15,46 +15,43 @@ import {
 	CourtPreferences,
 } from 'src/bookingServices/court-assignment.service'
 import { Court } from 'src/db/courts.collection'
+import { Venue } from 'src/db/venue-collection'
 import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
 import { Booking, bookingContext } from './context'
-import { Duration, TimeSlot } from './types'
-// Import our new components
 import { PaymentStatusHandler } from './payment-status-handler'
 import './steps'
 import bookingSummery from './steps/booking-summery'
+import { Duration, TimeSlot } from './types'
 
 /**
- * Court booking component with Stripe integration
- * Integrates with backend API services and Stripe for payments
- * Now with automatic court assignment and real-time availability
+ * Court booking system component
+ * Handles the complete booking flow from date selection to payment
  */
 @customElement('court-booking-system')
 export class CourtBookingSystem extends $LitElement() {
-	// Current UI state
-	@state() hoveredTimeSlot: number | null = null
-	@state() step: number = 1 // 1: Date, 2: Time, 3: Court Preferences, 4: Duration, 5: Payment/Confirmation
-	@state() selectedCourt: Court | undefined = undefined
+	// State
+	@state() step: number = 1 // 1: Date, 2: Time, 3: Court Preferences, 4: Duration, 5: Payment
+	@state() selectedCourt?: Court = undefined
 	@state() bookingInProgress: boolean = false
 	@state() loadingCourts: boolean = false
-	@select(courtsContext)
-	availableCourts!: Map<string, Court>
-
 	@state() error: string | null = null
-	@state() success: boolean = false
 	@state() courtPreferences: CourtPreferences = {}
 	@state() bookingComplete: boolean = false
 
-	@query('#timer') timer!: HTMLDivElement
-	@query('#stripe-element') stripeElement!: HTMLElement
-
+	// Contexts
+	@select(courtsContext) availableCourts!: Map<string, Court>
+	@select(venuesContext) venues!: Map<string, Venue>
 	@select(bookingContext) booking!: Booking
 
-	// API services
-	private availabilityService: AvailabilityService
-	private courtAssignmentService: CourtAssignmentService
-	private paymentStatusHandler: PaymentStatusHandler
+	// DOM references
+	@query('#stripe-element') stripeElement!: HTMLElement
 
-	// Updated booking steps with Court Preferences as a separate step
+	// Services
+	private availabilityService = new AvailabilityService()
+	private courtAssignmentService = new CourtAssignmentService(this.availabilityService)
+	private paymentStatusHandler = new PaymentStatusHandler()
+
+	// Booking steps definition
 	private bookingSteps = [
 		{ label: 'Date', icon: 'event' },
 		{ label: 'Time', icon: 'schedule' },
@@ -65,29 +62,24 @@ export class CourtBookingSystem extends $LitElement() {
 
 	constructor() {
 		super()
-		this.availabilityService = new AvailabilityService()
-		this.courtAssignmentService = new CourtAssignmentService(this.availabilityService)
-		this.paymentStatusHandler = new PaymentStatusHandler()
 	}
 
 	async connectedCallback() {
 		super.connectedCallback()
 
-		// Create and append the payment element slot
+		// Create and append payment slot
 		const slot = document.createElement('slot')
 		slot.name = 'stripe-element'
 		slot.slot = 'stripe-element'
 		this.append(slot)
 
-		// Initialize Stripe elements when payment amount is available
+		// Initialize Stripe when payment amount is set
 		$stripe.pipe(distinctUntilChanged(), take(1)).subscribe(async amount => {
 			try {
 				const stripe = await stripePromise
 				if (!stripe) return
 
-				console.log('Initializing Stripe with amount:', amount)
-
-				const elements = stripe?.elements({
+				const elements = stripe.elements({
 					fonts: [
 						{
 							src: 'url(https://ticket.funkhaus-berlin.net/assets/GT-Eesti-Pro-Display-Regular-Czpp09nv.woff)',
@@ -101,16 +93,15 @@ export class CourtBookingSystem extends $LitElement() {
 					amount: amount * 100,
 				})
 
-				// Create payment element with options from handler
+				// Create payment element
 				const paymentElement = elements.create('payment', this.paymentStatusHandler.getPaymentElementOptions())
 
-				// Mount the payment element after the component has rendered
+				// Mount payment element when DOM is ready
 				this.updateComplete.then(() => {
 					const elementContainer = document.getElementById('stripe-element')
 					if (elementContainer) {
 						paymentElement.mount('#stripe-element')
 						$stripeElements.next(elements)
-						console.log('Stripe element mounted successfully')
 					} else {
 						console.error('Could not find stripe-element container')
 					}
@@ -126,47 +117,35 @@ export class CourtBookingSystem extends $LitElement() {
 		// Check for returning payment status
 		this.paymentStatusHandler.checkUrlForPaymentStatus().subscribe(result => {
 			if (result.processed && result.success && result.bookingId) {
-				// If returning from a successful payment, show confirmation
-				console.log('Payment successful, showing confirmation screen')
+				// Show confirmation for successful payment
 				this.bookingComplete = true
 
-				// Find the selected court for the confirmation page
+				// Find selected court
 				this.selectedCourt = Array.from(this.availableCourts.values()).find(court => court.id === this.booking.courtId)
 
-				// Set default court if none found but we have courts available
+				// Set default court if needed
 				if (!this.selectedCourt && this.availableCourts.size > 0) {
 					this.selectedCourt = Array.from(this.availableCourts.values())[0]
-					console.log('Using fallback court:', this.selectedCourt.id)
-
-					// Update booking context with this court
-					bookingContext.set(
-						{
-							courtId: this.selectedCourt.id,
-						},
-						true,
-					)
+					bookingContext.set({ courtId: this.selectedCourt.id }, true)
 				}
 			}
 		})
 
-		// Load courts
-		this.loadingCourts = true
-
-		// Increment steps based on selections
+		// Set initial step based on context
 		if (this.booking.date) this.step = 2
 		if (this.booking.date && this.booking.startTime) this.step = 3
-		if (this.booking.date && this.booking.startTime && this.courtPreferences) this.step = 4
-		if (this.booking.date && this.booking.startTime && this.courtPreferences && this.booking.endTime) this.step = 5
+		if (this.booking.date && this.booking.startTime && Object.keys(this.courtPreferences).length > 0) this.step = 4
+		if (this.booking.date && this.booking.startTime && this.booking.endTime) this.step = 5
 
-		// Set initial price for Stripe (with a fallback value)
+		// Set initial price
 		$stripe.next(this.booking.price || 30)
 
-		// Initialize booking values if they're missing but we're returning from payment
+		// Restore booking from URL if needed
 		const urlParams = new URLSearchParams(window.location.search)
 		const bookingIdInUrl = urlParams.get('booking')
 
 		if (bookingIdInUrl && (!this.booking.date || !this.booking.startTime)) {
-			console.log('Missing booking data but returning from payment. Setting defaults.')
+			// Set default values for missing booking data
 			bookingContext.set(
 				{
 					date: dayjs().format('YYYY-MM-DD'),
@@ -179,24 +158,31 @@ export class CourtBookingSystem extends $LitElement() {
 		}
 	}
 
-	// Get total price for the booking
-	get total() {
-		return this.booking.price || 0
-	}
+	// Event Handlers
 
-	// Handle date selection
-	private async handleDateSelect(date: string) {
+	/**
+	 * Handle date selection
+	 */
+	private handleDateSelect(date: string): void {
 		this.error = null
+
 		bookingContext.set({
 			date: dayjs(date).format('YYYY-MM-DD'),
-			startTime: dayjs(date).startOf('day').toISOString(),
+			startTime: '',
 		})
+
 		this.step = 2
 	}
 
-	// Handle time slot selection
-	private handleTimeSlotSelect(timeSlot: TimeSlot) {
-		if (!timeSlot.available) return
+	/**
+	 * Handle time slot selection
+	 */
+	private handleTimeSlotSelect(timeSlot: TimeSlot): void {
+		if (!timeSlot.available) {
+			$notify.error('This time slot is not available. Please select another time.')
+			return
+		}
+
 		this.error = null
 
 		const selectedDate = dayjs(this.booking.date)
@@ -212,21 +198,24 @@ export class CourtBookingSystem extends $LitElement() {
 			true,
 		)
 
-		this.step = 3 // Move to court preferences selection
+		this.step = 3
 		this.selectedCourt = undefined
 	}
 
-	// Handle court preferences update
-	private handleCourtPreferencesChange(preferences: CourtPreferences) {
+	/**
+	 * Handle court preferences selection
+	 */
+	private handleCourtPreferencesChange(preferences: CourtPreferences): void {
 		this.courtPreferences = preferences
-
-		// After selecting preferences, move to duration step
 		this.step = 4
 	}
 
-	// Handle duration selection
-	private async handleDurationSelect(duration: Duration) {
+	/**
+	 * Handle duration selection and court assignment
+	 */
+	private async handleDurationSelect(duration: Duration): Promise<void> {
 		this.error = null
+
 		const startTime = dayjs(this.booking.startTime)
 		const endTime = startTime.add(duration.value, 'minute').toISOString()
 
@@ -235,15 +224,14 @@ export class CourtBookingSystem extends $LitElement() {
 			price: duration.price,
 		})
 
-		// Update Stripe with the new price
+		// Update stripe with new price
 		$stripe.next(duration.price)
 
-		// Begin automatic court assignment
+		// Start court assignment
 		this.bookingInProgress = true
 
 		try {
-			// Convert availableCourts Map to Array if needed
-			const courtsArray: Court[] = Array.from(this.availableCourts.values())
+			const courtsArray = Array.from(this.availableCourts.values())
 
 			const { selectedCourt, message } = await firstValueFrom(
 				this.courtAssignmentService
@@ -271,8 +259,10 @@ export class CourtBookingSystem extends $LitElement() {
 			)
 
 			if (!selectedCourt) {
-				this.error = message || 'No available courts found for the selected duration. Please choose another time.'
-				this.step = 2 // back to time selection
+				this.error =
+					message || 'No available courts found for the selected time and duration. Please choose another time.'
+				$notify.error(this.error)
+				this.step = 2 // Go back to time selection
 				return
 			}
 
@@ -282,95 +272,47 @@ export class CourtBookingSystem extends $LitElement() {
 				courtId: selectedCourt.id,
 			})
 
-			// Show success message with court assignment
 			$notify.success(`Court ${selectedCourt.name} assigned for your booking`)
 
 			this.step = 5 // Proceed to payment
 		} catch (error) {
 			console.error('Error assigning court:', error)
 			this.error = 'Error assigning court. Please try again.'
-			this.step = 4 // retry duration selection
+			$notify.error(this.error)
+			this.step = 2
 		} finally {
 			this.bookingInProgress = false
 		}
 	}
 
-	// Helper getters
-	get duration() {
-		if (!this.booking.startTime || !this.booking.endTime) return 0
-		// calculate duration based on selected start and end time
-		return dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute')
+	/**
+	 * Handle booking completion
+	 */
+	private handleBookingComplete(e: CustomEvent): void {
+		this.bookingComplete = true
+
+		// Update booking with data from event
+		if (e.detail?.booking) {
+			bookingContext.set(e.detail.booking)
+		}
+
+		// Ensure we have a selected court
+		if (!this.selectedCourt) {
+			this.selectedCourt = Array.from(this.availableCourts.values()).find(court => court.id === this.booking.courtId)
+
+			if (!this.selectedCourt && this.availableCourts.size > 0) {
+				this.selectedCourt = Array.from(this.availableCourts.values())[0]
+				bookingContext.set({ courtId: this.selectedCourt.id }, true)
+			}
+		}
 	}
 
-	get date() {
-		return this.booking.startTime ? dayjs(this.booking.startTime).format('YYYY-MM-DD') : ''
-	}
+	// Helper methods
 
-	private renderProgressSteps() {
-		return html`
-			<funkhaus-booking-steps
-				.steps=${this.bookingSteps}
-				.currentStep=${this.step}
-				?clickable=${true}
-				@step-click=${(e: CustomEvent) => {
-					const newStep = e.detail.step
-
-					// Handle backwards navigation and reset appropriate state
-					if (newStep < this.step) {
-						this.step = newStep
-
-						if (newStep <= 4) {
-							// Reset payment info
-							bookingContext.set({
-								id: '',
-							})
-						}
-
-						if (newStep <= 3) {
-							// Reset duration and court selection
-							bookingContext.set({
-								endTime: '',
-								price: 0,
-								courtId: '',
-							})
-						}
-
-						if (newStep <= 2) {
-							// Reset preferences
-							this.courtPreferences = {}
-						}
-
-						if (newStep <= 1) {
-							// Reset date, start time and court selection
-							bookingContext.set({
-								date: '',
-								startTime: '',
-								courtId: '',
-							})
-						}
-					}
-				}}
-			></funkhaus-booking-steps>
-		`
-	}
-
-	// Error notification component
-	private renderErrorNotification() {
-		if (!this.error) return ''
-
-		return html`
-			<div class="bg-error-container text-error-on rounded-lg p-4 mb-4">
-				<schmancy-flex align="center" gap="sm">
-					<schmancy-icon>error</schmancy-icon>
-					<schmancy-typography>${this.error}</schmancy-typography>
-				</schmancy-flex>
-				<schmancy-button variant="text" @click=${() => (this.error = null)} class="mt-2"> Dismiss </schmancy-button>
-			</div>
-		`
-	}
-
-	// Reset the booking and start a new one
-	private resetBooking() {
+	/**
+	 * Reset booking state
+	 */
+	private resetBooking(): void {
 		this.bookingComplete = false
 		this.step = 1
 		this.error = null
@@ -397,111 +339,85 @@ export class CourtBookingSystem extends $LitElement() {
 		})
 	}
 
-	private logBookingState(message: string) {
-		console.log(message, {
-			bookingComplete: this.bookingComplete,
-			step: this.step,
-			selectedCourt: this.selectedCourt?.id,
-			booking: {
-				id: this.booking.id,
-				courtId: this.booking.courtId,
-				date: this.booking.date,
-				startTime: this.booking.startTime,
-				endTime: this.booking.endTime,
-				price: this.booking.price,
-			},
-		})
+	/**
+	 * Get booking duration in minutes
+	 */
+	get duration(): number {
+		if (!this.booking.startTime || !this.booking.endTime) return 0
+		return dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute')
 	}
-	// 5. Modify the render method to consistently handle the booking confirmation state:
-	render() {
-		// Check if we should be showing booking confirmation
-		if (this.bookingComplete) {
-			this.logBookingState('Rendering booking confirmation screen')
 
-			// Make sure we have the minimum required data
-			const hasRequiredData = this.booking && this.booking.date && this.booking.startTime
+	// UI rendering methods
 
-			if (!hasRequiredData) {
-				console.error('Missing required booking data for confirmation')
-				return html`
-					<schmancy-surface type="containerLow" rounded="all" class="p-5">
-						<schmancy-flex direction="column" align="center" justify="center">
-							<schmancy-typography type="title">Booking Data Error</schmancy-typography>
-							<schmancy-typography>Sorry, we couldn't retrieve your booking details.</schmancy-typography>
-							<schmancy-button class="mt-4" variant="filled" @click=${() => this.resetBooking()}>
-								Start Over
-							</schmancy-button>
-						</schmancy-flex>
-					</schmancy-surface>
-				`
-			}
-
-			return html`
-				<booking-confirmation
-					.booking=${this.booking}
-					.selectedCourt=${this.selectedCourt}
-					.customerEmail=${this.booking.customerEmail || ''}
-					.customerName=${this.booking.userName || ''}
-					.bookingId=${this.booking.id || ''}
-					.onNewBooking=${() => this.resetBooking()}
-				></booking-confirmation>
-			`
-		}
-
-		// Regular booking flow
+	/**
+	 * Render booking steps
+	 */
+	private renderProgressSteps() {
 		return html`
-			<schmancy-surface ${fullHeight()} type="containerLow" rounded="all" elevation="1">
-				<schmancy-grid rows="auto auto 1fr" ${fullHeight()} flow="row" class="max-w-lg mx-auto pt-2">
-					${this.renderProgressSteps()}
+			<funkhaus-booking-steps
+				.steps=${this.bookingSteps}
+				.currentStep=${this.step}
+				?clickable=${true}
+				@step-click=${(e: CustomEvent) => {
+					const newStep = e.detail.step
 
-					<!-- Error notification -->
-					${this.error ? this.renderErrorNotification() : ''}
+					// Handle backwards navigation
+					if (newStep < this.step) {
+						this.step = newStep
 
-					<schmancy-scroll hide> ${this.renderCurrentStep()} </schmancy-scroll>
-				</schmancy-grid>
+						if (newStep <= 4) {
+							// Reset payment info
+							bookingContext.set({ id: '' })
+						}
 
-				${when(
-					this.bookingInProgress,
-					() => html`
-						<schmancy-busy class="z-50">
-							<schmancy-flex flow="row" gap="sm" align="center">
-								<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
-								<schmancy-typography>Assigning the best court for your booking...</schmancy-typography>
-							</schmancy-flex>
-						</schmancy-busy>
-					`,
-				)}
-			</schmancy-surface>
+						if (newStep <= 3) {
+							// Reset duration and court selection
+							bookingContext.set({
+								endTime: '',
+								price: 0,
+								courtId: '',
+							})
+						}
+
+						if (newStep <= 2) {
+							// Reset preferences
+							this.courtPreferences = {}
+						}
+
+						if (newStep <= 1) {
+							// Reset date and time
+							bookingContext.set({
+								date: '',
+								startTime: '',
+								courtId: '',
+							})
+						}
+					}
+				}}
+			></funkhaus-booking-steps>
 		`
 	}
 
-	// Handle booking complete event
-	private handleBookingComplete(e: CustomEvent) {
-		console.log('Booking complete event received', e.detail)
-		this.bookingComplete = true
+	/**
+	 * Render error notification
+	 */
+	private renderErrorNotification() {
+		if (!this.error) return ''
 
-		// Make sure we have the booking details in context
-		if (e.detail?.booking) {
-			bookingContext.set(e.detail.booking)
-		}
-
-		// Find the selected court if needed
-		if (!this.selectedCourt) {
-			this.selectedCourt = Array.from(this.availableCourts.values()).find(court => court.id === this.booking.courtId)
-
-			// If we still don't have a court, use the first available one
-			if (!this.selectedCourt && this.availableCourts.size > 0) {
-				this.selectedCourt = Array.from(this.availableCourts.values())[0]
-				bookingContext.set(
-					{
-						courtId: this.selectedCourt.id,
-					},
-					true,
-				)
-			}
-		}
+		return html`
+			<div class="bg-error-container text-error-on rounded-lg p-4 mb-4">
+				<schmancy-flex align="center" gap="sm">
+					<schmancy-icon>error</schmancy-icon>
+					<schmancy-typography>${this.error}</schmancy-typography>
+				</schmancy-flex>
+				<schmancy-button variant="text" @click=${() => (this.error = null)} class="mt-2"> Dismiss </schmancy-button>
+			</div>
+		`
 	}
 
+	/**
+	 * Render current booking step
+	 */
 	private renderCurrentStep() {
 		return html`${when(
 			this.step <= 4,
@@ -540,7 +456,6 @@ export class CourtBookingSystem extends $LitElement() {
 			() => html`
 				${bookingSummery(this.booking, this.selectedCourt!, this.duration, this.courtPreferences)}
 
-				<!-- Replace the standard payment step with our improved checkout form -->
 				<funkhaus-checkout-form
 					.booking=${this.booking}
 					.selectedCourt=${this.selectedCourt}
@@ -551,10 +466,62 @@ export class CourtBookingSystem extends $LitElement() {
 			`,
 		)}`
 	}
-}
 
-declare global {
-	interface HTMLElementTagNameMap {
-		'court-booking-system': CourtBookingSystem
+	render() {
+		// Show booking confirmation if complete
+		if (this.bookingComplete) {
+			const hasRequiredData = this.booking && this.booking.date && this.booking.startTime
+
+			if (!hasRequiredData) {
+				return html`
+					<schmancy-surface type="containerLow" rounded="all" class="p-5">
+						<schmancy-flex flow="col" align="center" justify="center">
+							<schmancy-typography type="title">Booking Data Error</schmancy-typography>
+							<schmancy-typography>Sorry, we couldn't retrieve your booking details.</schmancy-typography>
+							<schmancy-button class="mt-4" variant="filled" @click=${() => this.resetBooking()}>
+								Start Over
+							</schmancy-button>
+						</schmancy-flex>
+					</schmancy-surface>
+				`
+			}
+
+			return html`
+				<booking-confirmation
+					.booking=${this.booking}
+					.selectedCourt=${this.selectedCourt}
+					.customerEmail=${this.booking.customerEmail || ''}
+					.customerName=${this.booking.userName || ''}
+					.bookingId=${this.booking.id || ''}
+					.onNewBooking=${() => this.resetBooking()}
+				></booking-confirmation>
+			`
+		}
+
+		// Main booking flow
+		return html`
+			<schmancy-surface ${fullHeight()} type="containerLow" rounded="all" elevation="1">
+				<schmancy-grid rows="auto auto 1fr" ${fullHeight()} flow="row" class="max-w-lg mx-auto pt-2">
+					${this.renderProgressSteps()}
+
+					<!-- Error notification -->
+					${this.error ? this.renderErrorNotification() : ''}
+
+					<schmancy-scroll hide>${this.renderCurrentStep()}</schmancy-scroll>
+				</schmancy-grid>
+
+				${when(
+					this.bookingInProgress,
+					() => html`
+						<schmancy-busy class="z-50">
+							<schmancy-flex flow="row" gap="sm" align="center">
+								<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
+								<schmancy-typography>Assigning the best court for your booking...</schmancy-typography>
+							</schmancy-flex>
+						</schmancy-busy>
+					`,
+				)}
+			</schmancy-surface>
+		`
 	}
 }

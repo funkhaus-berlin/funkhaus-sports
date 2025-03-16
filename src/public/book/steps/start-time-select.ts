@@ -1,10 +1,15 @@
 // src/public/book/steps/start-time-select.ts
 
+import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
-import { distinctUntilChanged, map, takeUntil, switchMap, tap, catchError } from 'rxjs'
+import { catchError, distinctUntilChanged, map, of, switchMap, takeUntil, tap } from 'rxjs'
+import { courtsContext } from 'src/admin/venues/courts/context'
+import { venuesContext } from 'src/admin/venues/venue-context'
+import { Court } from 'src/db/courts.collection'
+import { OperatingHours, Venue } from 'src/db/venue-collection'
 import { AvailabilityService } from '../../../bookingServices/availability'
 import { bookingContext } from '../context'
 import { TimeSlot } from '../types'
@@ -12,9 +17,10 @@ import { TimeSlot } from '../types'
 @customElement('time-selection-step')
 export class TimeSelectionStep extends $LitElement() {
 	@property({ type: Boolean }) active = true
+	@property({ type: Boolean }) hidden = false
 	@property({ attribute: false }) onTimeSelected?: (time: number) => void
 
-	// Use private backing field for the value property with custom getter/setter
+	// Value property with custom getter/setter
 	private _value?: number
 
 	@property({ type: Number })
@@ -27,83 +33,95 @@ export class TimeSelectionStep extends $LitElement() {
 		this._value = val
 		this.requestUpdate('value', oldValue)
 
-		// When value changes, scroll to it once the DOM has updated
 		if (val !== undefined && val !== oldValue) {
-			// Use setTimeout to ensure DOM is updated
 			setTimeout(() => this._scrollToSelectedTime(), 0)
 		}
 	}
 
+	// Component state
 	@state() timeSlots: TimeSlot[] = []
 	@state() hoveredTime: number | null = null
-	// Always use timeline view for now
 	@state() viewMode: 'timeline' | 'list' = 'timeline'
 	@state() loading: boolean = false
 	@state() error: string | null = null
 
-	private availabilityService: AvailabilityService
+	// Connect to contexts
+	@select(venuesContext) venues!: Map<string, Venue>
+	@select(courtsContext) courts!: Map<string, Court>
+
+	// Current selected venue and date information
+	@state() selectedVenue?: Venue = undefined
+	@state() selectedDate: string = ''
+	@state() operatingHours: OperatingHours | null = null
+
+	// Availability service
+	private availabilityService: AvailabilityService = new AvailabilityService()
 
 	constructor() {
 		super()
-		this.availabilityService = new AvailabilityService()
-
-		// Always use timeline view for now
 		this.viewMode = 'timeline'
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
-		// Subscribe to date changes from the booking context
+		// Subscribe to date changes
 		bookingContext.$.pipe(
 			map(booking => booking.date),
 			distinctUntilChanged(),
-			tap(() => {
-				// Show loading state when date changes
+			tap(date => {
 				this.loading = true
-				// Reset current time slots while loading
 				this.timeSlots = []
+				this.selectedDate = date || ''
 			}),
 			switchMap(date => {
-				if (!date) return []
+				if (!date) return of(null)
 
-				// Load time slots for the selected date for all courts
-				return this.availabilityService.getAllCourtsAvailability(date).pipe(
-					// Handle errors gracefully
+				// Find venue for displayed courts
+				const activeCourts = Array.from(this.courts.values()).filter(c => c.status === 'active')
+				if (activeCourts.length === 0) return of(null)
+
+				// Use the first court's venueId to get venue information
+				const firstCourt = activeCourts[0]
+				const venueId = firstCourt.venueId
+				const venue = this.venues.get(venueId)
+
+				if (venue) {
+					this.selectedVenue = venue
+					this.operatingHours = venue.operatingHours
+				}
+
+				// Get real-time availability for all courts at the venue
+				return this.availabilityService.getAllCourtsAvailability(date, venueId).pipe(
+					tap(courtsAvailability => {
+						console.log('Courts availability:', courtsAvailability)
+						// Process availability data to determine which time slots are bookable
+						this._processAvailabilityData(courtsAvailability)
+					}),
 					catchError(err => {
 						console.error('Error loading time slots:', err)
 						this.error = 'Unable to load available time slots. Please try again.'
 						this.loading = false
-						return []
+						return of(null)
 					}),
 				)
 			}),
 			takeUntil(this.disconnecting),
 		).subscribe({
-			next: courtsAvailability => {
+			next: () => {
 				this.error = null
 				this.loading = false
 
-				if (!courtsAvailability || Object.keys(courtsAvailability).length === 0) {
-					this._createDefaultTimeSlots()
-					return
-				}
-
-				// Process the availability data
-				this._processAvailabilityData(courtsAvailability)
-
-				// If we already have a selected value, make sure we scroll to it
 				if (this.value !== undefined) {
 					setTimeout(() => this._scrollToSelectedTime(), 100)
 				}
 			},
 			error: err => {
 				console.error('Error in subscription:', err)
-				this.error = 'An error occurred. Please try again.'
+				this.error = 'An error occurred while loading time slots. Please try again.'
 				this.loading = false
 				this._createDefaultTimeSlots()
 			},
 		})
 
-		// If there's a value already set, scroll to it when the component is first rendered
 		if (this.value !== undefined) {
 			setTimeout(() => this._scrollToSelectedTime(), 100)
 		}
@@ -112,51 +130,68 @@ export class TimeSelectionStep extends $LitElement() {
 	protected updated(changedProperties: PropertyValues): void {
 		super.updated(changedProperties)
 
-		// If active state changes, we might need to scroll to the selected time
 		if (changedProperties.has('active') && this.value !== undefined) {
 			setTimeout(() => this._scrollToSelectedTime(), 0)
 		}
 	}
 
 	/**
-	 * Process availability data from all courts to create time slots
-	 * @param courtsAvailability - Availability data for all courts
+	 * Process availability data to create time slots
+	 * Will mark a time slot as available only if at least one court is available
 	 */
-	private _processAvailabilityData(courtsAvailability: Record<string, Record<string, { isAvailable: boolean }>>) {
-		// Start with an empty array
+	private _processAvailabilityData(courtsAvailability: Record<string, Record<string, { isAvailable: boolean }>>): void {
 		const slots: TimeSlot[] = []
 
-		// If no courts are available, use default slots
-		if (Object.keys(courtsAvailability).length === 0) {
-			this._createDefaultTimeSlots()
-			return
-		}
+		// Get the day of week for operating hours
+		const dayOfWeek = dayjs(this.selectedDate).format('dddd').toLowerCase()
+		const todayOperatingHours = this.operatingHours?.[dayOfWeek as keyof OperatingHours]
 
-		// Get all unique time slots from all courts
+		// Collect all unique time slots across all courts
 		const allTimeSlots = new Set<string>()
+
 		Object.values(courtsAvailability).forEach(courtSlots => {
+			console.log('Court slots:', courtSlots)
 			Object.keys(courtSlots).forEach(timeKey => {
 				allTimeSlots.add(timeKey)
 			})
 		})
 
-		// Convert time slots to a sorted array
+		// Sort time slots chronologically
 		const sortedTimeSlots = Array.from(allTimeSlots).sort()
 
-		// For each time slot, check if it's available in ANY court
+		// Process each time slot
 		sortedTimeSlots.forEach(timeKey => {
 			const [hour, minute] = timeKey.split(':').map(Number)
 			const value = hour * 60 + (minute || 0)
 
-			// A slot is available if at least one court has it available
-			const isAvailable = Object.values(courtsAvailability).some(courtSlots => courtSlots[timeKey]?.isAvailable)
+			// Check if this time is within operating hours
+			let withinOperatingHours = true
 
-			slots.push({
-				label: timeKey,
-				value,
-				available: isAvailable,
-			})
+			if (todayOperatingHours) {
+				const [openHour, openMinute] = todayOperatingHours.open.split(':').map(Number)
+				const [closeHour, closeMinute] = todayOperatingHours.close.split(':').map(Number)
+
+				const openValue = openHour * 60 + (openMinute || 0)
+				const closeValue = closeHour * 60 + (closeMinute || 0)
+
+				withinOperatingHours = value >= openValue && value < closeValue
+			}
+
+			if (withinOperatingHours) {
+				console.log('Time:', timeKey, 'Value:', value)
+				console.log('Within operating hours:', withinOperatingHours)
+				console.log('Courts availability:', courtsAvailability)
+				// A time slot is available if ANY court has it available
+				const isAvailable = Object.values(courtsAvailability).some(courtSlots => courtSlots[timeKey]?.isAvailable)
+
+				slots.push({
+					label: timeKey,
+					value,
+					available: isAvailable,
+				})
+			}
 		})
+		console.log('Time slots:', slots)
 
 		// Sort by time
 		slots.sort((a, b) => a.value - b.value)
@@ -164,14 +199,35 @@ export class TimeSelectionStep extends $LitElement() {
 	}
 
 	/**
-	 * Create default time slots (8AM-10PM with half-hour intervals)
-	 * Used as a fallback when no data is available
+	 * Create default time slots based on venue operating hours
 	 */
-	private _createDefaultTimeSlots() {
+	private _createDefaultTimeSlots(): void {
 		const defaultSlots: TimeSlot[] = []
 
-		// Business hours: 8AM to 10PM
-		for (let hour = 8; hour < 22; hour++) {
+		// Get day of week
+		const dayOfWeek = this.selectedDate
+			? dayjs(this.selectedDate).format('dddd').toLowerCase()
+			: dayjs().format('dddd').toLowerCase()
+
+		// Default hours
+		let startHour = 8
+		let endHour = 22
+
+		// Use venue operating hours if available
+		if (this.operatingHours) {
+			const todayOperatingHours = this.operatingHours[dayOfWeek as keyof OperatingHours]
+
+			if (todayOperatingHours) {
+				const [openHour] = todayOperatingHours.open.split(':').map(Number)
+				const [closeHour] = todayOperatingHours.close.split(':').map(Number)
+
+				startHour = openHour
+				endHour = closeHour
+			}
+		}
+
+		// Generate slots
+		for (let hour = startHour; hour < endHour; hour++) {
 			// Full hour slot
 			const timeKey = `${hour.toString().padStart(2, '0')}:00`
 			const value = hour * 60
@@ -195,16 +251,15 @@ export class TimeSelectionStep extends $LitElement() {
 
 		this.timeSlots = defaultSlots
 
-		// If we have a selected value, scroll to it
 		if (this.value !== undefined) {
 			setTimeout(() => this._scrollToSelectedTime(), 100)
 		}
 	}
 
 	/**
-	 * Handle time selection and dispatch events
+	 * Handle time slot selection
 	 */
-	private _handleTimeSelect(slot: TimeSlot) {
+	private _handleTimeSelect(slot: TimeSlot): void {
 		if (!slot.available) return
 
 		this.value = slot.value
@@ -215,13 +270,19 @@ export class TimeSelectionStep extends $LitElement() {
 		}
 	}
 
-	private _handleTimeHover(slot: TimeSlot) {
+	/**
+	 * Handle time slot hover
+	 */
+	private _handleTimeHover(slot: TimeSlot): void {
 		if (slot.available) {
 			this.hoveredTime = slot.value
 		}
 	}
 
-	private _handleTimeLeave() {
+	/**
+	 * Handle time slot mouse leave
+	 */
+	private _handleTimeLeave(): void {
 		this.hoveredTime = null
 	}
 
@@ -234,22 +295,38 @@ export class TimeSelectionStep extends $LitElement() {
 	}
 
 	/**
-	 * Scroll to the selected time slot and center it
+	 * Get formatted operating hours display
 	 */
-	private _scrollToSelectedTime() {
+	private _getOperatingHoursDisplay(): string {
+		if (!this.selectedVenue || !this.operatingHours || !this.selectedDate) {
+			return 'Hours: N/A'
+		}
+
+		const dayOfWeek = dayjs(this.selectedDate).format('dddd').toLowerCase()
+		const todayHours = this.operatingHours[dayOfWeek as keyof OperatingHours]
+
+		if (!todayHours) {
+			return 'Closed Today'
+		}
+
+		return `Hours: ${todayHours.open} - ${todayHours.close}`
+	}
+
+	/**
+	 * Scroll to selected time slot
+	 */
+	private _scrollToSelectedTime(): void {
 		if (this.value === undefined) return
 
-		// Wait for next render cycle to ensure elements are available
 		requestAnimationFrame(() => {
 			try {
-				// Find the selected time element
 				const selectedTimeEl = this.shadowRoot?.querySelector(`[data-time-value="${this.value}"]`) as HTMLElement
+
 				if (!selectedTimeEl) {
 					console.debug('Selected time element not found')
 					return
 				}
 
-				// Use the scrollIntoView API with options for better browser support
 				selectedTimeEl.scrollIntoView({
 					behavior: 'smooth',
 					block: 'nearest',
@@ -262,6 +339,8 @@ export class TimeSelectionStep extends $LitElement() {
 	}
 
 	render() {
+		if (this.hidden) return html``
+
 		// Container classes based on active state
 		const containerClasses = {
 			'w-full': true,
@@ -275,11 +354,15 @@ export class TimeSelectionStep extends $LitElement() {
 
 		return html`
 			<div class=${this.classMap(containerClasses)}>
-				<!-- Title and View Toggle - Only shown when active -->
+				<!-- Title and operating hours -->
 				${this.active
 					? html`
 							<div class="flex justify-between items-center mb-5">
 								<div class="text-lg font-medium">Select Time</div>
+
+								${this.selectedVenue && this.operatingHours
+									? html` <div class="text-sm text-surface-on-variant">${this._getOperatingHoursDisplay()}</div> `
+									: ''}
 							</div>
 					  `
 					: this.value !== undefined
@@ -311,10 +394,10 @@ export class TimeSelectionStep extends $LitElement() {
 							</div>
 					  `
 					: html`
-							<!-- Always use timeline view -->
+							<!-- Time slots timeline -->
 							${this._renderTimeline()}
 
-							<!-- Simple time range indicator - only when active -->
+							<!-- Time range indicator - only when active -->
 							${this.active && this.timeSlots.length > 0
 								? html`
 										<div class="flex justify-between text-xs text-gray-500 mt-4 px-4 pt-2 border-t">
@@ -328,8 +411,11 @@ export class TimeSelectionStep extends $LitElement() {
 		`
 	}
 
+	/**
+	 * Render time slots timeline
+	 */
 	private _renderTimeline() {
-		// Filter slots to include only the hour and half-hour markers
+		// Filter to show only hour and half-hour slots
 		const timelineSlots = this.timeSlots.filter(slot => slot.value % 30 === 0)
 
 		return html`
@@ -342,7 +428,7 @@ export class TimeSelectionStep extends $LitElement() {
 						const isHalfHour = minute === 30
 						const isSelected = this.value === slot.value
 
-						// Classes for time slots - adjust size based on active state
+						// Classes for time slots
 						const slotClasses = {
 							'flex-none': true,
 							'rounded-lg': true,
@@ -360,14 +446,14 @@ export class TimeSelectionStep extends $LitElement() {
 							'bg-gray-200 text-gray-400': !slot.available,
 							'shadow-sm': isSelected,
 							'hover:shadow-sm': slot.available && !isSelected,
-							// Different sizes based on active state and whether it's an hour or half-hour marker
+							// Different sizes based on active state and hour type
 							'w-16 h-20 py-3 px-1': this.active && !isHalfHour,
 							'w-14 h-16 py-2 px-1': this.active && isHalfHour,
 							'w-12 h-16 py-2 px-1': !this.active && !isHalfHour,
 							'w-10 h-12 py-1 px-1': !this.active && isHalfHour,
 						}
 
-						// Text size classes based on active state
+						// Text size classes
 						const textClasses = {
 							'font-bold': true,
 							'text-base': this.active && !isHalfHour,
@@ -389,7 +475,7 @@ export class TimeSelectionStep extends $LitElement() {
 								@mouseleave=${this._handleTimeLeave}
 								data-time-value=${slot.value}
 							>
-								<!-- Availability indicator dot at the top -->
+								<!-- Availability indicator dot -->
 								${this.active
 									? html`
 											<div
