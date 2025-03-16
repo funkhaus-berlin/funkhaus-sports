@@ -1,8 +1,21 @@
-// netlify/functions/create-payment-intent.ts
 import { Handler } from '@netlify/functions'
 import Stripe from 'stripe'
 import { corsHeaders } from './_shared/cors'
 import stripe from './_shared/stripe'
+import admin from 'firebase-admin'
+
+// Initialize Firebase Admin if not already initialized
+if (!admin.apps.length) {
+	admin.initializeApp({
+		credential: admin.credential.cert({
+			projectId: process.env.FIREBASE_PROJECT_ID,
+			clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+			privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+		}),
+	})
+}
+
+const db = admin.firestore()
 
 const handler: Handler = async (event, context) => {
 	// Handle preflight request for CORS
@@ -23,111 +36,155 @@ const handler: Handler = async (event, context) => {
 	}
 
 	try {
-		const data = JSON.parse(event.body || '{}')
-		const {
-			amount,
-			currency = 'eur',
-			email,
-			name,
-			phone,
-			address,
-			postalCode,
-			city,
-			country,
-			courtId,
-			eventID,
-			uid,
-			bookingId,
-			date,
-			startTime,
-			endTime,
-		} = data
+		// Get the signature from the headers
+		const signature = event.headers['stripe-signature']
 
-		// Validate the amount
-		if (!amount || typeof amount !== 'number' || amount <= 0) {
+		if (!signature) {
 			return {
 				statusCode: 400,
 				headers: corsHeaders,
-				body: JSON.stringify({ error: 'Invalid amount' }),
+				body: JSON.stringify({ error: 'Missing Stripe signature' }),
 			}
 		}
 
-		// Prepare metadata for the booking
-		const metadata: Record<string, string> = {
-			userId: uid || 'anonymous',
-			email: email || 'guest@example.com',
+		// Verify and construct the event
+		const stripeEvent = stripe.webhooks.constructEvent(
+			event.body as string,
+			signature,
+			process.env.STRIPE_WEBHOOK_SECRET as string,
+		)
+
+		// Handle different event types
+		switch (stripeEvent.type) {
+			case 'payment_intent.succeeded':
+				await handlePaymentIntentSucceeded(stripeEvent.data.object as Stripe.PaymentIntent)
+				break
+			case 'payment_intent.payment_failed':
+				await handlePaymentIntentFailed(stripeEvent.data.object as Stripe.PaymentIntent)
+				break
+			// Add more event handlers as needed
 		}
 
-		// Add booking details to metadata if available
-		if (bookingId) {
-			metadata.bookingId = bookingId
-		}
-
-		if (courtId) {
-			metadata.courtId = courtId
-		}
-
-		if (date) {
-			metadata.date = date
-		}
-
-		if (startTime) {
-			metadata.startTime = startTime
-		}
-
-		if (endTime) {
-			metadata.endTime = endTime
-		}
-
-		// Add product description
-		metadata.product = eventID || 'court-booking'
-
-		// Create a payment intent
-		const paymentIntent = await stripe.paymentIntents.create({
-			amount: Math.round(amount), // Stripe uses cents/subunits
-			currency: currency,
-			automatic_payment_methods: { enabled: true },
-			metadata: metadata,
-			receipt_email: email,
-			// Store customer info
-			shipping: {
-				name: name,
-				phone: phone,
-				address: {
-					line1: address,
-					postal_code: postalCode,
-					city: city,
-					country: country,
-				},
-			},
-			// Set a description for this payment
-			description: `Court Booking - ${courtId ? `Court ${courtId}` : 'Tennis Court'} - ${
-				date || new Date().toISOString().split('T')[0]
-			}`,
-		})
-
-		// Return client secret to the frontend
 		return {
 			statusCode: 200,
 			headers: corsHeaders,
-			body: JSON.stringify({
-				clientSecret: paymentIntent.client_secret,
-				orderId: paymentIntent.id,
-				// Return the payment intent ID so we can reference it later
-				paymentIntentId: paymentIntent.id,
-			}),
+			body: JSON.stringify({ received: true }),
 		}
 	} catch (error) {
-		console.error('Error creating payment intent:', error)
+		console.error('Webhook error:', error)
 		return {
-			statusCode: 500,
+			statusCode: 400,
 			headers: corsHeaders,
-			body: JSON.stringify({
-				error: error.message,
-				type: error.type,
-				code: error.code,
-			}),
+			body: JSON.stringify({ error: error.message }),
 		}
+	}
+}
+
+/**
+ * Handle successful payment intent events
+ */
+async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+	console.log('Payment succeeded:', paymentIntent.id)
+
+	// Extract booking information from payment intent metadata
+	const { bookingId, courtId, date, userId } = paymentIntent.metadata || {}
+
+	if (!bookingId) {
+		// If no bookingId in metadata, this is a payment without a booking
+		// Log it for reconciliation purposes
+		await logPaymentTransaction(paymentIntent, 'succeeded', 'No booking ID associated with payment')
+		return
+	}
+
+	try {
+		// Check if booking already exists
+		const bookingRef = db.collection('bookings').doc(bookingId)
+		const bookingDoc = await bookingRef.get()
+
+		if (bookingDoc.exists) {
+			// Booking exists, update its payment status
+			await bookingRef.update({
+				paymentStatus: 'paid',
+				status: 'confirmed',
+				paymentIntentId: paymentIntent.id,
+				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+			})
+
+			console.log(`Updated existing booking ${bookingId} to confirmed status`)
+		} else {
+			// Booking doesn't exist yet - likely payment succeeded before booking creation
+			// Log this for manual reconciliation
+			await logPaymentTransaction(paymentIntent, 'succeeded', 'Payment succeeded but no booking record exists')
+		}
+	} catch (error) {
+		console.error('Error handling payment success webhook:', error)
+		await logPaymentTransaction(paymentIntent, 'error', `Error updating booking: ${error.message}`)
+	}
+}
+
+/**
+ * Handle failed payment intent events
+ */
+async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
+	console.log('Payment failed:', paymentIntent.id)
+
+	const { bookingId } = paymentIntent.metadata || {}
+
+	if (bookingId) {
+		try {
+			// If there's a booking ID, update its status to failed
+			const bookingRef = db.collection('bookings').doc(bookingId)
+			const bookingDoc = await bookingRef.get()
+
+			if (bookingDoc.exists) {
+				await bookingRef.update({
+					paymentStatus: 'failed',
+					status: 'cancelled',
+					updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+				})
+
+				console.log(`Updated booking ${bookingId} to failed status`)
+			}
+		} catch (error) {
+			console.error('Error handling payment failure webhook:', error)
+			await logPaymentTransaction(paymentIntent, 'error', `Error updating failed payment booking: ${error.message}`)
+		}
+	}
+
+	// Log the failed payment regardless
+	await logPaymentTransaction(paymentIntent, 'failed', paymentIntent.last_payment_error?.message || 'Payment failed')
+}
+
+/**
+ * Log payment transactions for audit and reconciliation
+ */
+async function logPaymentTransaction(
+	paymentIntent: Stripe.PaymentIntent,
+	status: 'succeeded' | 'failed' | 'error',
+	notes: string,
+) {
+	try {
+		// Create a transaction log entry
+		await db
+			.collection('paymentTransactions')
+			.doc(paymentIntent.id)
+			.set({
+				paymentIntentId: paymentIntent.id,
+				amount: paymentIntent.amount / 100, // Convert from cents
+				currency: paymentIntent.currency,
+				status: status,
+				bookingId: paymentIntent.metadata?.bookingId || null,
+				courtId: paymentIntent.metadata?.courtId || null,
+				date: paymentIntent.metadata?.date || null,
+				customerEmail: paymentIntent.receipt_email || null,
+				notes: notes,
+				metadata: paymentIntent.metadata || {},
+				timestamp: admin.firestore.FieldValue.serverTimestamp(),
+			})
+
+		console.log(`Logged payment transaction: ${paymentIntent.id}`)
+	} catch (error) {
+		console.error('Error logging payment transaction:', error)
 	}
 }
 

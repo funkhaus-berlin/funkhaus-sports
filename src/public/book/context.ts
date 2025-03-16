@@ -11,6 +11,7 @@ export interface Booking {
 	price: number
 	date: string
 	paymentStatus?: string
+	courtPreference?: 'indoor' | 'outdoor'
 	status?: string
 	paymentIntentId?: string
 	customerEmail?: string

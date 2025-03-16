@@ -14,7 +14,7 @@ export const $stripe = new BehaviorSubject<number>(100)
 
 export function createPaymentIntent(body: any) {
 	return from(
-		fetch(import.meta.env.VITE_NETLIFY_BASE_URL.concat('/api/stripe-intent'), {
+		fetch(import.meta.env.VITE_NETLIFY_BASE_URL.concat('/api/create-payment-intent'), {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -22,9 +22,13 @@ export function createPaymentIntent(body: any) {
 			body: JSON.stringify(body),
 		}),
 	).pipe(
-		tap(res => console.log(res)),
+		tap(res => {
+			if (!res.ok) {
+				console.error('Payment intent creation failed:', res.status, res.statusText)
+			}
+		}),
 		switchMap(res => res.json()),
-		map((body: { orderID: string; clientSecret: string }) => body),
+		map((body: { orderID: string; clientSecret: string; paymentIntentId: string }) => body),
 	)
 }
 

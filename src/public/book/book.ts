@@ -8,7 +8,6 @@ import { customElement, query, state } from 'lit/decorators.js'
 import { BookingService } from 'src/bookingServices/booking.service'
 import { Booking, bookingContext } from './context'
 import './steps'
-import './steps/booking-confirmation'
 import { Duration, TimeSlot } from './types'
 // Import Stripe related dependencies
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
@@ -32,7 +31,7 @@ import { Court } from 'src/db/courts.collection'
 export class CourtBookingSystem extends $LitElement() {
 	// Current UI state
 	@state() hoveredTimeSlot: number | null = null
-	@state() step: number = 1 // 1: Date, 2: Time, 3: Duration, 4: Payment/Confirmation
+	@state() step: number = 1 // 1: Date, 2: Time, 3: Court Preferences, 4: Duration, 5: Payment/Confirmation
 	@state() selectedCourt: Court | undefined = undefined
 	@state() bookingInProgress: boolean = false
 	@state() loadingCourts: boolean = false
@@ -53,10 +52,11 @@ export class CourtBookingSystem extends $LitElement() {
 	bookingService: BookingService
 	private auth = getAuth()
 
-	// Updated booking steps
+	// Updated booking steps with Court Preferences as a separate step
 	private bookingSteps = [
 		{ label: 'Date', icon: 'event' },
 		{ label: 'Time', icon: 'schedule' },
+		{ label: 'Preferences', icon: 'tune' },
 		{ label: 'Duration', icon: 'timelapse' },
 		{ label: 'Payment', icon: 'payment' },
 	]
@@ -89,7 +89,8 @@ export class CourtBookingSystem extends $LitElement() {
 		// Increment steps based on selections
 		if (this.booking.date) this.step = 2
 		if (this.booking.date && this.booking.startTime) this.step = 3
-		if (this.booking.date && this.booking.startTime && this.booking.endTime) this.step = 4
+		if (this.booking.date && this.booking.startTime && this.courtPreferences) this.step = 4
+		if (this.booking.date && this.booking.startTime && this.courtPreferences && this.booking.endTime) this.step = 5
 	}
 
 	// Get total price for the booking
@@ -125,8 +126,16 @@ export class CourtBookingSystem extends $LitElement() {
 			true,
 		)
 
-		this.step = 3 // Move to duration selection
+		this.step = 3 // Move to court preferences selection
 		this.selectedCourt = undefined
+	}
+
+	// Handle court preferences update
+	private handleCourtPreferencesChange(preferences: CourtPreferences) {
+		this.courtPreferences = preferences
+
+		// After selecting preferences, move to duration step
+		this.step = 4
 	}
 
 	// Handle duration selection
@@ -187,21 +196,13 @@ export class CourtBookingSystem extends $LitElement() {
 			// Show success message with court assignment
 			$notify.success(`Court ${selectedCourt.name} assigned for your booking`)
 
-			this.step = 4 // Proceed to payment
+			this.step = 5 // Proceed to payment
 		} catch (error) {
 			console.error('Error assigning court:', error)
 			this.error = 'Error assigning court. Please try again.'
-			this.step = 3 // retry duration selection
+			this.step = 4 // retry duration selection
 		} finally {
 			this.bookingInProgress = false
-		}
-	}
-
-	// Handle court preferences update
-	private updateCourtPreferences(preferences: CourtPreferences) {
-		this.courtPreferences = {
-			...this.courtPreferences,
-			...preferences,
 		}
 	}
 
@@ -223,26 +224,41 @@ export class CourtBookingSystem extends $LitElement() {
 				.currentStep=${this.step}
 				?clickable=${true}
 				@step-click=${(e: CustomEvent) => {
-					this.step = e.detail.step
-					if (this.step === 3) {
-						// reset duration and court selection
-						bookingContext.set({
-							endTime: '',
-							price: 0,
-							courtId: '',
-						})
-					} else if (this.step === 2) {
-						// reset court selection
-						bookingContext.set({
-							courtId: '',
-						})
-					} else if (this.step === 1) {
-						// reset date, start time and court selection
-						bookingContext.set({
-							date: '',
-							startTime: '',
-							courtId: '',
-						})
+					const newStep = e.detail.step
+
+					// Handle backwards navigation and reset appropriate state
+					if (newStep < this.step) {
+						this.step = newStep
+
+						if (newStep <= 4) {
+							// Reset payment info
+							bookingContext.set({
+								id: '',
+							})
+						}
+
+						if (newStep <= 3) {
+							// Reset duration and court selection
+							bookingContext.set({
+								endTime: '',
+								price: 0,
+								courtId: '',
+							})
+						}
+
+						if (newStep <= 2) {
+							// Reset preferences
+							this.courtPreferences = {}
+						}
+
+						if (newStep <= 1) {
+							// Reset date, start time and court selection
+							bookingContext.set({
+								date: '',
+								startTime: '',
+								courtId: '',
+							})
+						}
 					}
 				}}
 			></funkhaus-booking-steps>
@@ -264,47 +280,6 @@ export class CourtBookingSystem extends $LitElement() {
 		`
 	}
 
-	// Court preferences form
-	private renderCourtPreferences() {
-		return html`
-			<div class="bg-surface-container p-4 rounded-lg mb-4">
-				<schmancy-typography type="title" token="sm" class="mb-2">Court Preferences (Optional)</schmancy-typography>
-
-				<schmancy-flex flow="col" gap="md">
-					<schmancy-flex gap="md">
-						<schmancy-checkbox
-							.value=${this.courtPreferences.preferIndoor || false}
-							@change=${(e: CustomEvent) => this.updateCourtPreferences({ preferIndoor: e.detail.value })}
-						>
-							Prefer Indoor
-						</schmancy-checkbox>
-
-						<schmancy-checkbox
-							.value=${this.courtPreferences.preferOutdoor || false}
-							@change=${(e: CustomEvent) => this.updateCourtPreferences({ preferOutdoor: e.detail.value })}
-						>
-							Prefer Outdoor
-						</schmancy-checkbox>
-					</schmancy-flex>
-
-					<schmancy-select
-						label="Preferred Court Type"
-						.value=${this.courtPreferences.preferredCourtTypes || []}
-						multi
-						@change=${(e: CustomEvent) => this.updateCourtPreferences({ preferredCourtTypes: e.detail.value })}
-					>
-						<schmancy-option value="standard">Standard</schmancy-option>
-						<schmancy-option value="indoor">Indoor</schmancy-option>
-						<schmancy-option value="outdoor">Outdoor</schmancy-option>
-						<schmancy-option value="clay">Clay</schmancy-option>
-						<schmancy-option value="grass">Grass</schmancy-option>
-						<schmancy-option value="hard">Hard</schmancy-option>
-					</schmancy-select>
-				</schmancy-flex>
-			</div>
-		`
-	}
-
 	// Main render method
 	@state() bookingComplete: boolean = false
 
@@ -314,6 +289,7 @@ export class CourtBookingSystem extends $LitElement() {
 		this.step = 1
 		this.error = null
 		this.selectedCourt = undefined
+		this.courtPreferences = {}
 
 		// Reset booking context
 		bookingContext.set({
@@ -377,7 +353,7 @@ export class CourtBookingSystem extends $LitElement() {
 
 	private renderCurrentStep() {
 		return html`${when(
-			this.step <= 3,
+			this.step <= 4,
 			() => html`
 				<date-selection-step
 					.active=${this.step === 1}
@@ -385,6 +361,7 @@ export class CourtBookingSystem extends $LitElement() {
 					.value=${this.booking.startTime}
 					@change=${(e: CustomEvent<string>) => this.handleDateSelect(e.detail)}
 				></date-selection-step>
+
 				<time-selection-step
 					.hidden=${this.step < 2}
 					.active=${this.step === 2}
@@ -394,9 +371,16 @@ export class CourtBookingSystem extends $LitElement() {
 						: undefined}
 					@change=${(e: CustomEvent<TimeSlot>) => this.handleTimeSlotSelect(e.detail)}
 				></time-selection-step>
-				${this.step === 3 ? this.renderCourtPreferences() : ''}
-				<duration-selection-step
+
+				<court-preferences-step
 					.hidden=${this.step !== 3}
+					.active=${this.step === 3}
+					.preferences=${this.courtPreferences}
+					@change=${(e: CustomEvent<CourtPreferences>) => this.handleCourtPreferencesChange(e.detail)}
+				></court-preferences-step>
+
+				<duration-selection-step
+					.hidden=${this.step !== 4}
 					class="max-w-full p-4"
 					.selectedDuration=${this.duration}
 					@change=${(e: CustomEvent<Duration>) => this.handleDurationSelect(e.detail)}
@@ -431,6 +415,41 @@ export class CourtBookingSystem extends $LitElement() {
 								${this.selectedCourt ? this.selectedCourt.name : 'Auto-assigned'}
 							</schmancy-typography>
 						</div>
+
+						<!-- Display court preferences summary -->
+						${this.courtPreferences.preferIndoor ||
+						this.courtPreferences.preferOutdoor ||
+						(this.courtPreferences.preferredCourtTypes && this.courtPreferences.preferredCourtTypes.length > 0)
+							? html`
+									<div class="col-span-2">
+										<schmancy-typography type="label" token="sm">Preferences:</schmancy-typography>
+										<schmancy-flex gap="sm" wrap="wrap" class="mt-1">
+											${this.courtPreferences.preferIndoor
+												? html`
+														<div class="bg-primary-container text-primary-on-container px-2 py-1 rounded-full text-xs">
+															Indoor
+														</div>
+												  `
+												: ''}
+											${this.courtPreferences.preferOutdoor
+												? html`
+														<div class="bg-primary-container text-primary-on-container px-2 py-1 rounded-full text-xs">
+															Outdoor
+														</div>
+												  `
+												: ''}
+											${(this.courtPreferences.preferredCourtTypes || []).map(
+												type => html`
+													<div class="bg-primary-container text-primary-on-container px-2 py-1 rounded-full text-xs">
+														${type.charAt(0).toUpperCase() + type.slice(1)}
+													</div>
+												`,
+											)}
+										</schmancy-flex>
+									</div>
+							  `
+							: ''}
+
 						<div class="col-span-2">
 							<schmancy-typography type="label" token="sm">Total:</schmancy-typography>
 							<schmancy-typography type="display" token="sm" class="text-primary-default">

@@ -107,16 +107,3 @@ export class DurationSelectionStep extends $LitElement() {
 		`
 	}
 }
-
-// ${showSavings
-// 	? html`
-// 			<schmancy-typography
-// 				type="label"
-// 				token="sm"
-// 				class="${isSelected ? 'text-primary-on/80' : 'text-tertiary-default'}"
-// 			>
-// 				$${hourRate.toFixed(2)}/hour
-// 				${duration.value >= 60 ? html` · Save ${Math.round(100 - (hourRate / 30) * 100)}% ` : ''}
-// 			</schmancy-typography>
-// 	  `
-// 	: ''}

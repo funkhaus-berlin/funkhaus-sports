@@ -1,5 +1,4 @@
 // src/public/book/steps/payment-step.ts
-
 import { $notify, select, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { StripeElements } from '@stripe/stripe-js'
@@ -12,7 +11,7 @@ import { catchError, finalize, from, map, of, retry, Subject, switchMap, tap } f
 import { Court } from 'src/db/courts.collection'
 import { BookingFormData } from 'src/db/interface'
 import stripePromise, { $stripe, $stripeElements, createPaymentIntent } from 'src/public/stripe'
-import { BookingService } from '../../../bookingServices/booking.service'
+import { BookingService } from 'src/bookingServices/booking.service'
 import { Booking, bookingContext } from '../context'
 import { FunkhausSportsTermsAndConditions } from '../terms-and-conditions'
 
@@ -29,7 +28,6 @@ export class BookingPaymentStep extends $LitElement() {
 	@state() validate: boolean = false
 	@state() formValidity: Record<string, boolean> = {
 		email: true,
-		repeatEmail: true,
 		name: true,
 		phoneNumber: true,
 		address: true,
@@ -64,6 +62,7 @@ export class BookingPaymentStep extends $LitElement() {
 	// Check payment status for returning from Stripe
 	async checkPaymentStatus() {
 		const clientSecret = new URLSearchParams(window.location.search).get('payment_intent_client_secret')
+		const paymentIntentId = new URLSearchParams(window.location.search).get('payment_intent')
 
 		if (!clientSecret) {
 			return
@@ -72,37 +71,57 @@ export class BookingPaymentStep extends $LitElement() {
 		const stripe = await stripePromise
 
 		if (!stripe) {
+			$notify.error('Payment processing is not available. Please try again later.')
 			return
 		}
 
 		this.processing = true
+		$notify.info('Verifying payment status...')
 
 		// Check payment status
 		const check = new Subject<number>()
-		check.pipe(switchMap(() => from(stripe.retrievePaymentIntent(clientSecret)))).subscribe({
-			next: ({ paymentIntent }) => {
-				switch (paymentIntent?.status) {
-					case 'succeeded':
-						// Create the booking after successful payment
-						this.createBookingAfterPayment(paymentIntent.id)
-						break
-					case 'processing':
-						this.processing = true
-						// Check again after a short delay
-						setTimeout(() => check.next(0), 1000)
-						break
-					case 'requires_payment_method':
-						$notify.error('Payment failed, please try again.')
-						this.processing = false
-						break
-					default:
-						this.processing = false
-				}
-			},
-			error: () => {
-				this.processing = false
-			},
-		})
+		check
+			.pipe(
+				switchMap(() => from(stripe.retrievePaymentIntent(clientSecret))),
+				retry({ count: 3, delay: 1000 }), // Add retry for network resilience
+				timeout(30000), // Add timeout to prevent infinite waiting
+			)
+			.subscribe({
+				next: ({ paymentIntent }) => {
+					switch (paymentIntent?.status) {
+						case 'succeeded':
+							$notify.success('Payment successful! Creating your booking...')
+							// Create the booking after successful payment
+							this.createBookingAfterPayment(paymentIntent.id)
+							break
+						case 'processing':
+							this.processing = true
+							$notify.info('Payment is still processing. Please wait...')
+							// Check again after a short delay
+							setTimeout(() => check.next(0), 2000)
+							break
+						case 'requires_payment_method':
+							$notify.error('Payment failed, please try again.')
+							this.processing = false
+							// Clear URL parameters to avoid confusion on refresh
+							window.history.replaceState({}, document.title, window.location.pathname)
+							break
+						default:
+							$notify.error(`Unexpected payment status: ${paymentIntent?.status}`)
+							this.processing = false
+							// Log for debugging
+							console.error('Unexpected payment status:', paymentIntent)
+					}
+				},
+				error: error => {
+					console.error('Error checking payment status:', error)
+					$notify.error('Error verifying payment. Please contact support.')
+					this.processing = false
+				},
+			})
+
+		// Start the payment status check
+		check.next(0)
 	}
 
 	/**
@@ -114,14 +133,34 @@ export class BookingPaymentStep extends $LitElement() {
 			...this.booking,
 			paymentStatus: 'paid',
 			paymentIntentId,
+			customerEmail: this.formData.email, // Ensure email is included
+		}
+
+		// Validate essential booking data
+		if (!bookingData.courtId || !bookingData.date || !bookingData.startTime || !bookingData.endTime) {
+			console.error('Missing essential booking data:', {
+				courtId: bookingData.courtId,
+				date: bookingData.date,
+				startTime: bookingData.startTime,
+				endTime: bookingData.endTime,
+			})
+			$notify.error('Missing booking information. Please contact support with your payment reference.')
+			this.processing = false
+			return
 		}
 
 		from(this.bookingService.createBooking(bookingData))
 			.pipe(
+				retry({ count: 2, delay: 2000 }), // Retry with delay to handle potential network issues
 				catchError(error => {
-					console.error('Error creating booking:', error)
+					console.error('Error creating booking after payment:', error)
+
+					// Record transaction for support to reconcile
+					this.logFailedBookingTransaction(paymentIntentId, bookingData, error)
+
 					$notify.error(
-						'Payment was successful, but we encountered an issue saving your booking. Please contact support.',
+						'Payment was successful, but we encountered an issue saving your booking. Please contact support with reference: ' +
+							paymentIntentId.substring(0, 8).toUpperCase(),
 					)
 					this.processing = false
 					return of(null)
@@ -136,6 +175,9 @@ export class BookingPaymentStep extends $LitElement() {
 					this.success = true
 					$notify.success('Booking confirmed!')
 
+					// Log successful transaction
+					this.logSuccessfulBooking(booking, paymentIntentId)
+
 					// Reset booking context with confirmed booking
 					bookingContext.set({
 						id: booking.id,
@@ -148,18 +190,62 @@ export class BookingPaymentStep extends $LitElement() {
 						date: booking.date,
 						paymentStatus: 'paid',
 						status: 'confirmed',
+						customerEmail: booking.customerEmail || this.formData.email,
+						customerPhone: booking.customerPhone || this.formData.phoneNumber,
+						customerAddress: booking.customerAddress || {
+							street: this.formData.address,
+							city: this.formData.city,
+							postalCode: this.formData.postalCode,
+							country: this.formData.country,
+						},
 					})
 
 					// Dispatch an event to notify parent that booking is complete
 					this.dispatchEvent(
 						new CustomEvent('booking-complete', {
-							detail: { booking },
+							detail: { booking, paymentIntentId },
 							bubbles: true,
 							composed: true,
 						}),
 					)
 				}
 			})
+	}
+
+	private logFailedBookingTransaction(paymentIntentId: string, bookingData: Booking, error: any) {
+		// Log to console for now - in production this would write to a database or monitoring service
+		console.error('FAILED BOOKING TRANSACTION', {
+			timestamp: new Date().toISOString(),
+			paymentIntentId,
+			bookingData: {
+				...bookingData,
+				// Include only necessary fields for debugging
+				courtId: bookingData.courtId,
+				date: bookingData.date,
+				startTime: bookingData.startTime,
+				endTime: bookingData.endTime,
+				price: bookingData.price,
+				customerEmail: bookingData.customerEmail,
+			},
+			error: {
+				message: error.message,
+				code: error.code,
+				stack: error.stack,
+			},
+		})
+	}
+
+	private logSuccessfulBooking(booking: Booking, paymentIntentId: string) {
+		// Log successful bookings for audit purposes
+		console.log('SUCCESSFUL BOOKING', {
+			timestamp: new Date().toISOString(),
+			bookingId: booking.id,
+			paymentIntentId,
+			courtId: booking.courtId,
+			date: booking.date,
+			customerEmail: booking.customerEmail,
+			price: booking.price,
+		})
 	}
 
 	// Process payment and create booking
@@ -228,23 +314,29 @@ export class BookingPaymentStep extends $LitElement() {
 						true,
 					)
 				}),
-				switchMap(uid =>
-					createPaymentIntent({
-						amount: this.booking.price * 100,
+				switchMap(uid => {
+					// Prepare payment data with the correct structure
+					const paymentData = {
+						amount: Math.round(this.booking.price * 100), // Convert to cents
+						currency: 'eur',
 						email: this.formData.email,
 						name: this.formData.name,
-						items: {
-							[this.booking.courtId!]: 1, // Book one court
-						},
-						eventID: this.booking.id || 'court-booking',
-						uid: uid,
 						phone: this.formData.phoneNumber,
 						address: this.formData.address,
 						postalCode: this.formData.postalCode,
 						city: this.formData.city,
 						country: this.formData.country,
-					}).pipe(
-						retry(3),
+						courtId: this.booking.courtId,
+						eventID: this.booking.id || 'court-booking',
+						uid: uid,
+						bookingId: this.booking.id,
+						date: this.booking.date,
+						startTime: this.booking.startTime,
+						endTime: this.booking.endTime,
+					}
+
+					return createPaymentIntent(paymentData).pipe(
+						retry({ count: 3, delay: 1000 }), // Retry up to 3 times with 1 second delay
 						switchMap((res: any) =>
 							from(
 								stripe.confirmPayment({
@@ -254,6 +346,7 @@ export class BookingPaymentStep extends $LitElement() {
 										payment_method_data: {
 											billing_details: {
 												name: this.formData.name,
+												email: this.formData.email,
 												phone: this.formData.phoneNumber,
 												address: {
 													country: this.formData.country,
@@ -270,6 +363,7 @@ export class BookingPaymentStep extends $LitElement() {
 								}),
 							).pipe(
 								catchError(e => {
+									console.error('Payment confirmation error:', e)
 									throw e
 								}),
 								map(res => {
@@ -280,24 +374,31 @@ export class BookingPaymentStep extends $LitElement() {
 								}),
 							),
 						),
-					),
-				),
+					)
+				}),
 			)
 			.subscribe({
 				next: () => {
 					this.processing = false
 				},
-				error: error => {
-					if (error.type === 'card_error' || error.type === 'validation_error') {
-						$notify.error('Payment failed: ' + (error.message || 'Card declined'))
-					} else if (error.code === 'resource_missing') {
-						$notify.error('Payment not processed. Please try again.')
-					} else {
-						$notify.error('Something went wrong with the payment. Please try again.')
-					}
-					this.processing = false
-				},
+				error: error => this.handlePaymentError(error),
 			})
+	}
+
+	private handlePaymentError(error: any) {
+		this.processing = false
+
+		console.error('Payment error details:', error)
+
+		if (error.type === 'card_error' || error.type === 'validation_error') {
+			$notify.error('Payment failed: ' + (error.message || 'Card declined'))
+		} else if (error.message && error.message.includes('Network')) {
+			$notify.error('Network error. Please check your internet connection and try again.')
+		} else if (error.code === 'resource_missing') {
+			$notify.error('Payment not processed. Please try again.')
+		} else {
+			$notify.error('Something went wrong with the payment. Please try again.')
+		}
 	}
 
 	// Validate the form
@@ -306,7 +407,7 @@ export class BookingPaymentStep extends $LitElement() {
 		const newFormValidity = { ...this.formValidity }
 
 		// Check required fields
-		const requiredFields = ['name', 'email', 'repeatEmail', 'phoneNumber', 'address', 'postalCode', 'city', 'country']
+		const requiredFields = ['name', 'email', 'phoneNumber', 'address', 'postalCode', 'city', 'country']
 
 		requiredFields.forEach(field => {
 			const value = this.formData[field as keyof BookingFormData]
@@ -315,18 +416,33 @@ export class BookingPaymentStep extends $LitElement() {
 			isValid = isValid && fieldValid
 		})
 
-		// Check email matching
-		const emailsMatch = this.formData.email === this.formData.repeatEmail
-		this.emailsMatch = emailsMatch
-		isValid = isValid && emailsMatch
+		// Validate email format
+		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+		const validEmailFormat = emailRegex.test(this.formData.email)
+		newFormValidity.emailFormat = validEmailFormat
+		isValid = isValid && validEmailFormat
+
+		// Validate phone number format (basic check)
+		const phoneValid = this.formData.phoneNumber.trim().length >= 6
+		newFormValidity.phoneValid = phoneValid
+		isValid = isValid && phoneValid
+
+		// Validate postal code (basic length check)
+		const postalCodeValid = this.formData.postalCode.trim().length >= 3
+		newFormValidity.postalCodeValid = postalCodeValid
+		isValid = isValid && postalCodeValid
 
 		// Update form validity state
 		this.formValidity = newFormValidity
 
-		// Show an error if the form is invalid
+		// Show specific error message based on what failed
 		if (!isValid) {
-			if (!emailsMatch) {
-				$notify.error('Emails do not match. Please check and try again.')
+			if (!validEmailFormat) {
+				$notify.error('Please enter a valid email address.')
+			} else if (!phoneValid) {
+				$notify.error('Please enter a valid phone number.')
+			} else if (!postalCodeValid) {
+				$notify.error('Please enter a valid postal code.')
 			} else {
 				$notify.error('Please fill in all required fields.')
 			}
@@ -389,6 +505,22 @@ export class BookingPaymentStep extends $LitElement() {
 
 		return html`
 			<schmancy-form class="px-2" .hidden=${this.validationPaymentResponse} @submit=${this.processPaymentBooking}>
+				${when(
+					this.processing,
+					() => html`
+						<schmancy-busy class="z-50">
+							<schmancy-flex flow="row" gap="sm" align="center" class="p-6 bg-surface-container rounded-lg shadow-md">
+								<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
+								<schmancy-flex flow="col" gap="sm">
+									<schmancy-typography type="title" token="sm">Processing Payment</schmancy-typography>
+									<schmancy-typography type="body" token="sm">
+										Please don't close this window. We're processing your payment and securing your court booking.
+									</schmancy-typography>
+								</schmancy-flex>
+							</schmancy-flex>
+						</schmancy-busy>
+					`,
+				)}
 				<schmancy-grid gap="sm" class="w-full">
 					<!-- Personal Information -->
 					<schmancy-surface type="containerLow" rounded="all" class="p-4 mb-4">
@@ -435,21 +567,6 @@ export class BookingPaymentStep extends $LitElement() {
 								@change=${(e: any) => {
 									this.formData.email = e.detail.value
 									this.formValidity.email = !!e.detail.value
-									this.emailsMatch = this.formData.email === this.formData.repeatEmail
-								}}
-							></schmancy-input>
-
-							<schmancy-input
-								.autocomplete=${'email'}
-								.value=${this.formData.repeatEmail}
-								required
-								.error=${!this.formValidity.repeatEmail || !this.emailsMatch}
-								type="email"
-								placeholder="Confirm Email Address"
-								helper-text=${!this.emailsMatch ? "Emails don't match" : ''}
-								@change=${(e: any) => {
-									this.formData.repeatEmail = e.detail.value
-									this.formValidity.repeatEmail = !!e.detail.value
 									this.emailsMatch = this.formData.email === this.formData.repeatEmail
 								}}
 							></schmancy-input>
