@@ -1,18 +1,20 @@
+// src/public/book/steps/payment-step.ts
+
 import { $notify, select, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { StripeElements } from '@stripe/stripe-js'
 import dayjs from 'dayjs'
-import { signInAnonymously } from 'firebase/auth'
+import { getAuth, signInAnonymously } from 'firebase/auth'
 import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { catchError, from, map, retry, Subject, switchMap } from 'rxjs'
+import { catchError, finalize, from, map, of, retry, Subject, switchMap, tap } from 'rxjs'
+import { Court } from 'src/db/courts.collection'
 import { BookingFormData } from 'src/db/interface'
-import { auth } from 'src/firebase/firebase'
 import stripePromise, { $stripe, $stripeElements, createPaymentIntent } from 'src/public/stripe'
+import { BookingService } from '../../../bookingServices/booking.service'
 import { Booking, bookingContext } from '../context'
 import { FunkhausSportsTermsAndConditions } from '../terms-and-conditions'
-import { Court } from '../types'
 
 @customElement('booking-payment-step')
 export class BookingPaymentStep extends $LitElement() {
@@ -25,6 +27,21 @@ export class BookingPaymentStep extends $LitElement() {
 	@state() error: string | null = null
 	@state() success: boolean = false
 	@state() validate: boolean = false
+	@state() formValidity: Record<string, boolean> = {
+		email: true,
+		repeatEmail: true,
+		name: true,
+		phoneNumber: true,
+		address: true,
+		postalCode: true,
+		city: true,
+		country: true,
+	}
+	@state() emailsMatch: boolean = true
+
+	// Add booking service
+	private bookingService = new BookingService()
+	private auth = getAuth()
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
 		// Initialize Stripe
@@ -67,7 +84,7 @@ export class BookingPaymentStep extends $LitElement() {
 				switch (paymentIntent?.status) {
 					case 'succeeded':
 						// Create the booking after successful payment
-						// this.createBookingAfterPayment(paymentIntent.id)
+						this.createBookingAfterPayment(paymentIntent.id)
 						break
 					case 'processing':
 						this.processing = true
@@ -88,9 +105,71 @@ export class BookingPaymentStep extends $LitElement() {
 		})
 	}
 
+	/**
+	 * Create a booking in the database when payment is successful
+	 */
+	private createBookingAfterPayment(paymentIntentId: string) {
+		// Set booking status to pending
+		const bookingData: Booking = {
+			...this.booking,
+			paymentStatus: 'paid',
+			paymentIntentId,
+		}
+
+		from(this.bookingService.createBooking(bookingData))
+			.pipe(
+				catchError(error => {
+					console.error('Error creating booking:', error)
+					$notify.error(
+						'Payment was successful, but we encountered an issue saving your booking. Please contact support.',
+					)
+					this.processing = false
+					return of(null)
+				}),
+				finalize(() => {
+					this.processing = false
+				}),
+			)
+			.subscribe(booking => {
+				if (booking) {
+					// Booking created successfully
+					this.success = true
+					$notify.success('Booking confirmed!')
+
+					// Reset booking context with confirmed booking
+					bookingContext.set({
+						id: booking.id,
+						userId: booking.userId,
+						userName: booking.userName,
+						courtId: booking.courtId,
+						startTime: booking.startTime,
+						endTime: booking.endTime,
+						price: booking.price,
+						date: booking.date,
+						paymentStatus: 'paid',
+						status: 'confirmed',
+					})
+
+					// Dispatch an event to notify parent that booking is complete
+					this.dispatchEvent(
+						new CustomEvent('booking-complete', {
+							detail: { booking },
+							bubbles: true,
+							composed: true,
+						}),
+					)
+				}
+			})
+	}
+
 	// Process payment and create booking
 	async processPaymentBooking(e: Event) {
 		e.preventDefault()
+
+		// First, validate the form
+		if (!this.validateForm()) {
+			return
+		}
 
 		const elements = $stripeElements.value as StripeElements
 		const stripe = await stripePromise
@@ -116,10 +195,39 @@ export class BookingPaymentStep extends $LitElement() {
 
 		this.processing = true
 
+		// Update booking with customer details
+		bookingContext.set(
+			{
+				userName: this.formData.name,
+				customerEmail: this.formData.email,
+				customerPhone: this.formData.phoneNumber,
+				customerAddress: {
+					street: this.formData.address,
+					city: this.formData.city,
+					postalCode: this.formData.postalCode,
+					country: this.formData.country,
+				},
+			},
+			true,
+		)
+
 		// Process payment with anonymous auth if user isn't already authenticated
-		from(auth.currentUser ? Promise.resolve({ user: { uid: auth.currentUser.uid } }) : signInAnonymously(auth))
+		from(
+			this.auth.currentUser
+				? Promise.resolve({ user: { uid: this.auth.currentUser.uid } })
+				: signInAnonymously(this.auth),
+		)
 			.pipe(
 				map(userCredential => userCredential.user.uid),
+				tap(uid => {
+					// Update booking with user ID
+					bookingContext.set(
+						{
+							userId: uid,
+						},
+						true,
+					)
+				}),
 				switchMap(uid =>
 					createPaymentIntent({
 						amount: this.booking.price * 100,
@@ -192,130 +300,263 @@ export class BookingPaymentStep extends $LitElement() {
 			})
 	}
 
+	// Validate the form
+	private validateForm(): boolean {
+		let isValid = true
+		const newFormValidity = { ...this.formValidity }
+
+		// Check required fields
+		const requiredFields = ['name', 'email', 'repeatEmail', 'phoneNumber', 'address', 'postalCode', 'city', 'country']
+
+		requiredFields.forEach(field => {
+			const value = this.formData[field as keyof BookingFormData]
+			const fieldValid = !!value && (value as string).trim() !== ''
+			newFormValidity[field] = fieldValid
+			isValid = isValid && fieldValid
+		})
+
+		// Check email matching
+		const emailsMatch = this.formData.email === this.formData.repeatEmail
+		this.emailsMatch = emailsMatch
+		isValid = isValid && emailsMatch
+
+		// Update form validity state
+		this.formValidity = newFormValidity
+
+		// Show an error if the form is invalid
+		if (!isValid) {
+			if (!emailsMatch) {
+				$notify.error('Emails do not match. Please check and try again.')
+			} else {
+				$notify.error('Please fill in all required fields.')
+			}
+		}
+
+		return isValid
+	}
+
+	// Handle successful booking
+	private renderSuccessMessage() {
+		return html`
+			<div class="p-6 bg-success-container text-success-on rounded-lg text-center">
+				<schmancy-icon class="text-6xl mb-4">check_circle</schmancy-icon>
+				<schmancy-typography type="headline" token="md" class="mb-2">Booking Confirmed!</schmancy-typography>
+				<schmancy-typography class="mb-4">
+					Your booking for ${dayjs(this.booking.date).format('ddd, MMM D')} at
+					${dayjs(this.booking.startTime).format('h:mm A')} has been confirmed.
+				</schmancy-typography>
+
+				<schmancy-typography type="label" token="sm">
+					A confirmation email has been sent to ${this.formData.email}
+				</schmancy-typography>
+
+				<div class="mt-6">
+					<schmancy-button
+						variant="filled"
+						@click=${() => {
+							// Reset booking data and go back to step 1
+							bookingContext.set({
+								id: '',
+								courtId: '',
+								date: '',
+								startTime: '',
+								endTime: '',
+								price: 0,
+							})
+							window.location.href = '/' // Redirect to home
+						}}
+					>
+						Book Another Court
+					</schmancy-button>
+				</div>
+			</div>
+		`
+	}
+
 	render() {
-		let durationIn = 'minutes'
-		let duration = dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minutes')
-		// if duration >= 60 minutes, show duration in hours
-		if (duration >= 60) {
-			durationIn = duration > 60 ? 'hours' : 'hour'
-			duration = duration / 60
+		// let durationIn = 'minutes'
+		// let duration = dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minutes')
+		// // if duration >= 60 minutes, show duration in hours
+		// if (duration >= 60) {
+		// 	durationIn = duration > 60 ? 'hours' : 'hour'
+		// 	duration = duration / 60
+		// }
+
+		// Show success message if booking is successful
+		if (this.success) {
+			return this.renderSuccessMessage()
 		}
 
 		return html`
-			<schmancy-form
-				class="px-2"
-				.hidden=${this.validationPaymentResponse}
-				@submit=${(e: Event) => {
-					if (this.formData.email !== this.formData.repeatEmail) {
-						return
-					}
-					this.processPaymentBooking(e)
-				}}
-			>
+			<schmancy-form class="px-2" .hidden=${this.validationPaymentResponse} @submit=${this.processPaymentBooking}>
 				<schmancy-grid gap="sm" class="w-full">
-					<!-- Booking Summary -->
-					<schmancy-grid cols="1fr 1fr" class="bg-surface-low p-2 rounded-lg">
-						<div class="flex flex-col justify-between w-full mb-1">
-							<schmancy-typography type="label" token="sm">Date:</schmancy-typography>
-							<schmancy-typography type="body" weight="bold"
-								>${dayjs(this.booking.date, 'YYYY-MM-DD').format('ddd, MMM D')}</schmancy-typography
-							>
-						</div>
+					<!-- Personal Information -->
+					<schmancy-surface type="containerLow" rounded="all" class="p-4 mb-4">
+						<schmancy-typography type="title" token="sm" class="mb-4">Personal Information</schmancy-typography>
 
-						<div class="flex flex-col justify-between w-full mb-1">
-							<schmancy-typography type="label" token="sm">Time:</schmancy-typography>
-							<schmancy-typography type="body" weight="bold"
-								>${dayjs(this.booking.startTime).format('HH:mm')} - ${dayjs(this.booking.endTime).format('HH:mm')}
-							</schmancy-typography>
-						</div>
+						<schmancy-grid gap="md" class="grid-cols-1 sm:grid-cols-2 gap-4">
+							<schmancy-input
+								.autocomplete=${'given-name'}
+								.value=${this.formData.name}
+								required
+								.error=${!this.formValidity.name}
+								type="text"
+								class="w-full"
+								placeholder="Full Name"
+								@change=${(e: any) => {
+									this.formData.name = e.detail.value
+									this.formValidity.name = !!e.detail.value
+								}}
+							></schmancy-input>
 
-						<div class=" flex-col justify-between w-full mb-1">
-							<schmancy-typography type="label" token="sm">Duration:</schmancy-typography>
-							<schmancy-typography type="body" weight="bold">${duration} ${durationIn}</schmancy-typography>
-						</div>
+							<schmancy-input
+								.autocomplete=${'tel'}
+								.value=${this.formData.phoneNumber}
+								required
+								.error=${!this.formValidity.phoneNumber}
+								type="tel"
+								class="w-full"
+								placeholder="Phone Number"
+								@change=${(e: any) => {
+									this.formData.phoneNumber = e.detail.value
+									this.formValidity.phoneNumber = !!e.detail.value
+								}}
+							></schmancy-input>
+						</schmancy-grid>
 
-						<div class=" flex-col justify-between w-full mb-1">
-							<schmancy-typography type="label" token="sm">Court:</schmancy-typography>
-							<schmancy-typography type="body" weight="bold"
-								>${this.selectedCourt
-									? this.selectedCourt.name || `#${this.selectedCourt.id}`
-									: 'Auto-assigned'}</schmancy-typography
-							>
-						</div>
-					</schmancy-grid>
+						<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+							<schmancy-input
+								.autocomplete=${'email'}
+								.value=${this.formData.email}
+								required
+								.error=${!this.formValidity.email}
+								type="email"
+								placeholder="Email Address"
+								@change=${(e: any) => {
+									this.formData.email = e.detail.value
+									this.formValidity.email = !!e.detail.value
+									this.emailsMatch = this.formData.email === this.formData.repeatEmail
+								}}
+							></schmancy-input>
 
-					<!-- Contact Information -->
-					<schmancy-grid gap="sm" class="grid-cols-1 sm:grid-cols-2 gap-2">
+							<schmancy-input
+								.autocomplete=${'email'}
+								.value=${this.formData.repeatEmail}
+								required
+								.error=${!this.formValidity.repeatEmail || !this.emailsMatch}
+								type="email"
+								placeholder="Confirm Email Address"
+								helper-text=${!this.emailsMatch ? "Emails don't match" : ''}
+								@change=${(e: any) => {
+									this.formData.repeatEmail = e.detail.value
+									this.formValidity.repeatEmail = !!e.detail.value
+									this.emailsMatch = this.formData.email === this.formData.repeatEmail
+								}}
+							></schmancy-input>
+						</div>
+					</schmancy-surface>
+
+					<!-- Billing Information -->
+					<schmancy-surface type="containerLow" rounded="all" class="p-4 mb-4">
+						<schmancy-typography type="title" token="sm" class="mb-4">Billing Address</schmancy-typography>
+
 						<schmancy-input
-							.autocomplete=${'given-name'}
-							.value=${this.formData.name}
+							.autocomplete=${'address-line1'}
+							.value=${this.formData.address}
 							required
+							.error=${!this.formValidity.address}
+							type="text"
+							class="w-full mb-4"
+							placeholder="Street Address"
+							@change=${(e: any) => {
+								this.formData.address = e.detail.value
+								this.formValidity.address = !!e.detail.value
+							}}
+						></schmancy-input>
+
+						<div class="grid grid-cols-2 gap-4 mb-4">
+							<schmancy-input
+								.autocomplete=${'postal-code'}
+								.value=${this.formData.postalCode}
+								required
+								.error=${!this.formValidity.postalCode}
+								type="text"
+								placeholder="Postal Code"
+								@change=${(e: any) => {
+									this.formData.postalCode = e.detail.value
+									this.formValidity.postalCode = !!e.detail.value
+								}}
+							></schmancy-input>
+
+							<schmancy-input
+								.autocomplete=${'address-level2'}
+								.value=${this.formData.city}
+								required
+								.error=${!this.formValidity.city}
+								type="text"
+								placeholder="City"
+								@change=${(e: any) => {
+									this.formData.city = e.detail.value
+									this.formValidity.city = !!e.detail.value
+								}}
+							></schmancy-input>
+						</div>
+
+						<schmancy-input
+							.autocomplete=${'country-name'}
+							.value=${this.formData.country}
+							required
+							.error=${!this.formValidity.country}
 							type="text"
 							class="w-full"
-							placeholder="Full Name"
+							placeholder="Country"
 							@change=${(e: any) => {
-								this.formData.name = e.detail.value
+								this.formData.country = e.detail.value
+								this.formValidity.country = !!e.detail.value
 							}}
 						></schmancy-input>
-
-						<schmancy-input
-							.autocomplete=${'tel'}
-							.value=${this.formData.phoneNumber}
-							required
-							type="text"
-							class="w-full"
-							placeholder="Phone Number"
-							@change=${(e: any) => {
-								this.formData.phoneNumber = e.detail.value
-							}}
-						></schmancy-input>
-
-						<schmancy-input
-							.autocomplete=${'email'}
-							.value=${this.formData.email}
-							required
-							type="email"
-							placeholder="Email Address"
-							@change=${(e: any) => {
-								this.formData.email = e.detail.value
-							}}
-						></schmancy-input>
-					</schmancy-grid>
+					</schmancy-surface>
 
 					<!-- Payment Details -->
-					<div class="mb-3">
-						<section class="relative block">
-							<slot name="stripe-element"></slot>
-						</section>
-					</div>
+					<schmancy-surface type="containerLow" rounded="all" class="p-4 mb-4">
+						<schmancy-typography type="title" token="sm" class="mb-4">Payment Details</schmancy-typography>
+
+						<div class="mb-3">
+							<section class="relative block">
+								<slot name="stripe-element"></slot>
+							</section>
+						</div>
+					</schmancy-surface>
 
 					<!-- Terms & Submit Button -->
-
 					<schmancy-grid class="mb-2" gap="sm" justify="end">
-						<schmancy-grid cols="1fr" justify="end">
-							<schmancy-typography type="label" class="col-span-1" align="left">
-								<span>
-									By clicking Pay you agree to
+						<schmancy-typography type="label" class="col-span-1" align="left">
+							<span>
+								By clicking Pay you agree to
 
-									<a
-										class="text-sky-700 underline"
-										href="javascript:void(0)"
-										@click=${() => {
-											sheet.open({
-												component: new FunkhausSportsTermsAndConditions(),
-											})
-										}}
-										>our terms and conditions</a
-									>
-								</span>
+								<a
+									class="text-sky-700 underline"
+									href="javascript:void(0)"
+									@click=${() => {
+										sheet.open({
+											component: new FunkhausSportsTermsAndConditions(),
+										})
+									}}
+									>our terms and conditions</a
+								>
+							</span>
+						</schmancy-typography>
+
+						<div class="flex justify-between items-center w-full mt-4">
+							<schmancy-typography class="text-secondary-default" type="title">
+								Total: &euro;${this.booking.price.toFixed(2)}
+								<div class="text-xs text-surface-on-variant">Includes: 7% VAT</div>
 							</schmancy-typography>
-							<schmancy-typography class="mb-0" type="label"> Includes: 7% VAT </schmancy-typography>
-						</schmancy-grid>
-						<schmancy-button class="h-[3rem] pb-2" type="submit" variant="filled">
-							<schmancy-typography class="px-4" type="title" token="lg">
-								Pay &euro;${this.booking.price.toFixed(2)}
-							</schmancy-typography>
-						</schmancy-button>
+
+							<schmancy-button class="h-[3rem]" type="submit" variant="filled">
+								<schmancy-typography class="px-4" type="title" token="lg"> Pay Now </schmancy-typography>
+							</schmancy-button>
+						</div>
 					</schmancy-grid>
 				</schmancy-grid>
 			</schmancy-form>
@@ -326,6 +567,7 @@ export class BookingPaymentStep extends $LitElement() {
 					<schmancy-busy class="z-50">
 						<schmancy-flex flow="row" gap="sm" align="center">
 							<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
+							<schmancy-typography>Processing payment...</schmancy-typography>
 						</schmancy-flex>
 					</schmancy-busy>
 				`,

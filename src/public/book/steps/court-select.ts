@@ -2,7 +2,7 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { css, html } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
-import { Court } from '../types'
+import { Court } from 'src/db/courts.collection'
 @customElement('court-selection-step')
 export class CourtSelectionStep extends $LitElement() {
 	static styles = css`

@@ -5,13 +5,6 @@ export interface TimeSlot {
 	available: boolean
 }
 
-export interface Court {
-	id: string
-	name: string
-	available: boolean
-	hourlyRate?: number
-}
-
 export interface Duration {
 	label: string
 	value: number

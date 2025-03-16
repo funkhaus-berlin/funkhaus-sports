@@ -12,6 +12,15 @@ export interface Booking {
 	date: string
 	paymentStatus?: string
 	status?: string
+	paymentIntentId?: string
+	customerEmail?: string
+	customerPhone: string
+	customerAddress: {
+		street: string
+		city: string
+		postalCode: string
+		country: string
+	}
 }
 
 // Create global context for booking information
@@ -25,6 +34,13 @@ export const bookingContext = createContext<Booking>(
 		endTime: '',
 		price: 0,
 		date: '',
+		customerPhone: '',
+		customerAddress: {
+			street: '',
+			city: '',
+			postalCode: '',
+			country: '',
+		},
 	},
 	'session',
 	'booking',
@@ -41,13 +57,6 @@ export interface Duration {
 	label: string
 	value: number // minutes
 	price: number
-}
-
-export interface Court {
-	id: string
-	name: string
-	available: boolean
-	hourlyRate?: number
 }
 
 // utils.ts

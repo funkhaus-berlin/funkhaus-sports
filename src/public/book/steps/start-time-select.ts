@@ -1,9 +1,11 @@
+// src/public/book/steps/start-time-select.ts
+
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
-import { distinctUntilChanged, map, takeUntil } from 'rxjs'
-import { AvailabilityService } from '../../../bookingServices/availability.service'
+import { distinctUntilChanged, map, takeUntil, switchMap, tap, catchError } from 'rxjs'
+import { AvailabilityService } from '../../../bookingServices/availability'
 import { bookingContext } from '../context'
 import { TimeSlot } from '../types'
 
@@ -36,6 +38,8 @@ export class TimeSelectionStep extends $LitElement() {
 	@state() hoveredTime: number | null = null
 	// Always use timeline view for now
 	@state() viewMode: 'timeline' | 'list' = 'timeline'
+	@state() loading: boolean = false
+	@state() error: string | null = null
 
 	private availabilityService: AvailabilityService
 
@@ -48,12 +52,55 @@ export class TimeSelectionStep extends $LitElement() {
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
+		// Subscribe to date changes from the booking context
 		bookingContext.$.pipe(
 			map(booking => booking.date),
 			distinctUntilChanged(),
+			tap(() => {
+				// Show loading state when date changes
+				this.loading = true
+				// Reset current time slots while loading
+				this.timeSlots = []
+			}),
+			switchMap(date => {
+				if (!date) return []
+
+				// Load time slots for the selected date for all courts
+				return this.availabilityService.getAllCourtsAvailability(date).pipe(
+					// Handle errors gracefully
+					catchError(err => {
+						console.error('Error loading time slots:', err)
+						this.error = 'Unable to load available time slots. Please try again.'
+						this.loading = false
+						return []
+					}),
+				)
+			}),
 			takeUntil(this.disconnecting),
 		).subscribe({
-			next: date => this.loadTimeSlots(date),
+			next: courtsAvailability => {
+				this.error = null
+				this.loading = false
+
+				if (!courtsAvailability || Object.keys(courtsAvailability).length === 0) {
+					this._createDefaultTimeSlots()
+					return
+				}
+
+				// Process the availability data
+				this._processAvailabilityData(courtsAvailability)
+
+				// If we already have a selected value, make sure we scroll to it
+				if (this.value !== undefined) {
+					setTimeout(() => this._scrollToSelectedTime(), 100)
+				}
+			},
+			error: err => {
+				console.error('Error in subscription:', err)
+				this.error = 'An error occurred. Please try again.'
+				this.loading = false
+				this._createDefaultTimeSlots()
+			},
 		})
 
 		// If there's a value already set, scroll to it when the component is first rendered
@@ -71,63 +118,61 @@ export class TimeSelectionStep extends $LitElement() {
 		}
 	}
 
-	// Load time slots for selected date from backend API
-	async loadTimeSlots(date: string) {
-		try {
-			const formattedDate = dayjs(date).format('YYYY-MM-DD')
+	/**
+	 * Process availability data from all courts to create time slots
+	 * @param courtsAvailability - Availability data for all courts
+	 */
+	private _processAvailabilityData(courtsAvailability: Record<string, Record<string, { isAvailable: boolean }>>) {
+		// Start with an empty array
+		const slots: TimeSlot[] = []
 
-			// Get all courts availability for the selected date
-			this.availabilityService.getAllCourtsAvailability(formattedDate).subscribe({
-				next: courtsAvailability => {
-					// Convert the backend availability data to time slots
-					const slots: TimeSlot[] = []
-
-					// If no courts have availability, use default hours (12PM-10PM)
-					if (!courtsAvailability || Object.keys(courtsAvailability).length === 0) {
-						this._createDefaultTimeSlots()
-					} else {
-						// Get availability for first court as sample (we'll filter more specifically later)
-						const firstCourtId = Object.keys(courtsAvailability)[0]
-						const firstCourtSlots = courtsAvailability[firstCourtId]
-
-						// Convert backend time format (HH:00) to minutes for our UI
-						Object.entries(firstCourtSlots).forEach(([timeKey, timeSlot]) => {
-							const [hour, minute] = timeKey.split(':').map(Number)
-							const value = hour * 60 + (minute || 0)
-
-							slots.push({
-								label: timeKey,
-								value,
-								available: timeSlot.isAvailable,
-							})
-						})
-
-						// Sort by time
-						slots.sort((a, b) => a.value - b.value)
-						this.timeSlots = slots
-					}
-
-					// If we already have a selected value, make sure we scroll to it
-					if (this.value !== undefined) {
-						setTimeout(() => this._scrollToSelectedTime(), 100)
-					}
-				},
-				error: error => {
-					console.error('Error loading time slots:', error)
-					this._createDefaultTimeSlots()
-				},
-			})
-		} catch (err) {
-			console.error('Error loading time slots:', err)
+		// If no courts are available, use default slots
+		if (Object.keys(courtsAvailability).length === 0) {
 			this._createDefaultTimeSlots()
+			return
 		}
+
+		// Get all unique time slots from all courts
+		const allTimeSlots = new Set<string>()
+		Object.values(courtsAvailability).forEach(courtSlots => {
+			Object.keys(courtSlots).forEach(timeKey => {
+				allTimeSlots.add(timeKey)
+			})
+		})
+
+		// Convert time slots to a sorted array
+		const sortedTimeSlots = Array.from(allTimeSlots).sort()
+
+		// For each time slot, check if it's available in ANY court
+		sortedTimeSlots.forEach(timeKey => {
+			const [hour, minute] = timeKey.split(':').map(Number)
+			const value = hour * 60 + (minute || 0)
+
+			// A slot is available if at least one court has it available
+			const isAvailable = Object.values(courtsAvailability).some(courtSlots => courtSlots[timeKey]?.isAvailable)
+
+			slots.push({
+				label: timeKey,
+				value,
+				available: isAvailable,
+			})
+		})
+
+		// Sort by time
+		slots.sort((a, b) => a.value - b.value)
+		this.timeSlots = slots
 	}
 
-	// Create default time slots (12PM-10PM with half-hour intervals)
+	/**
+	 * Create default time slots (8AM-10PM with half-hour intervals)
+	 * Used as a fallback when no data is available
+	 */
 	private _createDefaultTimeSlots() {
 		const defaultSlots: TimeSlot[] = []
-		// Start from 12PM (noon)
-		for (let hour = 12; hour < 22; hour++) {
+
+		// Business hours: 8AM to 10PM
+		for (let hour = 8; hour < 22; hour++) {
+			// Full hour slot
 			const timeKey = `${hour.toString().padStart(2, '0')}:00`
 			const value = hour * 60
 
@@ -137,7 +182,7 @@ export class TimeSelectionStep extends $LitElement() {
 				available: true,
 			})
 
-			// Add half-hour slots
+			// Half-hour slot
 			const halfHourKey = `${hour.toString().padStart(2, '0')}:30`
 			const halfHourValue = hour * 60 + 30
 
@@ -156,7 +201,9 @@ export class TimeSelectionStep extends $LitElement() {
 		}
 	}
 
-	// Handle time selection and auto-scroll
+	/**
+	 * Handle time selection and dispatch events
+	 */
 	private _handleTimeSelect(slot: TimeSlot) {
 		if (!slot.available) return
 
@@ -178,16 +225,17 @@ export class TimeSelectionStep extends $LitElement() {
 		this.hoveredTime = null
 	}
 
+	/**
+	 * Format time for display
+	 */
 	private _formatTimeDisplay(minutes: number): string {
 		const timeObj = dayjs().startOf('day').add(minutes, 'minutes')
 		return timeObj.format('h:mm A')
 	}
 
-	// private _toggleViewMode() {
-	// 	this.viewMode = this.viewMode === 'timeline' ? 'list' : 'timeline'
-	// }
-
-	// Scroll to the selected time slot and center it in the view
+	/**
+	 * Scroll to the selected time slot and center it
+	 */
 	private _scrollToSelectedTime() {
 		if (this.value === undefined) return
 
@@ -213,43 +261,6 @@ export class TimeSelectionStep extends $LitElement() {
 		})
 	}
 
-	// Helper function to group time slots into 2-hour blocks
-	// private _getTimeSlotBlocks() {
-	// 	const blocks: TimeSlot[][] = []
-	// 	let currentBlock: TimeSlot[] = []
-	// 	let currentBlockStartHour = -1
-
-	// 	// Sort slots by time
-	// 	const sortedSlots = [...this.timeSlots].sort((a, b) => a.value - b.value)
-
-	// 	for (const slot of sortedSlots) {
-	// 		const slotHour = Math.floor(slot.value / 60)
-	// 		// Determine which 2-hour block this slot belongs to (0-1, 2-3, 4-5, etc.)
-	// 		const blockIndex = Math.floor(slotHour / 2)
-
-	// 		if (currentBlockStartHour === -1 || Math.floor(currentBlockStartHour / 2) !== blockIndex) {
-	// 			// If we have slots in the current block, add it to our blocks array
-	// 			if (currentBlock.length > 0) {
-	// 				blocks.push([...currentBlock])
-	// 			}
-
-	// 			// Start a new block
-	// 			currentBlock = [slot]
-	// 			currentBlockStartHour = slotHour
-	// 		} else {
-	// 			// Add to current block
-	// 			currentBlock.push(slot)
-	// 		}
-	// 	}
-
-	// 	// Add the last block if it has slots
-	// 	if (currentBlock.length > 0) {
-	// 		blocks.push(currentBlock)
-	// 	}
-
-	// 	return blocks
-	// }
-
 	render() {
 		// Container classes based on active state
 		const containerClasses = {
@@ -262,9 +273,6 @@ export class TimeSelectionStep extends $LitElement() {
 			'py-3 px-2': !this.active,
 		}
 
-		// For inactive state, we'll just use the timeline view
-		// const displayMode = !this.active ? 'timeline' : this.viewMode
-
 		return html`
 			<div class=${this.classMap(containerClasses)}>
 				<!-- Title and View Toggle - Only shown when active -->
@@ -272,7 +280,6 @@ export class TimeSelectionStep extends $LitElement() {
 					? html`
 							<div class="flex justify-between items-center mb-5">
 								<div class="text-lg font-medium">Select Time</div>
-								<!-- View toggle button removed for now -->
 							</div>
 					  `
 					: this.value !== undefined
@@ -285,18 +292,38 @@ export class TimeSelectionStep extends $LitElement() {
 							<div class="text-base font-medium mb-3 text-center">Time</div>
 					  `}
 
-				<!-- Always use timeline view -->
-				${this._renderTimeline()}
-
-				<!-- Simple time range indicator - only when active -->
-				${this.active && this.timeSlots.length > 0
+				<!-- Loading State -->
+				${this.loading
 					? html`
-							<div class="flex justify-between text-xs text-gray-500 mt-4 px-4 pt-2 border-t">
-								<span>From ${this._formatTimeDisplay(this.timeSlots[0].value)}</span>
-								<span>To ${this._formatTimeDisplay(this.timeSlots[this.timeSlots.length - 1].value)}</span>
+							<div class="flex justify-center items-center py-8">
+								<schmancy-spinner size="32px"></schmancy-spinner>
 							</div>
 					  `
-					: ''}
+					: this.error
+					? html`
+							<div class="text-error-default text-center py-4">
+								${this.error}
+								<div class="mt-2">
+									<schmancy-button variant="outlined" @click=${() => this._createDefaultTimeSlots()}>
+										Show Default Times
+									</schmancy-button>
+								</div>
+							</div>
+					  `
+					: html`
+							<!-- Always use timeline view -->
+							${this._renderTimeline()}
+
+							<!-- Simple time range indicator - only when active -->
+							${this.active && this.timeSlots.length > 0
+								? html`
+										<div class="flex justify-between text-xs text-gray-500 mt-4 px-4 pt-2 border-t">
+											<span>From ${this._formatTimeDisplay(this.timeSlots[0].value)}</span>
+											<span>To ${this._formatTimeDisplay(this.timeSlots[this.timeSlots.length - 1].value)}</span>
+										</div>
+								  `
+								: ''}
+					  `}
 			</div>
 		`
 	}
@@ -362,6 +389,17 @@ export class TimeSelectionStep extends $LitElement() {
 								@mouseleave=${this._handleTimeLeave}
 								data-time-value=${slot.value}
 							>
+								<!-- Availability indicator dot at the top -->
+								${this.active
+									? html`
+											<div
+												class="absolute top-1 right-1 w-2 h-2 rounded-full ${slot.available
+													? 'bg-success-default'
+													: 'bg-error-default'}"
+											></div>
+									  `
+									: ''}
+
 								<div class=${this.classMap(textClasses)}>
 									${isHalfHour ? html`${hour > 12 ? hour - 12 : hour}:30` : html`${hour > 12 ? hour - 12 : hour}`}
 								</div>
@@ -373,52 +411,4 @@ export class TimeSelectionStep extends $LitElement() {
 			</schmancy-scroll>
 		`
 	}
-
-	// private _renderListView() {
-	// 	// Get time slots organized in 2-hour blocks
-	// 	const timeBlocks = this._getTimeSlotBlocks()
-
-	// 	return html`
-	// 		<div class="pb-4">
-	// 			${timeBlocks.map(block => {
-	// 				if (block.length === 0) return ''
-
-	// 				const startTime = this._formatTimeDisplay(block[0].value)
-	// 				const endTime = this._formatTimeDisplay(block[block.length - 1].value)
-
-	// 				return html`
-	// 					<div class="mb-5 last:mb-0">
-	// 						<!-- Block header -->
-	// 						<div class="text-sm font-medium text-primary-default mb-2">${startTime} - ${endTime}</div>
-
-	// 						<!-- Block time slots grid -->
-	// 						<div class="grid grid-cols-4 gap-2">
-	// 							${block.map(slot => {
-	// 								const isSelected = this.value === slot.value
-
-	// 								return html`
-	// 									<button
-	// 										class="p-3 rounded-lg text-center transition-all duration-200
-	//                     ${isSelected
-	// 											? 'bg-primary-default text-primary-on shadow-sm'
-	// 											: slot.available
-	// 											? 'bg-surface-high hover:bg-primary-default hover:bg-opacity-70 hover:text-primary-on hover:shadow-sm'
-	// 											: 'bg-gray-200 text-gray-400 cursor-not-allowed'}"
-	// 										@click=${() => this._handleTimeSelect(slot)}
-	// 										@mouseover=${() => this._handleTimeHover(slot)}
-	// 										@mouseleave=${this._handleTimeLeave}
-	// 										?disabled=${!slot.available}
-	// 										data-time-value=${slot.value}
-	// 									>
-	// 										<span class="block text-sm font-medium"> ${this._formatTimeDisplay(slot.value)} </span>
-	// 									</button>
-	// 								`
-	// 							})}
-	// 						</div>
-	// 					</div>
-	// 				`
-	// 			})}
-	// 		</div>
-	// 	`
-	// }
 }
