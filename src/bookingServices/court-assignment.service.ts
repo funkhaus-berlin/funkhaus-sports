@@ -1,365 +1,212 @@
-import dayjs from 'dayjs'
-import { map, Observable, of } from 'rxjs'
+// src/bookingServices/court-assignment.service.ts
+import { Observable, catchError, map, of } from 'rxjs'
+import { Court, SportTypeEnum } from '../db/courts.collection'
+import { AvailabilityService } from './availability.service'
 
-// Preferences for court selection
-export interface CourtSelectionPreferencesType {
-	preferredSurface?: string // e.g., "clay", "grass", "hard"
-	indoor?: boolean // preference for indoor courts
-	preferredCourtId?: string // specific court if user has a favorite
-	accessibilityRequired?: boolean // need accessible facilities
-	lightingRequired?: boolean // need courts with lighting
-	balancedSelection?: boolean // try to distribute load across courts
-}
-
-export class CourtSelectionPreferences implements CourtSelectionPreferencesType {
-	preferredSurface: string | undefined = undefined // e.g., "clay", "grass", "hard"
-	indoor: boolean | undefined = undefined // preference for indoor courts
-	preferredCourtId: string | undefined = undefined // specific court if user has a favorite
-	accessibilityRequired: boolean = false // need accessible facilities
-	lightingRequired: boolean = false // need courts with lighting
-	balancedSelection: boolean = false // try to distribute load across courts
-
-	constructor(preferences: CourtSelectionPreferencesType = {}) {
-		Object.assign(this, preferences)
-	}
-}
-
-// Assignment strategy options
+/**
+ * Available court assignment strategies
+ */
 export enum CourtAssignmentStrategy {
-	FIRST_AVAILABLE = 'first-available', // Simple first available
-	PREFERRED_SURFACE = 'preferred-surface', // Prioritize surface type
-	BALANCED = 'balanced', // Distribute bookings evenly
-	OPTIMAL = 'optimal', // Use scoring algorithm
-}
+	/**
+	 * Assigns the first available court
+	 */
+	FIRST_AVAILABLE = 'firstAvailable',
 
-// Define Court interface to represent court object
-export interface Court {
-	id: string
-	name?: string
-	surface?: string
-	indoor?: boolean
-	accessible?: boolean
-	hasLighting?: boolean
-	available?: boolean
-	// Add other court properties as needed
-}
+	/**
+	 * Assigns the court with the lowest hourly rate
+	 */
+	LOWEST_PRICE = 'lowestPrice',
 
-// Define AvailabilityService interface to type availabilityService dependency
-export interface AvailabilityService {
-	getAllCourtsAvailability: (
-		date: string,
-	) => Observable<{ [courtId: string]: { [timeSlot: string]: { isAvailable: boolean } } } | undefined>
+	/**
+	 * Assigns the optimal court based on multiple factors
+	 */
+	OPTIMAL = 'optimal',
+
+	/**
+	 * Assigns a specific court if available
+	 */
+	SPECIFIC = 'specific',
 }
 
 /**
- * RxJS-based service for court availability checking and assignment
- * Provides multiple assignment strategies and preference options
+ * Court assignment preferences
+ */
+export interface CourtAssignmentPreferences {
+	preferredCourtId?: string
+	preferredCourtType?: string
+	preferredSportType?: string
+}
+
+/**
+ * Result of court assignment
+ */
+export interface CourtAssignmentResult {
+	selectedCourt: Court | null
+	availableCourts: Court[]
+	isAvailable: boolean
+}
+
+/**
+ * Service to handle automatic court assignment
+ * Uses different strategies to find the best court for a booking
  */
 export class CourtAssignmentService {
-	// Track booking frequency for balanced assignment
-	private _courtBookingCounts: Map<string, number> = new Map()
-
-	/**
-	 * Initialize the service with a dependency
-	 * @param {AvailabilityService} availabilityService - Service to check court availability
-	 */
 	constructor(private availabilityService: AvailabilityService) {}
 
 	/**
-	 * Reset booking count statistics
-	 */
-	resetBookingCounts(): void {
-		this._courtBookingCounts.clear()
-	}
-
-	/**
-	 * Increment booking count for a court
-	 * @param {string} courtId - Court identifier
-	 */
-	incrementCourtBookingCount(courtId: string): void {
-		const currentCount = this._courtBookingCounts.get(courtId) || 0
-		this._courtBookingCounts.set(courtId, currentCount + 1)
-	}
-
-	/**
-	 * Checks court availability for a specific date, time slot and duration
+	 * Check availability and assign a court for a specific time and duration
 	 *
-	 * @param {string} date - Booking date (YYYY-MM-DD format)
-	 * @param {number} startTime - Start time in minutes (e.g., 9:30 AM = 9*60 + 30 = 570)
-	 * @param {number} duration - Duration in minutes
-	 * @param {Court[]} allCourts - Complete list of courts in the system
-	 * @returns {Observable<Court[]>} Observable with filtered list of available courts
+	 * @param date - Booking date (YYYY-MM-DD)
+	 * @param startTime - Start time in minutes
+	 * @param durationMinutes - Duration in minutes
+	 * @param courts - Array of available courts
+	 * @param strategy - Court assignment strategy
+	 * @param preferences - User preferences for court assignment
+	 * @returns Observable with assignment result
 	 */
-	getAvailableCourts(date: string, startTime: number, duration: number, allCourts: Court[]): Observable<Court[]> {
-		try {
-			// Format date for API
-			const formattedDate = this._formatDate(date)
+	checkAndAssignCourt(
+		date: string,
+		startTime: number,
+		durationMinutes: number,
+		courts: Court[],
+		strategy: CourtAssignmentStrategy = CourtAssignmentStrategy.OPTIMAL,
+		preferences: CourtAssignmentPreferences = {},
+	): Observable<CourtAssignmentResult> {
+		// Get availability for all courts on this date
+		return this.availabilityService.getAllCourtsAvailability(date).pipe(
+			map(courtAvailability => {
+				// Filter courts that have the required availability
+				const availableCourts = courts.filter(court => {
+					// Skip inactive courts
+					if (court.status !== 'active') return false
 
-			// Calculate time slots that need to be checked
-			const startHour = Math.floor(startTime / 60)
-			const endTimeMinutes = startTime + duration
-			const endHour = Math.floor(endTimeMinutes / 60)
+					// If court doesn't have availability data, consider it available
+					if (!courtAvailability[court.id]) return true
 
-			// Get availability data from API
-			return this.availabilityService.getAllCourtsAvailability(formattedDate).pipe(
-				map(courtsAvailability => {
-					// If no availability data, assume all courts are available
-					if (!courtsAvailability || Object.keys(courtsAvailability).length === 0) {
-						return allCourts.map(court => ({ ...court, available: true }))
+					// Check each hour in the time range
+					const startHour = Math.floor(startTime / 60)
+					const endHour = Math.ceil((startTime + durationMinutes) / 60)
+
+					for (let hour = startHour; hour < endHour; hour++) {
+						const timeSlot = `${hour.toString().padStart(2, '0')}:00`
+						// If time slot doesn't exist or is not available, court is not available
+						if (courtAvailability[court.id][timeSlot] && !courtAvailability[court.id][timeSlot].isAvailable) {
+							return false
+						}
 					}
 
-					// Create a map to track availability status for each court
-					const courtAvailabilityMap: Map<string, boolean> = new Map()
+					return true
+				})
 
-					// Process availability data for each court
-					for (const [courtId, slots] of Object.entries(courtsAvailability)) {
-						let isAvailable = true
+				// If no courts available, return null
+				if (availableCourts.length === 0) {
+					return {
+						selectedCourt: null,
+						availableCourts: [],
+						isAvailable: false,
+					}
+				}
 
-						// Check each hour slot in the booking time range
-						for (let h = startHour; h < endHour; h++) {
-							const timeKey = `${h.toString().padStart(2, '0')}:00`
+				// Assign court based on strategy
+				let selectedCourt: Court
 
-							// Need to check for half-hour slots if the start/end times aren't on the hour
-							const halfHourKey = `${h.toString().padStart(2, '0')}:30`
+				switch (strategy) {
+					case CourtAssignmentStrategy.FIRST_AVAILABLE:
+						selectedCourt = availableCourts[0]
+						break
 
-							// If either slot exists and is marked unavailable, court is not available
-							if (
-								(slots[timeKey] && !slots[timeKey].isAvailable) ||
-								(slots[halfHourKey] && !slots[halfHourKey].isAvailable)
-							) {
-								isAvailable = false
+					case CourtAssignmentStrategy.LOWEST_PRICE:
+						// Sort by price and pick the cheapest
+						selectedCourt = [...availableCourts].sort(
+							(a, b) => (a.pricing?.baseHourlyRate ?? 0) - (b.pricing?.baseHourlyRate ?? 0),
+						)[0]
+						break
+
+					case CourtAssignmentStrategy.SPECIFIC:
+						// Try to assign the preferred court if available
+						if (preferences.preferredCourtId) {
+							const preferred = availableCourts.find(c => c.id === preferences.preferredCourtId)
+							if (preferred) {
+								selectedCourt = preferred
 								break
 							}
 						}
+					// If not found or no preference, fall through to OPTIMAL strategy
 
-						// Check the end hour if it lands on a half-hour
-						if (endTimeMinutes % 60 > 0 && isAvailable) {
-							const endHourKey = `${endHour.toString().padStart(2, '0')}:00`
-							if (slots[endHourKey] && !slots[endHourKey].isAvailable) {
-								isAvailable = false
-							}
-						}
+					case CourtAssignmentStrategy.OPTIMAL:
+					default:
+						// Apply weighted scoring to find optimal court
+						selectedCourt = this.findOptimalCourt(availableCourts, preferences)
+						break
+				}
 
-						// Store the availability status for this court
-						courtAvailabilityMap.set(courtId, isAvailable)
-					}
-
-					// Map the full court objects with availability status
-					return allCourts.map(court => {
-						// Court is available if explicitly marked available or not mentioned in availability data
-						const available = courtAvailabilityMap.has(court.id) ? courtAvailabilityMap.get(court.id) : true
-
-						return { ...court, available }
-					})
-				}),
-			)
-		} catch (error) {
-			console.error('Error checking court availability:', error)
-			// On error, assume all courts are available as fallback
-			return of(allCourts.map(court => ({ ...court, available: true })))
-		}
+				return {
+					selectedCourt,
+					availableCourts,
+					isAvailable: true,
+				}
+			}),
+			catchError(error => {
+				console.error('Error assigning court:', error)
+				return of({
+					selectedCourt: null,
+					availableCourts: [],
+					isAvailable: false,
+				})
+			}),
+		)
 	}
 
 	/**
-	 * Assigns a court using the specified strategy
+	 * Find the optimal court based on multiple factors
+	 * Uses a scoring system to rank courts
 	 *
-	 * @param {Court[]} availableCourts - List of courts with availability status
-	 * @param {CourtAssignmentStrategy} strategy - Court assignment strategy to use
-	 * @param {CourtSelectionPreferencesType} preferences - User preferences for court selection
-	 * @returns {Court | null} The selected court or null if none available
+	 * @param availableCourts - Array of available courts
+	 * @param preferences - User preferences
+	 * @returns The optimal court
 	 */
-	assignCourt(
-		availableCourts: Court[],
-		strategy: CourtAssignmentStrategy = CourtAssignmentStrategy.OPTIMAL,
-		preferences: CourtSelectionPreferencesType = {},
-	): Court | null {
-		if (!availableCourts || availableCourts.length === 0) {
-			return null
+	private findOptimalCourt(availableCourts: Court[], preferences: CourtAssignmentPreferences): Court {
+		// If only one court is available, return it
+		if (availableCourts.length === 1) {
+			return availableCourts[0]
 		}
 
-		// Filter to get only available courts
-		const availableCourtsFiltered = availableCourts.filter(court => court.available)
-
-		if (availableCourtsFiltered.length === 0) {
-			return null
+		// Define weights for different factors
+		const weights = {
+			courtType: 3, // Weight for matching court type
+			sportType: 4, // Weight for matching sport type
+			price: 2, // Weight for price (inverse)
 		}
 
-		// If user has specified a preferred court and it's available, select it
-		if (preferences.preferredCourtId) {
-			const preferredCourt = availableCourtsFiltered.find(court => court.id === preferences.preferredCourtId)
-
-			if (preferredCourt) {
-				this.incrementCourtBookingCount(preferredCourt.id)
-				return preferredCourt
-			}
-		}
-
-		// Use the requested assignment strategy
-		switch (strategy) {
-			case CourtAssignmentStrategy.FIRST_AVAILABLE:
-				return this._assignFirstAvailable(availableCourtsFiltered)
-
-			case CourtAssignmentStrategy.PREFERRED_SURFACE:
-				return this._assignBySurface(availableCourtsFiltered, preferences)
-
-			case CourtAssignmentStrategy.BALANCED:
-				return this._assignBalanced(availableCourtsFiltered)
-
-			case CourtAssignmentStrategy.OPTIMAL:
-			default:
-				return this._assignOptimal(availableCourtsFiltered, preferences)
-		}
-	}
-
-	/**
-	 * Format a date string to YYYY-MM-DD
-	 * @private
-	 */
-	private _formatDate(date: string | Date): string {
-		if (!date) return ''
-		// Use native Date formatting or a date library
-		if (typeof date === 'string') {
-			// Simple format for YYYY-MM-DD
-			return date
-		}
-
-		// If using dayjs (assuming dayjs is globally available or imported)
-		return dayjs(date).format('YYYY-MM-DD')
-	}
-
-	/**
-	 * Simple strategy: select the first available court
-	 * @private
-	 */
-	private _assignFirstAvailable(courts: Court[]): Court | null {
-		if (courts.length === 0) return null
-
-		const selectedCourt = courts[0]
-		this.incrementCourtBookingCount(selectedCourt.id)
-		return selectedCourt
-	}
-
-	/**
-	 * Surface-based strategy: prioritize courts with the preferred surface
-	 * @private
-	 */
-	private _assignBySurface(courts: Court[], preferences: CourtSelectionPreferencesType = {}): Court | null {
-		if (courts.length === 0) return null
-
-		// If no surface preference, just return first available
-		if (!preferences.preferredSurface) {
-			return this._assignFirstAvailable(courts)
-		}
-
-		// Try to find a court with the preferred surface
-		const matchingSurfaceCourt = courts.find(court => court.surface === preferences.preferredSurface)
-
-		// Return the matching court, or fall back to first available
-		const selectedCourt = matchingSurfaceCourt || courts[0]
-		this.incrementCourtBookingCount(selectedCourt.id)
-		return selectedCourt
-	}
-
-	/**
-	 * Balanced strategy: distribute bookings evenly across all courts
-	 * @private
-	 */
-	private _assignBalanced(courts: Court[]): Court | null {
-		if (courts.length === 0) return null
-
-		// Sort courts by booking count (ascending)
-		const sortedCourts = [...courts].sort((a, b) => {
-			const countA = this._courtBookingCounts.get(a.id) || 0
-			const countB = this._courtBookingCounts.get(b.id) || 0
-			return countA - countB
-		})
-
-		// Select the court with the lowest booking count
-		const selectedCourt = sortedCourts[0]
-		this.incrementCourtBookingCount(selectedCourt.id)
-		return selectedCourt
-	}
-
-	/**
-	 * Optimal strategy: use a scoring algorithm based on multiple factors
-	 * @private
-	 */
-	private _assignOptimal(courts: Court[], preferences: CourtSelectionPreferencesType = {}): Court | null {
-		if (courts.length === 0) return null
-
-		// Score each court based on various factors
-		const scoredCourts = courts.map(court => {
+		// Calculate scores for each court
+		const scoredCourts = availableCourts.map(court => {
 			let score = 0
 
-			// Factor 1: Surface preference
-			if (preferences.preferredSurface && court.surface === preferences.preferredSurface) {
-				score += 10
+			// Court type match
+			if (preferences.preferredCourtType && court.courtType === preferences.preferredCourtType) {
+				score += weights.courtType
 			}
 
-			// Factor 2: Indoor/outdoor preference
-			if (preferences.indoor !== undefined && court.indoor === preferences.indoor) {
-				score += 8
+			// Sport type match
+			if (
+				preferences.preferredSportType &&
+				court.sportTypes?.includes(preferences.preferredSportType as SportTypeEnum)
+			) {
+				score += weights.sportType
 			}
 
-			// Factor 3: Accessibility
-			if (preferences.accessibilityRequired && court.accessible) {
-				score += 20 // High priority for accessibility needs
-			}
-
-			// Factor 4: Lighting
-			if (preferences.lightingRequired && court.hasLighting) {
-				score += 15
-			}
-
-			// Factor 5: Even distribution (if requested)
-			if (preferences.balancedSelection) {
-				// Courts with fewer bookings get a higher score
-				const bookingCount = this._courtBookingCounts.get(court.id) || 0
-				score += Math.max(10 - bookingCount, 0)
+			// Price factor (lower price = higher score)
+			const maxRate = Math.max(...availableCourts.map(c => c.pricing?.baseHourlyRate ?? 0))
+			if (maxRate > 0) {
+				const priceScore = 1 - (court.pricing?.baseHourlyRate ?? 0) / maxRate
+				score += priceScore * weights.price
 			}
 
 			return { court, score }
 		})
 
-		// Sort by score (descending)
+		// Sort by score (descending) and return the best match
 		scoredCourts.sort((a, b) => b.score - a.score)
-
-		console.log('Scored courts:', scoredCourts)
-		console.log('Booking counts:', this._courtBookingCounts)
-		// Select the highest scoring court
-		const selectedCourt = scoredCourts[0].court
-		this.incrementCourtBookingCount(selectedCourt.id)
-		return selectedCourt
-	}
-
-	/**
-	 * Combined method to check availability and assign a court in one call
-	 *
-	 * @param {string} date - Booking date
-	 * @param {number} startTime - Start time in minutes
-	 * @param {number} duration - Duration in minutes
-	 * @param {Court[]} allCourts - Complete list of courts
-	 * @param {CourtAssignmentStrategy} strategy - Assignment strategy to use
-	 * @param {CourtSelectionPreferencesType} preferences - Court selection preferences
-	 * @returns {Observable<{ availableCourts: Court[]; selectedCourt: Court | null }>} Observable with available courts and selected court
-	 */
-	checkAndAssignCourt(
-		date: string,
-		startTime: number,
-		duration: number,
-		allCourts: Court[],
-		strategy: CourtAssignmentStrategy = CourtAssignmentStrategy.OPTIMAL,
-		preferences: CourtSelectionPreferencesType = {},
-	): Observable<{ availableCourts: Court[]; selectedCourt: Court | null }> {
-		return this.getAvailableCourts(date, startTime, duration, allCourts).pipe(
-			map(availableCourts => {
-				const selectedCourt = this.assignCourt(availableCourts, strategy, preferences)
-
-				return {
-					availableCourts,
-					selectedCourt,
-				}
-			}),
-		)
+		return scoredCourts[0].court
 	}
 }

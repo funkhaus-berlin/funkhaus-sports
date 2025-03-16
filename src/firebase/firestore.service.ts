@@ -31,7 +31,7 @@ export interface FirebaseServiceQuery {
  */
 export class FirestoreService<T extends DocumentData> {
 	protected collectionName: string
-	protected db: Firestore
+	public db: Firestore
 
 	constructor(collectionName: string, firestoreDB?: Firestore) {
 		this.collectionName = collectionName
