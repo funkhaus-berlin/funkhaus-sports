@@ -550,7 +550,7 @@ export class CourtBookingSystem extends $LitElement() {
 				></duration-selection-step>
 			`,
 			() => html`
-				${bookingSummery(this.booking, this.selectedCourt!, this.duration, this.courtPreferences)}
+				${bookingSummery(this.booking, this.selectedCourt!, this.duration)}
 
 				<funkhaus-checkout-form
 					.booking=${this.booking}

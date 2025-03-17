@@ -1,29 +1,26 @@
 // src/public/book/booking-confirmation-route.ts
-import { $notify, fullHeight } from '@mhmo91/schmancy'
+import { $notify, area, fullHeight } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
-import { when } from 'lit/directives/when.js'
 import {
 	BehaviorSubject,
-	Observable,
 	catchError,
 	filter,
 	finalize,
-	firstValueFrom,
 	from,
 	map,
+	Observable,
 	of,
 	switchMap,
+	take,
 	takeUntil,
 	timer,
 } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { BookingService } from 'src/bookingServices/booking.service'
 import { Court } from 'src/db/courts.collection'
-import { BookingConfirmation } from './steps/booking-confirmation'
 import { VenueLandingPage } from '../venues/venues'
-import { area } from '@mhmo91/schmancy'
 
 /**
  * Booking confirmation route component
