@@ -1,13 +1,22 @@
-import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { select } from '@mhmo91/schmancy'
+import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
-import { html, PropertyValues } from 'lit'
+import { css, html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
+import { debounceTime, fromEvent, takeUntil } from 'rxjs'
 import { Booking, bookingContext } from '../context'
 import { Duration } from '../types'
 
 @customElement('duration-selection-step')
-export class DurationSelectionStep extends $LitElement() {
+export class DurationSelectionStep extends $LitElement(css`
+	.scrollbar-hide {
+		-ms-overflow-style: none; /* IE and Edge */
+		scrollbar-width: none; /* Firefox */
+	}
+	.scrollbar-hide::-webkit-scrollbar {
+		display: none; /* Chrome, Safari, and Opera */
+	}
+`) {
 	@property({ type: Number }) selectedDuration!: number
 	@property({ type: Boolean }) active = true
 	@property({ type: Boolean }) hidden = false
@@ -15,17 +24,60 @@ export class DurationSelectionStep extends $LitElement() {
 	// Data binding to booking context
 	@select(bookingContext) booking!: Booking
 
+	// Track if we're on a mobile device
+	@state() isMobile = window.innerWidth < 640
 	@state() recommendedDuration: number = 60 // Default to 1 hour as recommended
 
 	// Common durations for booking
 	private durations: Duration[] = [
-		{ label: '30 min', value: 30, price: 15 },
-		{ label: '1 hour', value: 60, price: 30 },
-		{ label: '1.5 hours', value: 90, price: 45 },
-		{ label: '2 hours', value: 120, price: 60 },
-		{ label: '2.5 hours', value: 150, price: 75 },
-		{ label: '3 hours', value: 180, price: 90 },
+		{ label: '30m', value: 30, price: 15 },
+		{ label: '1h', value: 60, price: 30 },
+		{ label: '1.5h', value: 90, price: 45 },
+		{ label: '2h', value: 120, price: 60 },
+		{ label: '2.5h', value: 150, price: 75 },
+		{ label: '3h', value: 180, price: 90 },
 	]
+
+	// Define full labels for desktop view
+	private fullLabels = ['30 min', '1 hour', '1.5 hours', '2 hours', '2.5 hours', '3 hours']
+
+	connectedCallback() {
+		super.connectedCallback()
+
+		// Set up window resize listener for responsive design
+		window.addEventListener('resize', this.handleResize)
+
+		fromEvent(window, 'resize')
+			.pipe(takeUntil(this.disconnecting), debounceTime(100))
+			.subscribe({
+				next: () => this.handleResize(),
+			})
+	}
+
+	firstupdated() {
+		// Initial check
+		this.checkMobileView()
+		// Calculate current duration from booking
+		this.calculateDurationFromBooking()
+	}
+	/**
+	 * Handle window resize events
+	 */
+	private handleResize = () => {
+		this.checkMobileView()
+	}
+
+	/**
+	 * Check if we're on a mobile view
+	 */
+	private checkMobileView() {
+		const wasMobile = this.isMobile
+		this.isMobile = window.innerWidth < 640
+
+		if (wasMobile !== this.isMobile) {
+			this.requestUpdate()
+		}
+	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
 		super.firstUpdated(_changedProperties)
@@ -93,7 +145,8 @@ export class DurationSelectionStep extends $LitElement() {
 			'bg-surface-low': true,
 			'rounded-lg': true,
 			'shadow-xs': true,
-			'py-6 px-4': this.active,
+			'py-6 px-4': this.active && !this.isMobile,
+			'py-4 px-3': this.active && this.isMobile,
 			'py-3 px-2': !this.active,
 		}
 
@@ -103,20 +156,20 @@ export class DurationSelectionStep extends $LitElement() {
 				<div class=${this.classMap(containerClasses)}>
 					<div class="flex justify-between items-center">
 						<schmancy-typography type="title" token="sm">Duration</schmancy-typography>
-						<div class="flex gap-2">
+						<div class="flex flex-wrap gap-1">
 							${this.durations.map(duration => {
 								const isSelected = this.selectedDuration === duration.value
 
 								return html`
 									<div
-										class="px-3 py-1 rounded-full cursor-pointer text-sm transition-colors flex items-center
+										class="px-2 py-1 rounded-full cursor-pointer text-xs transition-colors
                       ${isSelected
 											? 'bg-primary-default text-primary-on'
 											: 'bg-surface-container text-surface-on hover:bg-surface-container-high'}"
 										@click=${() => this.handleDurationSelect(duration)}
 									>
 										${duration.label}
-										${isSelected ? html`<schmancy-icon class="ml-1" size="16px">check</schmancy-icon>` : ''}
+										${isSelected ? html`<schmancy-icon class="ml-1" size="12px">check</schmancy-icon>` : ''}
 									</div>
 								`
 							})}
@@ -126,6 +179,63 @@ export class DurationSelectionStep extends $LitElement() {
 			`
 		}
 
+		// Mobile-optimized active view - horizontal scrolling
+		if (this.isMobile) {
+			return html`
+				<div class=${this.classMap(containerClasses)}>
+					<!-- Title section -->
+					<div class="mb-3">
+						<schmancy-typography type="title" token="md">Select Duration</schmancy-typography>
+					</div>
+
+					<!-- Horizontal scrollable duration options -->
+					<div class="overflow-x-auto scrollbar-hide pb-2 -mx-2 px-2">
+						<div class="flex gap-2 snap-x w-full pb-2">
+							${this.durations.map(duration => {
+								const isSelected = this.selectedDuration === duration.value
+								const isPopular = this.recommendedDuration === duration.value
+
+								return html`
+									<div
+										@click=${() => this.handleDurationSelect(duration)}
+										class="flex-none snap-center flex flex-col items-center justify-center 
+                           p-3 rounded-xl cursor-pointer transition-all min-w-20
+                           ${isSelected
+											? 'bg-primary-default text-primary-on shadow-sm'
+											: 'bg-surface-high text-surface-on hover:shadow-sm'}"
+									>
+										<!-- Popular badge if applicable -->
+										${isPopular
+											? html`<div
+													class="absolute -top-1 -right-1 bg-secondary-default text-secondary-on text-xs 
+                                         font-bold px-1 rounded-full"
+											  >
+													Best
+											  </div>`
+											: ''}
+
+										<!-- Duration label -->
+										<div class="font-medium">${this.fullLabels[this.durations.indexOf(duration)]}</div>
+
+										<!-- Price -->
+										<div class="font-bold ${isSelected ? 'text-primary-on' : 'text-primary-default'}">
+											€${duration.price}
+										</div>
+									</div>
+								`
+							})}
+						</div>
+					</div>
+
+					<!-- Hint text -->
+					<div class="mt-2 text-center text-surface-on-variant text-xs">
+						<p>All prices include VAT</p>
+					</div>
+				</div>
+			`
+		}
+
+		// Desktop view - grid layout
 		return html`
 			<div class=${this.classMap(containerClasses)}>
 				<!-- Title section -->
@@ -133,86 +243,47 @@ export class DurationSelectionStep extends $LitElement() {
 					<schmancy-typography type="title" token="md" class="mb-2">Select Duration</schmancy-typography>
 				</div>
 
-				<!-- Duration options - Using golden ratio for better proportions -->
-				<div class="grid grid-cols-2 gap-3">
+				<!-- Duration options - Grid layout for desktop -->
+				<div class="grid grid-cols-2 md:grid-cols-3 gap-3">
 					${this.durations.map(duration => {
 						const isSelected = this.selectedDuration === duration.value
 						const isPopular = this.recommendedDuration === duration.value
 
-						// Golden ratio calculations (approximately 1:1.618)
-						// Base height around 80px (for standard card height)
-						// Width is then roughly 1.618 times the height for each card
-						// We'll use proper tailwind classes for padding/margins with golden ratio proportions
-
-						// Card classes with improved styling using golden ratio
-						const cardClasses = {
-							relative: true,
-							'overflow-hidden': true,
-							flex: true,
-							'flex-col': true,
-							'items-center': true,
-							'justify-center': true,
-							'py-3': true, // Golden ratio based padding
-							'px-2': true,
-							'h-30': true, // Base height (80px)
-							'rounded-xl': true,
-							'transition-all': true,
-							'duration-200': true,
-							'cursor-pointer': true,
-							'hover:shadow-md': true,
-							'hover:translate-y-[-2px]': true,
-							'bg-primary-default text-primary-on': isSelected,
-							'bg-surface-container text-surface-on': !isSelected,
-							'shadow-xs': isSelected,
-							group: true,
-						}
-
-						// State layer classes for hover effect
-						const stateLayerClasses = {
-							absolute: true,
-							'inset-0': true,
-							'z-0': true,
-							'rounded-xl': true,
-							'transition-opacity': true,
-							'duration-200': true,
-							'opacity-0': true,
-							'group-hover:opacity-8': true,
-							'bg-primary-on': isSelected,
-							'bg-primary-default': !isSelected,
-						}
-
 						return html`
-							<div @click=${() => this.handleDurationSelect(duration)} class=${this.classMap(cardClasses)}>
-								<!-- State layer for hover effects -->
-								<div class=${this.classMap(stateLayerClasses)}></div>
-
-								<!-- Popular badge if applicable - adjusted size -->
+							<div
+								@click=${() => this.handleDurationSelect(duration)}
+								class="relative overflow-hidden flex flex-col items-center justify-center 
+                       py-3 px-2 h-24 rounded-xl cursor-pointer transition-all 
+                       hover:shadow-md hover:-translate-y-1 group
+                       ${isSelected
+									? 'bg-primary-default text-primary-on shadow-sm'
+									: 'bg-surface-high text-surface-on'}"
+							>
+								<!-- Popular badge if applicable -->
 								${isPopular
-									? html`
-											<div
-												class="absolute top-0 right-0 bg-secondary-default text-secondary-on text-xs font-bold py-0.5 px-1.5 rounded-bl-lg rounded-tr-xl z-10"
-											>
-												POPULAR
-											</div>
-									  `
+									? html`<div
+											class="absolute top-0 right-0 bg-secondary-default text-secondary-on text-xs 
+                                    font-bold py-0.5 px-1.5 rounded-bl-lg rounded-tr-xl"
+									  >
+											POPULAR
+									  </div>`
 									: ''}
 
-								<!-- Duration content - adjusted spacing using golden ratio approximations -->
-								<div class="relative z-10 flex flex-col items-center pointer-events-none">
-									<schmancy-typography type="title" token="md" weight=${isSelected ? 'bold' : 'normal'} class="mb-1">
-										${duration.label}
-									</schmancy-typography>
+								<!-- Duration label -->
+								<schmancy-typography type="title" token="md" weight=${isSelected ? 'bold' : 'normal'} class="mb-1">
+									${this.fullLabels[this.durations.indexOf(duration)]}
+								</schmancy-typography>
 
-									<schmancy-typography
-										type="headline"
-										token="sm"
-										class="font-bold ${isSelected ? 'text-primary-on' : 'text-primary-default'}"
-									>
-										€${duration.price}
-									</schmancy-typography>
+								<!-- Price -->
+								<schmancy-typography
+									type="headline"
+									token="sm"
+									class="font-bold ${isSelected ? 'text-primary-on' : 'text-primary-default'}"
+								>
+									€${duration.price}
+								</schmancy-typography>
 
-									${isSelected ? html`<schmancy-icon class="mt-1" size="18px">check_circle</schmancy-icon>` : ''}
-								</div>
+								${isSelected ? html`<schmancy-icon class="mt-1" size="18px">check_circle</schmancy-icon>` : ''}
 							</div>
 						`
 					})}
@@ -224,12 +295,6 @@ export class DurationSelectionStep extends $LitElement() {
 				</div>
 			</div>
 		`
-	}
-
-	// Helper method to get current duration from booking
-	get duration(): number {
-		if (!this.booking.startTime || !this.booking.endTime) return 0
-		return dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute')
 	}
 }
 

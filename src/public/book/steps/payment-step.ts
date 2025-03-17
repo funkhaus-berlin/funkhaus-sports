@@ -459,9 +459,9 @@ export class CheckoutForm extends $LitElement() {
 					`,
 				)}
 
-				<schmancy-grid gap="sm" class="w-full px-2">
+				<schmancy-grid gap="sm" class="w-full">
 					<!-- Personal Information -->
-					<schmancy-grid gap="sm" class="grid-cols-1 sm:grid-cols-2 gap-4">
+					<schmancy-grid gap="sm" class="grid-cols-1 sm:grid-cols-2 gap-4 px-2">
 						<schmancy-input
 							autocomplete="name"
 							.value=${this.booking.userName || ''}
@@ -486,6 +486,7 @@ export class CheckoutForm extends $LitElement() {
 					</schmancy-grid>
 
 					<schmancy-input
+						class="px-2"
 						autocomplete="email"
 						.value=${this.booking.customerEmail || ''}
 						required
@@ -496,7 +497,7 @@ export class CheckoutForm extends $LitElement() {
 					></schmancy-input>
 
 					<!-- Billing Information -->
-					<schmancy-grid gap="sm">
+					<schmancy-grid class="px-2" gap="sm">
 						<schmancy-input
 							autocomplete="street-address"
 							.value=${this.booking.customerAddress?.street || ''}
@@ -549,9 +550,7 @@ export class CheckoutForm extends $LitElement() {
 
 					<!-- Payment Details -->
 					<schmancy-surface type="containerLow" rounded="all">
-						<schmancy-typography type="title" token="sm" class="mb-4">Payment Details</schmancy-typography>
-
-						<div class="mb-3">
+						<div class="mb-3 px-2">
 							<section class="relative block">
 								<slot name="stripe-element"></slot>
 							</section>
@@ -559,28 +558,24 @@ export class CheckoutForm extends $LitElement() {
 					</schmancy-surface>
 
 					<!-- Terms & Submit Button -->
-					<schmancy-grid class="fixed bottom-0 shadow-2 z-10 py-3 bg-surface-lowest px-2" gap="sm" justify="end">
-						<schmancy-typography type="label" class="col-span-1" align="left">
-							<span>
-								By clicking Pay you agree to
-								<a class="text-sky-700 underline" href="javascript:void(0)" @click=${this.showTerms}
-									>our terms and conditions</a
-								>
-							</span>
-						</schmancy-typography>
+					<schmancy-grid class="pr-4 sticky bottom-0" gap="sm" justify="end">
+						<schmancy-grid cols="1fr" justify="end">
+							<schmancy-typography type="label" class="col-span-1" align="left">
+								<span>
+									By clicking Pay you agree to
 
-						<div class="flex justify-between items-center w-full mt-4">
-							<schmancy-typography class="text-secondary-default" type="title">
-								Total: &euro;${this.booking.price.toFixed(2)}
-								<div class="text-xs text-surface-on-variant">Includes: 7% VAT</div>
+									<a class="text-sky-700 underline" href="javascript:void(0)" @click=${this.showTerms}
+										>our terms and conditions</a
+									>
+								</span>
 							</schmancy-typography>
-
-							<schmancy-button class="h-[3rem]" type="submit" variant="filled" ?disabled=${this.processing}>
-								<schmancy-typography class="px-4" type="title" token="lg">
-									${this.processing ? 'Processing...' : 'Pay Now'}
-								</schmancy-typography>
-							</schmancy-button>
-						</div>
+							<schmancy-typography class="mb-0" type="label"> Includes: 7% VAT </schmancy-typography>
+						</schmancy-grid>
+						<schmancy-button class="h-[3rem] pb-2" type="submit" variant="filled">
+							<schmancy-typography class="px-4" type="title" token="lg">
+								Pay &euro;${this.booking.price.toFixed(2)}
+							</schmancy-typography>
+						</schmancy-button>
 					</schmancy-grid>
 				</schmancy-grid>
 			</schmancy-form>

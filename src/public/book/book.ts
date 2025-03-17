@@ -20,7 +20,6 @@ import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
 import { Booking, bookingContext } from './context'
 import { PaymentStatusHandler } from './payment-status-handler'
 import './steps'
-import bookingSummery from './steps/booking-summery'
 import { Duration, TimeSlot } from './types'
 
 /**
@@ -550,7 +549,8 @@ export class CourtBookingSystem extends $LitElement() {
 				></duration-selection-step>
 			`,
 			() => html`
-				${bookingSummery(this.booking, this.selectedCourt!, this.duration)}
+				<booking-summery .booking=${this.booking} .selectedCourt=${this.selectedCourt} .duration=${this.duration}>
+				</booking-summery>
 
 				<funkhaus-checkout-form
 					.booking=${this.booking}
