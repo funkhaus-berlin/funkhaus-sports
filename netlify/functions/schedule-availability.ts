@@ -1,4 +1,5 @@
 // netlify/functions/schedule-availability.ts
+import { Handler } from '@netlify/functions'
 import admin from 'firebase-admin'
 import { corsHeaders } from './_shared/cors'
 
@@ -16,15 +17,25 @@ if (!admin.apps.length) {
 
 const db = admin.firestore()
 
-async function handler(request: Request): Promise<Response> {
+/**
+ * This function handles scheduled operations:
+ * 1. Clean up expired pending bookings
+ * 2. Generate availability slots for upcoming months
+ * 3. Archive old booking data
+ */
+const handler: Handler = async (event, _context) => {
 	// Check API key for security
-	const apiKey = request.headers.get('x-api-key')
+	const apiKey = event.headers['x-api-key']
 	if (apiKey !== process.env.SCHEDULER_API_KEY) {
-		return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
+		return {
+			statusCode: 401,
+			headers: corsHeaders,
+			body: JSON.stringify({ error: 'Unauthorized' }),
+		}
 	}
 
 	try {
-		const data = await request.json()
+		const data = JSON.parse(event.body || '{}')
 		const { action } = data
 
 		switch (action) {
@@ -38,13 +49,25 @@ async function handler(request: Request): Promise<Response> {
 				await archiveOldBookings(data.beforeDate)
 				break
 			default:
-				return new Response(JSON.stringify({ error: 'Invalid action' }), { status: 400, headers: corsHeaders })
+				return {
+					statusCode: 400,
+					headers: corsHeaders,
+					body: JSON.stringify({ error: 'Invalid action' }),
+				}
 		}
 
-		return new Response(JSON.stringify({ success: true, action }), { status: 200, headers: corsHeaders })
-	} catch (error: any) {
+		return {
+			statusCode: 200,
+			headers: corsHeaders,
+			body: JSON.stringify({ success: true, action }),
+		}
+	} catch (error) {
 		console.error(`Error in scheduler function: ${error.message}`)
-		return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders })
+		return {
+			statusCode: 500,
+			headers: corsHeaders,
+			body: JSON.stringify({ error: error.message }),
+		}
 	}
 }
 
@@ -124,7 +147,7 @@ async function generateMonthlyAvailability(year: number, month: number) {
 		const daysInMonth = new Date(year, month, 0).getDate()
 
 		// Initialize document structure
-		const availabilityData: any = {
+		const availabilityData = {
 			month: monthDocId,
 			courts: {},
 			createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -143,7 +166,8 @@ async function generateMonthlyAvailability(year: number, month: number) {
 				const date = new Date(year, month - 1, day)
 				const dayOfWeek = date.getDay() // 0 = Sunday, 6 = Saturday
 
-				// Optionally, skip if court is closed on this day of week
+				// Skip if court is closed on this day of week
+				// You can customize this logic based on your court operating hours
 				// Example: if (court.closedDays?.includes(dayOfWeek)) continue
 
 				// Generate slots for this day
@@ -165,15 +189,16 @@ async function generateMonthlyAvailability(year: number, month: number) {
 /**
  * Generate time slots for a specific day
  */
-function generateDailySlots(_court: any, dayOfWeek: number) {
-	const slots: Record<string, any> = {}
+function generateDailySlots(court: any, dayOfWeek: number) {
+	const slots = {}
 
 	// Default operating hours (8 AM to 10 PM)
+	// This should be customized based on your venue's operating hours
 	const startHour = 8
 	const endHour = 22
 
-	// Example: different logic for weekends can be applied if needed
-	const _isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+	// Weekend hours might be different
+	const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
 
 	// Generate slots for each hour
 	for (let hour = startHour; hour < endHour; hour++) {
@@ -185,8 +210,9 @@ function generateDailySlots(_court: any, dayOfWeek: number) {
 			bookingId: null,
 		}
 
-		// Add half-hour slot if needed
+		// Add half-hour slots if needed
 		const halfHourSlot = `${hour.toString().padStart(2, '0')}:30`
+
 		slots[halfHourSlot] = {
 			isAvailable: true,
 			bookedBy: null,
@@ -238,7 +264,7 @@ async function archiveOldBookings(beforeDateStr: string) {
 		await batch.commit()
 		console.log(`Successfully archived ${oldBookingsSnapshot.size} old bookings`)
 
-		// Recursively process next batch if needed
+		// If there are more, recursively process the next batch
 		if (oldBookingsSnapshot.size === 100) {
 			await archiveOldBookings(beforeDateStr)
 		}
@@ -294,11 +320,14 @@ async function releaseTimeSlots(booking: any) {
 			}
 
 			const slots = availability.courts[courtId][date].slots
-			const updates: { [key: string]: any } = {}
 
-			// Release each slot in the range associated with this booking
+			// Release each slot in the range that's associated with this booking
+			const updates: {
+				[key: string]: any
+			} = {}
 			for (let hour = startHour; hour < endHour; hour++) {
 				const timeSlot = `${hour.toString().padStart(2, '0')}:00`
+
 				if (slots[timeSlot] && slots[timeSlot].bookingId === bookingId) {
 					updates[`courts.${courtId}.${date}.slots.${timeSlot}.isAvailable`] = true
 					updates[`courts.${courtId}.${date}.slots.${timeSlot}.bookedBy`] = null
@@ -306,6 +335,7 @@ async function releaseTimeSlots(booking: any) {
 				}
 			}
 
+			// If we have updates, apply them
 			if (Object.keys(updates).length > 0) {
 				updates.updatedAt = admin.firestore.FieldValue.serverTimestamp()
 				transaction.update(availabilityRef, updates)

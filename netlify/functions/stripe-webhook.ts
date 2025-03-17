@@ -1,4 +1,5 @@
 // netlify/functions/stripe-webhook-handler.ts
+import { Handler } from '@netlify/functions'
 import admin from 'firebase-admin'
 import Stripe from 'stripe'
 import { corsHeaders } from './_shared/cors'
@@ -17,28 +18,51 @@ if (!admin.apps.length) {
 
 const db = admin.firestore()
 
-async function handler(request: Request, _context: any): Promise<Response> {
-	// Handle preflight CORS requests
-	if (request.method === 'OPTIONS') {
-		return new Response('', { status: 200, headers: corsHeaders })
+/**
+ * Enhanced webhook handler with improved reliability and error recovery
+ *
+ * This improved handler is designed to:
+ * 1. Process Stripe webhook events more reliably
+ * 2. Implement idempotency to prevent double-processing
+ * 3. Log all events for auditing and recovery
+ * 4. Implement retry logic for failed operations
+ */
+const handler: Handler = async (event, context) => {
+	// Handle preflight request for CORS
+	if (event.httpMethod === 'OPTIONS') {
+		return {
+			statusCode: 200,
+			headers: corsHeaders,
+			body: '',
+		}
 	}
 
-	if (request.method !== 'POST') {
-		return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405, headers: corsHeaders })
+	if (event.httpMethod !== 'POST') {
+		return {
+			statusCode: 405,
+			headers: corsHeaders,
+			body: JSON.stringify({ error: 'Method Not Allowed' }),
+		}
 	}
 
 	try {
-		// Get the Stripe signature from headers
-		const signature = request.headers.get('stripe-signature')
+		// Get the signature from the headers
+		const signature = event.headers['stripe-signature']
+
 		if (!signature) {
-			return new Response(JSON.stringify({ error: 'Missing Stripe signature' }), { status: 400, headers: corsHeaders })
+			return {
+				statusCode: 400,
+				headers: corsHeaders,
+				body: JSON.stringify({ error: 'Missing Stripe signature' }),
+			}
 		}
 
-		// Get the raw request body as text (needed for Stripe signature verification)
-		const rawBody = await request.text()
-
-		// Verify and construct the Stripe event
-		const stripeEvent = stripe.webhooks.constructEvent(rawBody, signature, process.env.STRIPE_WEBHOOK_SECRET as string)
+		// Verify and construct the event
+		const stripeEvent = stripe.webhooks.constructEvent(
+			event.body as string,
+			signature,
+			process.env.STRIPE_WEBHOOK_SECRET as string,
+		)
 
 		// Log the event to Firestore for auditing and recovery purposes
 		await logWebhookEvent(stripeEvent)
@@ -47,14 +71,15 @@ async function handler(request: Request, _context: any): Promise<Response> {
 		const eventProcessed = await checkEventProcessed(stripeEvent.id)
 		if (eventProcessed) {
 			console.log(`Event ${stripeEvent.id} has already been processed. Skipping.`)
-			return new Response(JSON.stringify({ received: true, alreadyProcessed: true }), {
-				status: 200,
+			return {
+				statusCode: 200,
 				headers: corsHeaders,
-			})
+				body: JSON.stringify({ received: true, alreadyProcessed: true }),
+			}
 		}
 
 		// Handle different event types
-		let result: any
+		let result
 		switch (stripeEvent.type) {
 			case 'payment_intent.succeeded':
 				result = await handlePaymentIntentSucceeded(stripeEvent.data.object as Stripe.PaymentIntent)
@@ -74,22 +99,32 @@ async function handler(request: Request, _context: any): Promise<Response> {
 		// Mark event as processed in Firestore
 		await markEventProcessed(stripeEvent.id, result)
 
-		return new Response(
-			JSON.stringify({
+		return {
+			statusCode: 200,
+			headers: corsHeaders,
+			body: JSON.stringify({
 				received: true,
 				processed: true,
 				result: result || 'Event type not specifically handled',
 			}),
-			{ status: 200, headers: corsHeaders },
-		)
-	} catch (error: any) {
+		}
+	} catch (error) {
 		console.error('Webhook error:', error)
+
 		// Log error for debugging
 		await logWebhookError(error)
-		return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: corsHeaders })
+
+		return {
+			statusCode: 400,
+			headers: corsHeaders,
+			body: JSON.stringify({ error: error.message }),
+		}
 	}
 }
 
+/**
+ * Log webhook event to Firestore for auditing and recovery
+ */
 async function logWebhookEvent(event: Stripe.Event): Promise<void> {
 	try {
 		await db
@@ -99,7 +134,7 @@ async function logWebhookEvent(event: Stripe.Event): Promise<void> {
 				id: event.id,
 				type: event.type,
 				timestamp: admin.firestore.FieldValue.serverTimestamp(),
-				data: JSON.parse(JSON.stringify(event.data.object)),
+				data: JSON.parse(JSON.stringify(event.data.object)), // Convert to plain JSON
 				processed: false,
 				apiVersion: event.api_version,
 			})
@@ -109,6 +144,9 @@ async function logWebhookEvent(event: Stripe.Event): Promise<void> {
 	}
 }
 
+/**
+ * Log webhook processing error
+ */
 async function logWebhookError(error: any): Promise<void> {
 	try {
 		await db.collection('webhookErrors').add({
@@ -121,6 +159,9 @@ async function logWebhookError(error: any): Promise<void> {
 	}
 }
 
+/**
+ * Check if an event has already been processed (idempotency)
+ */
 async function checkEventProcessed(eventId: string): Promise<boolean> {
 	try {
 		const eventDoc = await db.collection('webhookEvents').doc(eventId).get()
@@ -132,6 +173,9 @@ async function checkEventProcessed(eventId: string): Promise<boolean> {
 	}
 }
 
+/**
+ * Mark event as processed with result
+ */
 async function markEventProcessed(eventId: string, result: any): Promise<void> {
 	try {
 		await db
@@ -147,36 +191,51 @@ async function markEventProcessed(eventId: string, result: any): Promise<void> {
 	}
 }
 
+/**
+ * Handle successful payment intent events with error recovery
+ */
 async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
 	console.log('Payment succeeded:', paymentIntent.id)
+
+	// Extract booking information from payment intent metadata
 	const { bookingId, courtId, date, userId } = paymentIntent.metadata || {}
 
 	if (!bookingId) {
+		// If no bookingId in metadata, this is a payment without a booking
+		// Log it for reconciliation purposes
 		await logPaymentTransaction(paymentIntent, 'succeeded', 'No booking ID associated with payment')
 		return { success: false, reason: 'no_booking_id' }
 	}
 
 	try {
+		// Check if booking already exists
 		const bookingRef = db.collection('bookings').doc(bookingId)
 		const bookingDoc = await bookingRef.get()
 
 		if (bookingDoc.exists) {
+			// Booking exists, update its payment status
 			await bookingRef.update({
 				paymentStatus: 'paid',
 				status: 'confirmed',
 				paymentIntentId: paymentIntent.id,
 				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 			})
+
 			console.log(`Updated existing booking ${bookingId} to confirmed status`)
 			return { success: true, action: 'updated_booking' }
 		} else {
 			console.log(paymentIntent)
+			// Booking doesn't exist yet - create it from payment metadata
+			// This handles cases where the client disconnected before creating the booking
 			const customerEmail = paymentIntent.receipt_email
 			const customerName = paymentIntent.shipping?.name || 'Guest User'
+
+			// Extract time information from metadata
 			const startTime = paymentIntent.metadata?.startTime
 			const endTime = paymentIntent.metadata?.endTime
-			const amount = paymentIntent.amount / 100
+			const amount = paymentIntent.amount / 100 // Convert from cents
 
+			// Create an emergency booking record
 			const newBooking = {
 				id: bookingId,
 				courtId: courtId || 'unknown',
@@ -194,31 +253,40 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 				paymentIntentId: paymentIntent.id,
 				createdAt: admin.firestore.FieldValue.serverTimestamp(),
 				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-				recoveredFromPayment: true,
+				recoveredFromPayment: true, // Flag to indicate this was created from payment data
 			}
 
 			await bookingRef.set(newBooking)
+
 			console.log(`Created emergency booking record for ${bookingId}`)
 			await logPaymentTransaction(
 				paymentIntent,
 				'succeeded',
 				'Created emergency booking record as original was missing',
 			)
+
 			return { success: true, action: 'created_emergency_booking' }
 		}
-	} catch (error: any) {
+	} catch (error) {
 		console.error('Error handling payment success webhook:', error)
 		await logPaymentTransaction(paymentIntent, 'error', `Error updating booking: ${error.message}`)
+
+		// Retry on next webhook or manual intervention
 		return { success: false, error: error.message }
 	}
 }
 
+/**
+ * Handle failed payment intent events
+ */
 async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
 	console.log('Payment failed:', paymentIntent.id)
+
 	const { bookingId } = paymentIntent.metadata || {}
 
 	if (bookingId) {
 		try {
+			// If there's a booking ID, update its status to failed
 			const bookingRef = db.collection('bookings').doc(bookingId)
 			const bookingDoc = await bookingRef.get()
 
@@ -228,21 +296,28 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
 					status: 'cancelled',
 					updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 				})
+
 				console.log(`Updated booking ${bookingId} to failed status`)
 				return { success: true, action: 'updated_booking_to_failed' }
 			}
-		} catch (error: any) {
+		} catch (error) {
 			console.error('Error handling payment failure webhook:', error)
 			await logPaymentTransaction(paymentIntent, 'error', `Error updating failed payment booking: ${error.message}`)
 			return { success: false, error: error.message }
 		}
 	}
+
+	// Log the failed payment regardless
 	await logPaymentTransaction(paymentIntent, 'failed', paymentIntent.last_payment_error?.message || 'Payment failed')
 	return { success: true, action: 'logged_payment_failure' }
 }
 
+/**
+ * Handle payment processing status
+ */
 async function handlePaymentIntentProcessing(paymentIntent: Stripe.PaymentIntent) {
 	console.log('Payment processing:', paymentIntent.id)
+
 	const { bookingId } = paymentIntent.metadata || {}
 
 	if (bookingId) {
@@ -251,32 +326,41 @@ async function handlePaymentIntentProcessing(paymentIntent: Stripe.PaymentIntent
 			const bookingDoc = await bookingRef.get()
 
 			if (bookingDoc.exists) {
+				// Only update if the status isn't already set to a later state (paid or failed)
 				const currentStatus = bookingDoc.data()?.paymentStatus
 				if (currentStatus === 'pending' || !currentStatus) {
 					await bookingRef.update({
 						paymentStatus: 'processing',
 						updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 					})
+
 					console.log(`Updated booking ${bookingId} to processing status`)
 				}
 			}
+
 			return { success: true, action: 'updated_to_processing' }
-		} catch (error: any) {
+		} catch (error) {
 			console.error('Error handling payment processing webhook:', error)
 			await logPaymentTransaction(paymentIntent, 'error', `Error updating processing status: ${error.message}`)
 			return { success: false, error: error.message }
 		}
 	}
+
 	await logPaymentTransaction(paymentIntent, 'processing', 'Payment is being processed')
 	return { success: true, action: 'logged_processing_status' }
 }
 
+/**
+ * Handle canceled payment intents
+ */
 async function handlePaymentIntentCanceled(paymentIntent: Stripe.PaymentIntent) {
 	console.log('Payment canceled:', paymentIntent.id)
+
 	const { bookingId } = paymentIntent.metadata || {}
 
 	if (bookingId) {
 		try {
+			// Update booking status
 			const bookingRef = db.collection('bookings').doc(bookingId)
 			const bookingDoc = await bookingRef.get()
 
@@ -286,25 +370,32 @@ async function handlePaymentIntentCanceled(paymentIntent: Stripe.PaymentIntent) 
 					status: 'cancelled',
 					updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 				})
+
 				console.log(`Updated booking ${bookingId} to cancelled status`)
 			}
+
 			return { success: true, action: 'updated_to_cancelled' }
-		} catch (error: any) {
+		} catch (error) {
 			console.error('Error handling payment cancellation webhook:', error)
 			await logPaymentTransaction(paymentIntent, 'error', `Error updating cancelled status: ${error.message}`)
 			return { success: false, error: error.message }
 		}
 	}
+
 	await logPaymentTransaction(paymentIntent, 'cancelled', 'Payment was cancelled')
 	return { success: true, action: 'logged_cancellation' }
 }
 
+/**
+ * Log payment transactions for audit and reconciliation
+ */
 async function logPaymentTransaction(
 	paymentIntent: Stripe.PaymentIntent,
 	status: 'succeeded' | 'failed' | 'processing' | 'cancelled' | 'error',
 	notes: string,
 ) {
 	try {
+		// Create a transaction log entry
 		await db
 			.collection('paymentTransactions')
 			.doc(paymentIntent.id)
@@ -321,6 +412,7 @@ async function logPaymentTransaction(
 				metadata: paymentIntent.metadata || {},
 				timestamp: admin.firestore.FieldValue.serverTimestamp(),
 			})
+
 		console.log(`Logged payment transaction: ${paymentIntent.id}`)
 	} catch (error) {
 		console.error('Error logging payment transaction:', error)

@@ -118,11 +118,11 @@ export class CourtPreferencesStep extends $LitElement(css`
 			this.previousActive = this.active
 			requestAnimationFrame(() => {
 				this._measureHeights()
+				// If heights are measured, animate the transition
+				if (this._activeHeight > 0 && this._compactHeight > 0 && !this.animating) {
+					this._animateTransition()
+				}
 			})
-			// If heights are measured, animate the transition
-			if (this._activeHeight > 0 && this._compactHeight > 0 && !this.animating) {
-				this._animateTransition()
-			}
 		}
 	}
 

@@ -1,4 +1,5 @@
 // netlify/functions/booking-recovery.ts
+import { Handler } from '@netlify/functions'
 import admin from 'firebase-admin'
 import { corsHeaders } from './_shared/cors'
 import stripe from './_shared/stripe'
@@ -17,73 +18,103 @@ if (!admin.apps.length) {
 
 const db = admin.firestore()
 
-async function handler(request: Request, context: any): Promise<Response> {
-	// Handle preflight OPTIONS request for CORS
-	if (request.method === 'OPTIONS') {
-		return new Response('', { status: 200, headers: corsHeaders })
+/**
+ * Booking recovery function
+ *
+ * This function helps recover bookings that might be in an inconsistent state
+ * by reconciling payment data with booking records.
+ *
+ * It can be triggered:
+ * 1. Manually via an admin panel
+ * 2. On a schedule (daily)
+ * 3. When a user reports an issue
+ */
+const handler: Handler = async (event, context) => {
+	// Handle preflight request for CORS
+	if (event.httpMethod === 'OPTIONS') {
+		return {
+			statusCode: 200,
+			headers: corsHeaders,
+			body: '',
+		}
 	}
 
 	// Require API key for security
-	const apiKey = request.headers.get('x-api-key')
+	const apiKey = event.headers['x-api-key']
 	if (apiKey !== process.env.RECOVERY_API_KEY) {
-		return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
+		return {
+			statusCode: 401,
+			headers: corsHeaders,
+			body: JSON.stringify({ error: 'Unauthorized' }),
+		}
 	}
 
 	try {
-		const url = new URL(request.url)
-		const mode = url.searchParams.get('mode') || 'scan'
-		const bookingId = url.searchParams.get('bookingId') || undefined
-		const paymentIntentId = url.searchParams.get('paymentIntentId') || undefined
-		const daysParam = url.searchParams.get('days')
-		const days = daysParam ? parseInt(daysParam, 10) : 7
+		const params = event.queryStringParameters || {}
+		const mode = params.mode || 'scan'
+		const bookingId = params.bookingId
+		const paymentIntentId = params.paymentIntentId
+		const days = params.days ? parseInt(params.days, 10) : 7
 
 		let result: any = { recovered: 0, checked: 0, errors: 0 }
 
 		// Choose recovery approach based on mode
 		switch (mode) {
 			case 'single':
+				// Recover a specific booking by ID
 				if (bookingId) {
 					result = await recoverSingleBooking(bookingId)
 				} else if (paymentIntentId) {
 					result = await recoverByPaymentIntent(paymentIntentId)
 				} else {
-					return new Response(JSON.stringify({ error: 'bookingId or paymentIntentId required for single mode' }), {
-						status: 400,
+					return {
+						statusCode: 400,
 						headers: corsHeaders,
-					})
+						body: JSON.stringify({ error: 'bookingId or paymentIntentId required for single mode' }),
+					}
 				}
 				break
 
 			case 'scan':
+				// Scan for inconsistent bookings and fix them
 				result = await scanAndRecoverInconsistentBookings(days)
 				break
 
 			case 'cleanup':
+				// Clean up stuck pending bookings
 				result = await cleanupStuckPendingBookings(days)
 				break
 
 			default:
-				return new Response(JSON.stringify({ error: 'Invalid mode. Use "single", "scan", or "cleanup"' }), {
-					status: 400,
+				return {
+					statusCode: 400,
 					headers: corsHeaders,
-				})
+					body: JSON.stringify({ error: 'Invalid mode. Use "single", "scan", or "cleanup"' }),
+				}
 		}
 
-		return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders })
-	} catch (error: any) {
-		console.error('Error in booking recovery function:', error)
-		return new Response(JSON.stringify({ error: 'Internal server error during recovery process' }), {
-			status: 500,
+		return {
+			statusCode: 200,
 			headers: corsHeaders,
-		})
+			body: JSON.stringify(result),
+		}
+	} catch (error) {
+		console.error('Error in booking recovery function:', error)
+
+		return {
+			statusCode: 500,
+			headers: corsHeaders,
+			body: JSON.stringify({ error: 'Internal server error during recovery process' }),
+		}
 	}
 }
 
 /**
- * Recover a single booking by ID.
+ * Recover a single booking by ID
  */
 async function recoverSingleBooking(bookingId: string): Promise<any> {
 	try {
+		// Get the booking
 		const bookingRef = db.collection('bookings').doc(bookingId)
 		const bookingDoc = await bookingRef.get()
 
@@ -93,7 +124,7 @@ async function recoverSingleBooking(bookingId: string): Promise<any> {
 
 		const booking = bookingDoc.data() as Booking
 
-		// If booking has a payment intent ID, recover by payment intent
+		// If booking has a payment intent ID, check its status
 		if (booking.paymentIntentId) {
 			return await recoverByPaymentIntent(booking.paymentIntentId, bookingId)
 		}
@@ -104,6 +135,7 @@ async function recoverSingleBooking(bookingId: string): Promise<any> {
 			const hoursSincePending = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60)
 
 			if (hoursSincePending > 2) {
+				// 2 hours is enough time to complete payment
 				await bookingRef.update({
 					paymentStatus: 'abandoned',
 					status: 'cancelled',
@@ -121,33 +153,39 @@ async function recoverSingleBooking(bookingId: string): Promise<any> {
 		}
 
 		return { recovered: 0, message: 'No recovery action needed', bookingId }
-	} catch (error: any) {
+	} catch (error) {
 		console.error(`Error recovering booking ${bookingId}:`, error)
 		return { error: error.message, recovered: 0, bookingId }
 	}
 }
 
 /**
- * Recover booking by payment intent ID.
+ * Recover booking by payment intent ID
  */
 async function recoverByPaymentIntent(paymentIntentId: string, knownBookingId?: string): Promise<any> {
 	try {
+		// First, get the payment intent from Stripe
 		const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+
+		// Try to find the booking ID, either from parameter or metadata
 		const bookingId = knownBookingId || paymentIntent.metadata?.bookingId
 
 		if (!bookingId) {
 			return { error: 'No booking ID found in payment intent metadata', recovered: 0 }
 		}
 
+		// Get the booking
 		const bookingRef = db.collection('bookings').doc(bookingId)
 		const bookingDoc = await bookingRef.get()
 
 		if (!bookingDoc.exists) {
-			// Handle case where payment exists but booking doesn't – create emergency booking if payment succeeded
+			// Handle case where payment exists but booking doesn't - create emergency booking
 			if (paymentIntent.status === 'succeeded') {
 				const recoveryBooking = createEmergencyBookingFromPayment(paymentIntent, bookingId)
 				await bookingRef.set(recoveryBooking)
+
 				await logRecoveryAction(bookingId, paymentIntentId, 'created_missing_booking')
+
 				return {
 					recovered: 1,
 					action: 'created_booking',
@@ -155,25 +193,33 @@ async function recoverByPaymentIntent(paymentIntentId: string, knownBookingId?: 
 					message: 'Created missing booking record from payment data',
 				}
 			}
+
 			return { error: 'Booking not found and payment not succeeded', recovered: 0 }
 		}
 
 		const booking = bookingDoc.data() as Booking
+
+		// Check if payment status in booking matches Stripe
 		const bookingPaymentStatus = booking.paymentStatus
 		const stripeStatus = paymentIntent.status
 
 		if (bookingPaymentStatus === 'paid' && stripeStatus === 'succeeded') {
+			// Everything is consistent, no action needed
 			return { recovered: 0, message: 'Booking and payment are in sync', bookingId }
 		}
 
+		// Handle mismatched statuses
 		if (stripeStatus === 'succeeded' && bookingPaymentStatus !== 'paid') {
+			// Payment succeeded in Stripe but not marked in booking
 			await bookingRef.update({
 				paymentStatus: 'paid',
 				status: 'confirmed',
 				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 				recoveryNotes: 'Updated via recovery process - payment was successful in Stripe',
 			})
+
 			await logRecoveryAction(bookingId, paymentIntentId, 'updated_booking_status_to_paid')
+
 			return {
 				recovered: 1,
 				action: 'updated_to_paid',
@@ -183,13 +229,16 @@ async function recoverByPaymentIntent(paymentIntentId: string, knownBookingId?: 
 		}
 
 		if (stripeStatus === 'canceled' && bookingPaymentStatus !== 'cancelled') {
+			// Payment canceled in Stripe but not in booking
 			await bookingRef.update({
 				paymentStatus: 'cancelled',
 				status: 'cancelled',
 				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 				recoveryNotes: 'Updated via recovery process - payment was cancelled in Stripe',
 			})
+
 			await logRecoveryAction(bookingId, paymentIntentId, 'updated_booking_status_to_cancelled')
+
 			return {
 				recovered: 1,
 				action: 'updated_to_cancelled',
@@ -198,27 +247,31 @@ async function recoverByPaymentIntent(paymentIntentId: string, knownBookingId?: 
 			}
 		}
 
+		// Other status transitions can be handled as needed
+
 		return {
 			recovered: 0,
 			message: `No recovery action taken. Booking status: ${bookingPaymentStatus}, Stripe status: ${stripeStatus}`,
 			bookingId,
 		}
-	} catch (error: any) {
+	} catch (error) {
 		console.error(`Error recovering by payment intent ${paymentIntentId}:`, error)
 		return { error: error.message, recovered: 0, paymentIntentId }
 	}
 }
 
 /**
- * Create an emergency booking record from payment data.
+ * Create an emergency booking record from payment data
  */
 function createEmergencyBookingFromPayment(paymentIntent: any, bookingId: string): any {
 	const { courtId, date, startTime, endTime, userId } = paymentIntent.metadata || {}
 	const customerEmail = paymentIntent.receipt_email || null
 	const customerName = paymentIntent.shipping?.name || 'Emergency Recovery'
+
+	// Extract time information from metadata or use defaults
 	const bookingStartTime = startTime || new Date().toISOString()
 	const bookingEndTime = endTime || new Date(new Date(bookingStartTime).getTime() + 60 * 60 * 1000).toISOString() // Default to 1 hour
-	const amount = paymentIntent.amount / 100
+	const amount = paymentIntent.amount / 100 // Convert from cents
 
 	return {
 		id: bookingId,
@@ -237,19 +290,21 @@ function createEmergencyBookingFromPayment(paymentIntent: any, bookingId: string
 		paymentIntentId: paymentIntent.id,
 		createdAt: admin.firestore.FieldValue.serverTimestamp(),
 		updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-		recoveredFromPayment: true,
+		recoveredFromPayment: true, // Flag to indicate this was created from payment data
 		emergencyRecovery: true,
 	}
 }
 
 /**
- * Scan for inconsistent bookings and recover them.
+ * Scan for inconsistent bookings and recover them
  */
 async function scanAndRecoverInconsistentBookings(daysToScan: number): Promise<any> {
 	try {
+		// Calculate date range
 		const startDate = new Date()
 		startDate.setDate(startDate.getDate() - daysToScan)
 
+		// Get bookings created within the time range
 		const bookingsSnapshot = await db.collection('bookings').where('createdAt', '>=', startDate).get()
 
 		const results = {
@@ -259,13 +314,19 @@ async function scanAndRecoverInconsistentBookings(daysToScan: number): Promise<a
 			actions: [] as any[],
 		}
 
+		// Check each booking
 		for (const doc of bookingsSnapshot.docs) {
 			const booking = doc.data()
+
+			// Skip bookings without payment intent
 			if (!booking.paymentIntentId) {
 				continue
 			}
+
 			try {
+				// Recover this booking
 				const recoveryResult = await recoverByPaymentIntent(booking.paymentIntentId, doc.id)
+
 				if (recoveryResult.recovered > 0) {
 					results.recovered += recoveryResult.recovered
 					results.actions.push({
@@ -279,23 +340,26 @@ async function scanAndRecoverInconsistentBookings(daysToScan: number): Promise<a
 				console.error(`Error processing booking ${doc.id}:`, error)
 			}
 		}
+
 		return results
-	} catch (error: any) {
+	} catch (error) {
 		console.error('Error scanning for inconsistent bookings:', error)
 		return { error: error.message, checked: 0, recovered: 0 }
 	}
 }
 
 /**
- * Clean up bookings stuck in pending status.
+ * Clean up bookings stuck in pending status
  */
 async function cleanupStuckPendingBookings(daysToScan: number): Promise<any> {
 	try {
+		// Calculate date range
 		const startDate = new Date()
 		startDate.setDate(startDate.getDate() - daysToScan)
 		const twoHoursAgo = new Date()
 		twoHoursAgo.setHours(twoHoursAgo.getHours() - 2)
 
+		// Get pending bookings that are older than 2 hours
 		const bookingsSnapshot = await db
 			.collection('bookings')
 			.where('paymentStatus', '==', 'pending')
@@ -310,35 +374,41 @@ async function cleanupStuckPendingBookings(daysToScan: number): Promise<any> {
 			bookings: [] as any[],
 		}
 
+		// Process each stuck pending booking
 		for (const doc of bookingsSnapshot.docs) {
 			try {
 				const bookingRef = doc.ref
+
+				// Mark as abandoned
 				await bookingRef.update({
 					paymentStatus: 'abandoned',
 					status: 'cancelled',
 					updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 					recoveryNotes: 'Marked as abandoned during stuck booking cleanup',
 				})
+
 				results.abandoned++
 				results.bookings.push({
 					bookingId: doc.id,
 					createdAt: doc.data().createdAt.toDate ? doc.data().createdAt.toDate() : doc.data().createdAt,
 				})
+
 				await logRecoveryAction(doc.id, doc.data().paymentIntentId, 'marked_stuck_booking_abandoned')
 			} catch (error) {
 				results.errors++
 				console.error(`Error processing stuck booking ${doc.id}:`, error)
 			}
 		}
+
 		return results
-	} catch (error: any) {
+	} catch (error) {
 		console.error('Error cleaning up stuck bookings:', error)
 		return { error: error.message, checked: 0, abandoned: 0 }
 	}
 }
 
 /**
- * Log recovery actions for auditing.
+ * Log recovery actions for auditing
  */
 async function logRecoveryAction(
 	bookingId: string,
@@ -358,4 +428,4 @@ async function logRecoveryAction(
 	}
 }
 
-export { handler }
+export default { handler }
