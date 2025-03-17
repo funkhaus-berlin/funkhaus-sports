@@ -369,6 +369,7 @@ export class CourtBookingSystem extends $LitElement() {
 		const url = new URL(window.location.href)
 		url.searchParams.delete('step')
 		url.searchParams.set('confirmation', 'true')
+		url.searchParams.set('booking', this.booking.id)
 		window.history.pushState({ step: 'confirmation' }, '', url.toString())
 	}
 

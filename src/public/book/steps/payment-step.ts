@@ -10,12 +10,11 @@ import { when } from 'lit/directives/when.js'
 import { Subscription } from 'rxjs'
 import countries from 'src/assets/countries'
 import { Court } from 'src/db/courts.collection'
-import { $stripeElements } from 'src/public/stripe'
+import stripePromise, { $stripeElements } from 'src/public/stripe'
 import { Booking, bookingContext } from '../context'
-import { FunkhausSportsTermsAndConditions } from '../terms-and-conditions'
-import stripePromise from 'src/public/stripe'
 import { FormValidator } from '../form-validator'
 import { PaymentService } from '../payment-service'
+import { FunkhausSportsTermsAndConditions } from '../terms-and-conditions'
 
 /**
  * Checkout form component with Stripe integration
@@ -215,9 +214,9 @@ export class CheckoutForm extends $LitElement() {
 					this.processing,
 					() => html`
 						<div
-							class="absolute inset-0 z-50 bg-surface-container bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
+							class="absolute inset-0 z-50  bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
 						>
-							<schmancy-flex flow="row" gap="sm" align="center" class="p-6 bg-surface-container rounded-lg shadow-lg">
+							<schmancy-flex flow="row" gap="sm" align="center" class="p-6 rounded-lg" justify="center">
 								<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
 								<schmancy-flex flow="col" gap="sm" class="max-w-md">
 									<schmancy-typography type="title" token="sm">Processing Payment</schmancy-typography>
@@ -246,7 +245,8 @@ export class CheckoutForm extends $LitElement() {
 				<schmancy-grid gap="sm" class="w-full">
 					<!-- Personal Information -->
 					<schmancy-grid gap="sm" class="grid-cols-1 sm:grid-cols-2 gap-4 px-2">
-						<schmancy-input
+						<sch-input
+							size="sm"
 							autocomplete="name"
 							.value=${this.booking.userName || ''}
 							required
@@ -255,22 +255,12 @@ export class CheckoutForm extends $LitElement() {
 							class="w-full"
 							placeholder="Full Name"
 							@change=${(e: any) => this.updateBookingField('userName', e.detail.value)}
-						></schmancy-input>
-
-						<schmancy-input
-							autocomplete="tel"
-							.value=${this.booking.customerPhone || ''}
-							required
-							.error=${!this.formValidator.isFieldValid('customerPhone')}
-							type="tel"
-							class="w-full"
-							placeholder="Phone Number"
-							@change=${(e: any) => this.updateBookingField('customerPhone', e.detail.value)}
-						></schmancy-input>
+						></sch-input>
 					</schmancy-grid>
 
-					<schmancy-grid class="px-2">
-						<schmancy-input
+					<schmancy-grid gap="sm" class="px-2" cols="1fr 1fr">
+						<sch-input
+							size="sm"
 							autocomplete="email"
 							.value=${this.booking.customerEmail || ''}
 							required
@@ -279,13 +269,25 @@ export class CheckoutForm extends $LitElement() {
 							type="email"
 							placeholder="Email Address"
 							@change=${(e: any) => this.updateBookingField('customerEmail', e.detail.value)}
-						></schmancy-input>
+						></sch-input>
+						<sch-input
+							size="sm"
+							autocomplete="tel"
+							.value=${this.booking.customerPhone || ''}
+							required
+							.error=${!this.formValidator.isFieldValid('customerPhone')}
+							type="tel"
+							class="w-full"
+							placeholder="Phone Number"
+							@change=${(e: any) => this.updateBookingField('customerPhone', e.detail.value)}
+						></sch-input>
 					</schmancy-grid>
 
 					<!-- Billing Information -->
 					<schmancy-grid class="px-2" gap="sm">
-						<schmancy-input
-							autocomplete="street-address"
+						<!-- <sch-input
+						size="sm"	
+						autocomplete="street-address"
 							.value=${this.booking.customerAddress?.street || ''}
 							required
 							.error=${!this.formValidator.isFieldValid('customerAddress.street')}
@@ -293,10 +295,11 @@ export class CheckoutForm extends $LitElement() {
 							class="w-full"
 							placeholder="Street Address"
 							@change=${(e: any) => this.updateBookingField('customerAddress.street', e.detail.value)}
-						></schmancy-input>
+						></sch-input> -->
 
-						<div class="grid grid-cols-2 gap-2">
-							<schmancy-input
+						<div class="grid grid-cols-3 gap-2">
+							<sch-input
+								size="sm"
 								autocomplete="postal-code"
 								.value=${this.booking.customerAddress?.postalCode || ''}
 								required
@@ -304,9 +307,10 @@ export class CheckoutForm extends $LitElement() {
 								type="text"
 								placeholder="Postal Code"
 								@change=${(e: any) => this.updateBookingField('customerAddress.postalCode', e.detail.value)}
-							></schmancy-input>
+							></sch-input>
 
-							<schmancy-input
+							<sch-input
+								size="sm"
 								autocomplete="address-level2"
 								.value=${this.booking.customerAddress?.city || ''}
 								required
@@ -314,24 +318,25 @@ export class CheckoutForm extends $LitElement() {
 								type="text"
 								placeholder="City"
 								@change=${(e: any) => this.updateBookingField('customerAddress.city', e.detail.value)}
-							></schmancy-input>
+							></sch-input>
+							<schmancy-autocomplete
+								size="sm"
+								.autocomplete=${'country-name'}
+								required
+								@change=${(e: SchmancyAutocompleteChangeEvent) => {
+									this.updateBookingField('customerAddress.country', e.detail.value as string)
+								}}
+								placeholder="Country"
+								.value=${this.booking.customerAddress?.country || ''}
+							>
+								${repeat(
+									countries,
+									c => c.code,
+									c =>
+										html` <schmancy-option .label=${c.name ?? ''} .value=${c.code ?? 0}> ${c.name} </schmancy-option>`,
+								)}
+							</schmancy-autocomplete>
 						</div>
-
-						<schmancy-autocomplete
-							.autocomplete=${'country-name'}
-							required
-							@change=${(e: SchmancyAutocompleteChangeEvent) => {
-								this.updateBookingField('customerAddress.country', e.detail.value as string)
-							}}
-							placeholder="Country"
-							.value=${this.booking.customerAddress?.country || ''}
-						>
-							${repeat(
-								countries,
-								c => c.code,
-								c => html` <schmancy-option .label=${c.name ?? ''} .value=${c.code ?? 0}> ${c.name} </schmancy-option>`,
-							)}
-						</schmancy-autocomplete>
 					</schmancy-grid>
 
 					<!-- Payment Details -->

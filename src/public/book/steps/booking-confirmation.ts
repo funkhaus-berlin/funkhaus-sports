@@ -197,7 +197,7 @@ export class BookingConfirmation extends $LitElement() {
 					height="150"
 					class="mx-auto mb-3"
 				/>
-				<div class="absolute bottom-0 right-2" @click=${() => this.downloadQRCode()} title="Download QR Code">
+				<div class="" @click=${() => this.downloadQRCode()} title="Download QR Code">
 					<schmancy-icon-button class="animate-bounce" variant="filled">download</schmancy-icon-button>
 				</div>
 			</div>

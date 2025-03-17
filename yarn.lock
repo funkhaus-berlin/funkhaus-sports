@@ -2812,9 +2812,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@mhmo91/schmancy@npm:^0.2.130":
-  version: 0.2.130
-  resolution: "@mhmo91/schmancy@npm:0.2.130"
+"@mhmo91/schmancy@npm:^0.2.131":
+  version: 0.2.131
+  resolution: "@mhmo91/schmancy@npm:0.2.131"
   dependencies:
     "@floating-ui/dom": "npm:^1.6.13"
     "@lit-labs/motion": "npm:^1.0.8"
@@ -2842,11 +2842,11 @@ __metadata:
   peerDependencies:
     lit: ^3.2.1
     tailwindcss: ^4.0.0
-  checksum: 10c0/f66bc1b09bf5564ff44853398bfbe273a0a85da0c7ae6f30c8689e3f6ad09f8624b5348989216423710aa19d8c4d28f2c6d8a5d67afc8e40bb9a242ddcff49e9
+  checksum: 10c0/8e83729ec04f4f429a5a35a459595e837b968e68e49d100cbd880ae52271e9dfd1d09ceda149e9acaed0ef0a4b109ccec4eedecec77edf329b40c15140c552c9
   languageName: node
   linkType: hard
 
-"@netlify/functions@npm:^3.0.1":
+"@netlify/functions@npm:^3.0.2":
   version: 3.0.2
   resolution: "@netlify/functions@npm:3.0.2"
   dependencies:
@@ -3390,10 +3390,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@stripe/stripe-js@npm:^6.0.0":
-  version: 6.0.0
-  resolution: "@stripe/stripe-js@npm:6.0.0"
-  checksum: 10c0/29ba14db0e1a93e1da87932f82487324770be40a31e4e90a5ac1e85ff278b3d5fe677b401696f1e99ef0c260ad0914925ef9cbd6eabb7bdaedd201f84c5ee1f5
+"@stripe/stripe-js@npm:^6.1.0":
+  version: 6.1.0
+  resolution: "@stripe/stripe-js@npm:6.1.0"
+  checksum: 10c0/6e9f995945aebb615240d9571b646cec400ce46bc7440e01fc54f3d0d5329c3776b94639c6a77fc208e52df545c696c051cc7ac07b336fc1695871443803a570
   languageName: node
   linkType: hard
 
@@ -5449,9 +5449,9 @@ __metadata:
   resolution: "funkhaus-sports@workspace:."
   dependencies:
     "@lit-labs/virtualizer": "npm:^2.1.0"
-    "@mhmo91/schmancy": "npm:^0.2.130"
-    "@netlify/functions": "npm:^3.0.1"
-    "@stripe/stripe-js": "npm:^6.0.0"
+    "@mhmo91/schmancy": "npm:^0.2.131"
+    "@netlify/functions": "npm:^3.0.2"
+    "@stripe/stripe-js": "npm:^6.1.0"
     "@tailwindcss/postcss": "npm:^4.0.14"
     "@types/cors": "npm:^2.8.17"
     "@vite-pwa/assets-generator": "npm:^0.2.6"

@@ -26,7 +26,7 @@ export class FormValidator {
 			{ key: 'userName', label: 'Name' },
 			{ key: 'customerEmail', label: 'Email' },
 			{ key: 'customerPhone', label: 'Phone number' },
-			{ key: 'customerAddress.street', label: 'Street address' },
+			// { key: 'customerAddress.street', label: 'Street address' },
 			{ key: 'customerAddress.postalCode', label: 'Postal code' },
 			{ key: 'customerAddress.city', label: 'City' },
 			{ key: 'customerAddress.country', label: 'Country' },
