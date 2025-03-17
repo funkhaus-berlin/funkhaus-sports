@@ -140,9 +140,20 @@ export class PaymentService {
 			catchError(error => {
 				console.error('Payment or booking error:', error)
 
+				// More specific error messages based on error type
+				let errorMessage
+				if (error.message && error.message.includes('network')) {
+					errorMessage = 'Network issue detected. Please check your internet connection and try again.'
+				} else if (error.type === 'card_error') {
+					errorMessage = error.message || 'Your card was declined. Please try another payment method.'
+				} else if (error.type === 'validation_error') {
+					errorMessage = error.message || 'Please check your payment details and try again.'
+				} else {
+					errorMessage = this.errorHandler.getReadableErrorMessage(error)
+				}
+
 				// Only update error if component is still mounted
 				if (this._processingLock === lockFlag) {
-					const errorMessage = this.errorHandler.getReadableErrorMessage(error)
 					this.errorHandler.setError(errorMessage)
 				}
 

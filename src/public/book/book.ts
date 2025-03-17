@@ -268,7 +268,6 @@ export class CourtBookingSystem extends $LitElement() {
 
 		// Start court assignment with loading indicator
 		this.bookingInProgress = true
-
 		try {
 			// Get reference to the tentatively assigned court from the duration component
 			const durationStep = this.shadowRoot?.querySelector('duration-selection-step') as any
@@ -281,37 +280,43 @@ export class CourtBookingSystem extends $LitElement() {
 			}
 
 			// Assign court based on preferences and availability
-			const result = await this.courtAssignmentHandler.assignCourt(
-				this.booking,
-				duration.value,
-				Array.from(this.availableCourts.values()),
-				this.courtPreferences,
-				tentativeAssignedCourt,
-			)
+			// In your booking component
+			this.courtAssignmentHandler
+				.assignCourt(
+					this.booking,
+					duration.value,
+					Array.from(this.availableCourts.values()),
+					this.courtPreferences,
+					tentativeAssignedCourt,
+				)
+				.subscribe({
+					next: result => {
+						if (result.success) {
+							// Court assignment successful
+							this.selectedCourt = result.court
 
-			if (!result.success) {
-				// Court assignment failed
-				this.error = result.error || 'No available courts found. Please try another time.'
-				this.navigateToStep(BookingStep.Time)
-				return
-			}
+							// Update booking with court, duration, and price
+							bookingContext.set({
+								courtId: result.court!.id,
+								endTime: result.endTime,
+								venueId: result.court!.venueId,
+								price: result.price,
+							})
 
-			// Court assignment successful
-			this.selectedCourt = result.court
-
-			// Update booking with court, duration, and price
-			bookingContext.set({
-				courtId: result.court!.id,
-				endTime: result.endTime,
-				venueId: result.court!.venueId, // Add venueId to booking context
-				price: result.price,
-			})
-
-			// Update stripe with new price
-			// $stripe.next(result.price!)
-
-			// Navigate to payment step
-			this.navigateToStep(BookingStep.Payment)
+							// Navigate to payment step
+							this.navigateToStep(BookingStep.Payment)
+						} else {
+							// Court assignment failed
+							this.error = result.error || 'No available courts found.'
+							this.navigateToStep(BookingStep.Time)
+						}
+					},
+					error: error => {
+						console.error('Unexpected error in court assignment:', error)
+						this.error = 'An unexpected error occurred. Please try again.'
+					},
+					complete: () => {},
+				})
 		} catch (error) {
 			// Handle unexpected errors
 			console.error('Error in court assignment flow:', error)

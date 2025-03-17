@@ -1,7 +1,7 @@
-// src/public/book/CourtAssignmentHandler.ts
-
 import dayjs from 'dayjs'
-import { catchError, firstValueFrom, of } from 'rxjs'
+import { defer, Observable, of, delay as rxjsDelay, throwError } from 'rxjs'
+import { catchError, concatMap, retry, timeout } from 'rxjs/operators'
+
 import { AvailabilityService } from 'src/bookingServices/availability'
 import {
 	CourtAssignmentService,
@@ -27,8 +27,15 @@ export interface CourtAssignmentResult {
 
 /**
  * Handles court assignment logic and related operations
+ * Uses RxJS to prevent race conditions and provide better error handling
  */
 export class CourtAssignmentHandler {
+	// Time to wait for availability check before timing out (ms)
+	private readonly AVAILABILITY_CHECK_TIMEOUT = 10000
+
+	// Maximum retries for transient errors
+	private readonly MAX_RETRIES = 2
+
 	private errorHandler = new BookingErrorHandler()
 	private availabilityService: AvailabilityService
 
@@ -38,147 +45,164 @@ export class CourtAssignmentHandler {
 
 	/**
 	 * Assign a court based on preferences and availability
+	 * Uses RxJS to handle asynchronous operations and prevent race conditions
+	 *
+	 * @param booking The booking data
+	 * @param duration Duration in minutes
+	 * @param availableCourts Array of available courts
+	 * @param preferences User preferences
+	 * @param tentativeCourt Optional tentatively assigned court
+	 * @returns Observable of the court assignment result
 	 */
-	// src/public/book/court-assignment-handler.ts
-	// This is an update to the existing CourtAssignmentHandler class
-
-	/**
-	 * Enhanced assignCourt method that can prioritize previously tentatively assigned courts
-	 */
-
-	async assignCourt(
+	assignCourt(
 		booking: Booking,
 		duration: number,
 		availableCourts: Court[],
 		preferences: CourtPreferences,
 		tentativeCourt?: Court | null,
-	): Promise<CourtAssignmentResult> {
-		try {
-			if (!booking.date || !booking.startTime) {
-				throw new Error('Booking date and start time are required')
-			}
-
-			const startTime = dayjs(booking.startTime)
-			const startMinutes = startTime.hour() * 60 + startTime.minute()
-			const endTime = startTime.add(duration, 'minute').toISOString()
-
-			// Array of courts to check
-			const courtsArray = Array.from(availableCourts)
-			if (courtsArray.length === 0) {
-				throw new Error('No courts available to book')
-			}
-
-			// If we have a tentative court, prioritize it first
-			let result
-			if (tentativeCourt) {
-				// Check if the previously tentatively assigned court is still available
-				// Access availabilityService directly, not through courtAssignmentService
-				let isTentativeCourtAvailable: boolean
-
-				try {
-					// Check if the previously tentatively assigned court is still available
-					isTentativeCourtAvailable = await firstValueFrom(
-						this.availabilityService
-							.isCourtAvailableForTimeRange(booking.date, tentativeCourt.id, startTime.toISOString(), endTime)
-							.pipe(
-								catchError(error => {
-									console.warn('Error checking tentative court availability:', error)
-									return of(false)
-								}),
-							),
-					)
-				} catch (error) {
-					console.error('Unexpected error checking court availability:', error)
-					// Fall back to normal court assignment
-					isTentativeCourtAvailable = false
-				}
-
-				if (isTentativeCourtAvailable) {
-					// Use the tentative court directly if it's available
-					console.log('Using tentatively assigned court:', tentativeCourt.name)
-					result = {
-						selectedCourt: tentativeCourt,
-						alternativeCourts: [],
-						message: 'Tentative court confirmed',
-					}
-				} else {
-					// Tentative court is no longer available, fall back to normal assignment
-					console.log('Tentative court no longer available, finding alternative')
-					result = await firstValueFrom(
-						this.courtAssignmentService
-							.checkAndAssignCourt(
-								booking.date,
-								startMinutes,
-								duration,
-								courtsArray,
-								CourtAssignmentStrategy.PREFERENCE_BASED,
-								preferences,
-							)
-							.pipe(
-								catchError(error => {
-									console.error('Error assigning court:', error)
-									return of({
-										selectedCourt: null,
-										alternativeCourts: [],
-										message: 'Error assigning court: ' + error.message,
-									})
-								}),
-							),
-					)
-				}
-			} else {
-				// No tentative court, use normal court assignment
-				result = await firstValueFrom(
-					this.courtAssignmentService
-						.checkAndAssignCourt(
-							booking.date,
-							startMinutes,
-							duration,
-							courtsArray,
-							CourtAssignmentStrategy.PREFERENCE_BASED,
-							preferences,
-						)
-						.pipe(
-							catchError(error => {
-								console.error('Error assigning court:', error)
-								return of({
-									selectedCourt: null,
-									alternativeCourts: [],
-									message: 'Error assigning court: ' + error.message,
-								})
-							}),
-						),
-				)
-			}
-
-			// Handle no courts available
-			if (!result.selectedCourt) {
-				return {
-					success: false,
-					error: result.message || 'No available courts found for the selected time and duration.',
-				}
-			}
-
-			// Calculate price based on court's pricing structure
-			const price = pricingService.calculatePrice(result.selectedCourt, booking.startTime, endTime, booking.userId)
-
-			console.log(`Court ${result.selectedCourt.name} assigned for booking`)
-
-			// Return successful result
-			return {
-				success: true,
-				court: result.selectedCourt,
-				venueId: result.selectedCourt.venueId, // Add venueId to result
-				price,
-				endTime,
-			}
-		} catch (error) {
-			// Handle errors
-			const errorMsg = this.errorHandler.handleCourtAssignmentError(error)
-			return {
-				success: false,
-				error: errorMsg,
-			}
+	): Observable<CourtAssignmentResult> {
+		// Validate required booking data
+		if (!booking.date || !booking.startTime) {
+			return throwError(() => new Error('Booking date and start time are required'))
 		}
+
+		// Validate courts array
+		const courtsArray = Array.from(availableCourts)
+		if (courtsArray.length === 0) {
+			return throwError(() => new Error('No courts available to book'))
+		}
+
+		// Calculate times
+		const startTime = dayjs(booking.startTime)
+		const startMinutes = startTime.hour() * 60 + startTime.minute()
+		const endTime = startTime.add(duration, 'minute').toISOString()
+
+		// Create the assignment pipeline
+		return defer(() => {
+			// Step 1: Try to use the tentative court if available
+			if (tentativeCourt) {
+				console.log('Checking if tentative court is still available:', tentativeCourt.name)
+
+				// Check if the tentatively assigned court is still available
+				return this.availabilityService
+					.isCourtAvailableForTimeRange(booking.date, tentativeCourt.id, startTime.toISOString(), endTime)
+					.pipe(
+						// Add timeout to prevent hanging
+						timeout(this.AVAILABILITY_CHECK_TIMEOUT),
+
+						// Handle the availability check result
+						concatMap(isAvailable => {
+							if (isAvailable) {
+								console.log('Tentative court is still available:', tentativeCourt.name)
+								// Court is available, use it
+								return of({
+									selectedCourt: tentativeCourt,
+									alternativeCourts: [],
+									message: 'Tentative court confirmed',
+								})
+							}
+
+							console.log('Tentative court no longer available, finding alternative')
+							// Court is no longer available, fall back to normal assignment
+							return this.findAlternativeCourt(booking.date, startMinutes, duration, courtsArray, preferences)
+						}),
+
+						// Handle errors in availability check
+						catchError(error => {
+							console.warn('Error checking tentative court availability:', error)
+							// Fall back to normal court assignment on error
+							return this.findAlternativeCourt(booking.date, startMinutes, duration, courtsArray, preferences)
+						}),
+					)
+			}
+
+			// No tentative court, use normal court assignment
+			return this.findAlternativeCourt(booking.date, startMinutes, duration, courtsArray, preferences)
+		}).pipe(
+			// Post-process the court assignment result
+			concatMap(result => {
+				if (!result.selectedCourt) {
+					return of({
+						success: false,
+						error: result.message || 'No available courts found for the selected time and duration.',
+					})
+				}
+
+				// Calculate price based on court's pricing structure
+				const court = result.selectedCourt
+				const price = pricingService.calculatePrice(court, booking.startTime, endTime, booking.userId)
+
+				console.log(`Court ${court.name} assigned for booking`)
+
+				// Return successful result
+				return of({
+					success: true,
+					court: court,
+					venueId: court.venueId,
+					price,
+					endTime,
+				})
+			}),
+
+			// Add retries for transient errors
+			retry({
+				count: this.MAX_RETRIES,
+				delay: (error, retryCount) => {
+					console.log(`Retry ${retryCount} after error:`, error)
+					// Exponential backoff: 500ms, 1000ms, etc.
+					return of(null).pipe(
+						concatMap(() => {
+							const delay = Math.pow(2, retryCount - 1) * 500
+							console.log(`Retrying after ${delay}ms`)
+							return of(null).pipe(rxjsDelay(delay))
+						}),
+					)
+				},
+			}),
+
+			// Handle errors
+			catchError(error => {
+				const errorMsg = this.errorHandler.handleCourtAssignmentError(error)
+				return of({
+					success: false,
+					error: errorMsg,
+				})
+			}),
+		)
+	}
+
+	/**
+	 * Find an alternative court when tentative court is not available
+	 *
+	 * @param date Booking date (YYYY-MM-DD)
+	 * @param startMinutes Start time in minutes from midnight
+	 * @param duration Duration in minutes
+	 * @param courts Array of available courts
+	 * @param preferences User preferences
+	 * @returns Observable of court assignment result
+	 */
+	private findAlternativeCourt(
+		date: string,
+		startMinutes: number,
+		duration: number,
+		courts: Court[],
+		preferences: CourtPreferences,
+	): Observable<any> {
+		return this.courtAssignmentService
+			.checkAndAssignCourt(date, startMinutes, duration, courts, CourtAssignmentStrategy.PREFERENCE_BASED, preferences)
+			.pipe(
+				// Add timeout to prevent hanging
+				timeout(this.AVAILABILITY_CHECK_TIMEOUT),
+
+				// Handle errors
+				catchError(error => {
+					console.error('Error finding alternative court:', error)
+					return of({
+						selectedCourt: null,
+						alternativeCourts: [],
+						message: 'Error finding available courts: ' + error.message,
+					})
+				}),
+			)
 	}
 }

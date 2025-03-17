@@ -3,6 +3,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { css, html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
+import { when } from 'lit/directives/when.js'
 import { debounceTime, fromEvent, takeUntil } from 'rxjs'
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { AvailabilityService } from 'src/bookingServices/availability'
@@ -95,11 +96,6 @@ export class DurationSelectionStep extends $LitElement(css`
 		if (this.active && !this.tentativeAssignmentActive) {
 			this.loading = true
 		}
-
-		// Preload the PreferencesHelper to avoid delay later
-		import('../preferences-helper').then(() => {
-			console.log('PreferencesHelper preloaded')
-		})
 
 		// Set default fallback durations with estimated prices
 		this.setEstimatedPrices()
@@ -322,21 +318,9 @@ export class DurationSelectionStep extends $LitElement(css`
 			standardDurations = [minDuration]
 		}
 
-		// Find the recommended duration (typically 1 hour or closest available)
-		const recommendedDuration =
-			standardDurations.find(d => d.value === 60) || standardDurations[Math.floor(standardDurations.length / 2)]
-
-		if (recommendedDuration) {
-			this.recommendedDuration = recommendedDuration.value
-		}
-
 		// Update durations
 		this.durations = standardDurations
 		this.requestUpdate()
-
-		// Log for debugging
-		console.log('Available durations based on venue hours:', standardDurations)
-		console.log('Max available minutes until closing:', maxAvailableMinutes)
 	}
 
 	/**
@@ -413,6 +397,7 @@ export class DurationSelectionStep extends $LitElement(css`
 	 * Handle duration selection
 	 */
 	private handleDurationSelect(duration: Duration): void {
+		this.loading = true
 		// Update selected duration
 		this.selectedDuration = duration.value
 
@@ -465,20 +450,19 @@ export class DurationSelectionStep extends $LitElement(css`
 			'py-3 px-2': !this.active,
 		}
 
-		// Loading state - improved with more detailed message
-		if (this.loading) {
-			return html`
-				<div
-					class="fixed inset-0 z-50  bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
-				>
-					<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
-				</div>
-			`
-		}
-
 		// Mobile-optimized active view - horizontal scrolling
 		if (this.isMobile) {
 			return html`
+				${when(
+					this.loading,
+					() => html`
+						<div
+							class="fixed inset-0 z-50  bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
+						>
+							<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
+						</div>
+					`,
+				)}
 				<div class=${this.classMap(containerClasses)}>
 					<!-- Title section -->
 					<div class="mb-3">
@@ -546,6 +530,16 @@ export class DurationSelectionStep extends $LitElement(css`
 
 		// Desktop view - grid layout
 		return html`
+			${when(
+				this.loading,
+				() => html`
+					<div
+						class="fixed inset-0 z-50  bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
+					>
+						<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
+					</div>
+				`,
+			)}
 			<div class=${this.classMap(containerClasses)}>
 				<!-- Title section -->
 				<div class="mb-2">

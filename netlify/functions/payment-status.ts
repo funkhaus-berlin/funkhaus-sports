@@ -134,7 +134,7 @@ const handler: Handler = async (event, context) => {
 async function handlePaymentBookingRecovery(paymentIntent: any, existingBookingId?: string): Promise<string | null> {
 	try {
 		// Extract booking information from payment intent metadata
-		const { bookingId, courtId, date, userId } = paymentIntent.metadata || {}
+		const { bookingId, courtId, date, userId, venueId } = paymentIntent.metadata || {}
 
 		// Use existing booking ID, metadata booking ID, or generate a new one
 		const targetBookingId = existingBookingId || bookingId || `recovery-${Date.now()}`
@@ -167,7 +167,7 @@ async function handlePaymentBookingRecovery(paymentIntent: any, existingBookingI
 				paymentIntent.metadata?.endTime || new Date(new Date(startTime).getTime() + 60 * 60 * 1000).toISOString() // Default to 1 hour
 			const amount = paymentIntent.amount / 100 // Convert from cents
 
-			// Create recovery booking record
+			// Create recovery booking record with all available data
 			const recoveryBooking = {
 				id: targetBookingId,
 				courtId: courtId || 'unknown',
@@ -185,11 +185,11 @@ async function handlePaymentBookingRecovery(paymentIntent: any, existingBookingI
 				paymentIntentId: paymentIntent.id,
 				createdAt: admin.firestore.FieldValue.serverTimestamp(),
 				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+				venueId: venueId || 'unknown', // Include venueId
 				recoveredFromPayment: true, // Flag to indicate this was created from payment data
 			}
 
 			await bookingRef.set(recoveryBooking)
-
 			console.log(`Recovery creation: Created booking record for ${targetBookingId}`)
 
 			// Log this recovery for auditing
@@ -204,15 +204,6 @@ async function handlePaymentBookingRecovery(paymentIntent: any, existingBookingI
 		return targetBookingId
 	} catch (error) {
 		console.error('Error in payment booking recovery:', error)
-
-		// Log the error for manual intervention
-		await db.collection('recoveryErrors').add({
-			paymentIntentId: paymentIntent.id,
-			error: error.message,
-			stack: error.stack,
-			timestamp: admin.firestore.FieldValue.serverTimestamp(),
-		})
-
 		return null
 	}
 }
