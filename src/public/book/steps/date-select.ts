@@ -1,6 +1,6 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
-import { css, html, PropertyValues } from 'lit'
+import { css, html } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
@@ -148,7 +148,7 @@ export class DateSelectionStep extends $LitElement(css`
 		})
 	}
 
-	protected firstUpdated(_changedProperties: PropertyValues): void {
+	firstUpdated(): void {
 		// Set default value to today if not provided
 		if (!this.value) {
 			this.value = this._todayISO
@@ -502,12 +502,6 @@ export class DateSelectionStep extends $LitElement(css`
 				<div class="calendar-wrapper" style=${styleMap(wrapperStyle)}>
 					<!-- Active (Expanded) View -->
 					<div class="active-view p-4">
-						<!-- Calendar Header -->
-						<div class="flex justify-between items-center mb-4">
-							<h3 class="text-lg font-medium">Select Date</h3>
-							<div class="text-sm font-medium text-surface-on-variant">${this.currentMonth} ${this.currentYear}</div>
-						</div>
-
 						<!-- Days of week header -->
 						<div class="grid grid-cols-7 gap-2 mb-3 pb-2 border-b border-outline-variant">
 							${daysOfWeek.map(
@@ -530,14 +524,6 @@ export class DateSelectionStep extends $LitElement(css`
 									</div>
 								`,
 							)}
-						</div>
-
-						<!-- Calendar Footer -->
-						<div
-							class="flex justify-between items-center mt-1 pt-2 border-t border-outline-variant text-xs text-surface-on-variant"
-						>
-							<div>Showing: ${startDateDisplay} - ${endDateDisplay}</div>
-							<div>Today: ${dayjs().format('MMM D, YYYY')}</div>
 						</div>
 					</div>
 

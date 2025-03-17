@@ -2,12 +2,12 @@ import { ActiveRoute, area, fullHeight } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { css, html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
-import { filter, map, takeUntil } from 'rxjs'
+import { filter, map, startWith, takeUntil } from 'rxjs'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import './components'
 import { VenueAnalytics, VenueCourtsPreview } from './components'
-import { selectMyCourts } from './courts/context'
+import { courtsContext, selectMyCourts } from './courts/context'
 import { VenueCourts } from './courts/courts'
 import { VenueManagement } from './venues'
 
@@ -56,10 +56,9 @@ export class VenueDetailView extends $LitElement(css`
 	connectedCallback(): void {
 		super.connectedCallback()
 		this.dispatchEvent(new CustomEvent('fullscreen', { bubbles: true, composed: true, detail: true }))
-		selectMyCourts.pipe(takeUntil(this.disconnecting)).subscribe(courts => {
+		selectMyCourts.pipe(startWith(courtsContext.value), takeUntil(this.disconnecting)).subscribe(courts => {
 			this.courts = courts
 			this.loading = false
-			this.requestUpdate()
 		})
 
 		area.$current

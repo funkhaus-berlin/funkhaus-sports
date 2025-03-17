@@ -87,6 +87,11 @@ export interface Venue {
 	updatedAt: string
 	createdBy?: string
 	images?: string[]
+	theme?: {
+		primary: string
+		text: string
+		logo: string
+	}
 }
 
 export const defaultOperatingHours: OperatingHours = {

@@ -7,7 +7,7 @@ import { repeat } from 'lit/directives/repeat.js'
 import { Venue } from 'src/db/venue-collection'
 import './admin-venue-card' // Import admin venue card
 import { VenueForm } from './components/venue-form'
-import { venuesContext } from './venue-context'
+import { venueContext, venuesContext } from './venue-context'
 import { VenueDetailView } from './venue-detail'
 // --- Venue Management Component ---
 @customElement('venues-management')
@@ -32,8 +32,9 @@ export class VenueManagement extends $LitElement() {
 						<schmancy-button
 							variant="filled"
 							@click=${() => {
-								sheet.open({
-									component: new VenueForm(),
+								area.push({
+									component: VenueForm,
+									area: 'admin',
 								})
 							}}
 						>
@@ -64,6 +65,7 @@ export class VenueManagement extends $LitElement() {
 				<admin-venue-card
 					.venue=${venue}
 					@click=${() => {
+						venueContext.set(venue)
 						area.push({
 							component: new VenueDetailView(venue),
 							area: 'admin',

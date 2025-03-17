@@ -14,7 +14,7 @@ import { CourtForm } from './court-form'
 // --- Court Management Component ---
 @customElement('funkhaus-venue-courts')
 export class VenueCourts extends $LitElement() {
-	@select(courtsContext)
+	@state()
 	courts!: Map<string, Court>
 
 	@select(venuesContext)
@@ -103,6 +103,7 @@ export class VenueCourts extends $LitElement() {
 		}
 
 		selectMyCourts.pipe(takeUntil(this.disconnecting)).subscribe(courts => {
+			console.log('selected', courts)
 			this.courts = courts
 			this.loading = false
 			this.requestUpdate()
