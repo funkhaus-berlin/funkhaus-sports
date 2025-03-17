@@ -440,7 +440,7 @@ export class CourtBookingSystem extends $LitElement() {
 				></time-selection-step>
 
 				<court-preferences-step
-					.hidden=${this.step !== 3}
+					.hidden=${this.step < 3}
 					.active=${this.step === 3}
 					.preferences=${this.courtPreferences}
 					@change=${(e: CustomEvent<CourtPreferences>) => this.handleCourtPreferencesChange(e.detail)}
