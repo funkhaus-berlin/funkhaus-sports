@@ -523,21 +523,11 @@ export class CourtBookingSystem extends $LitElement() {
 	private renderProcessingOverlay() {
 		return html`
 			<div
-				class="fixed inset-0 z-50 bg-surface-container bg-opacity-60 backdrop-blur-sm flex items-center justify-center"
+				class="fixed inset-0 z-50  bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
 			>
-				<schmancy-surface type="container" rounded="all" class="p-6 w-full max-w-md">
-					<schmancy-flex justify="center" flow="row" gap="md" align="center">
-						<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
-						<schmancy-flex flow="col" gap="sm">
-							<schmancy-typography type="title" token="sm">
-								Assigning the best court for your booking...
-							</schmancy-typography>
-							<schmancy-typography type="body" token="sm" class="text-center text-surface-on-variant">
-								We're finding the perfect court for you based on your preferences and availability.
-							</schmancy-typography>
-						</schmancy-flex>
-					</schmancy-flex>
-				</schmancy-surface>
+				<schmancy-flex class="px-4" justify="center" flow="row" gap="md" align="center">
+					<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
+				</schmancy-flex>
 			</div>
 		`
 	}

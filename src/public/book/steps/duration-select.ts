@@ -415,53 +415,13 @@ export class DurationSelectionStep extends $LitElement(css`
 			'py-3 px-2': !this.active,
 		}
 
-		// If not active, show compact view that remains interactive
-		if (!this.active) {
-			return html`
-				<div class=${this.classMap(containerClasses)}>
-					<div class="flex justify-between items-center">
-						<schmancy-typography type="title" token="sm">Duration</schmancy-typography>
-						<div class="flex flex-wrap gap-1">
-							${this.durations.map(duration => {
-								const isSelected = this.selectedDuration === duration.value
-
-								return html`
-									<div
-										class="px-2 py-1 rounded-full cursor-pointer text-xs transition-colors
-                      ${isSelected
-											? 'bg-primary-default text-primary-on'
-											: 'bg-surface-container text-surface-on hover:bg-surface-container-high'}"
-										@click=${() => this.handleDurationSelect(duration)}
-									>
-										${duration.label}
-										${isSelected ? html`<schmancy-icon class="ml-1" size="12px">check</schmancy-icon>` : ''}
-									</div>
-								`
-							})}
-						</div>
-					</div>
-				</div>
-			`
-		}
-
 		// Loading state - improved with more detailed message
 		if (this.loading) {
 			return html`
-				<div class=${this.classMap(containerClasses)}>
-					<div class="mb-3">
-						<schmancy-typography type="title" token="md">Select Duration</schmancy-typography>
-					</div>
-					<div class="flex flex-col justify-center items-center py-12">
-						<schmancy-spinner class="mb-4"></schmancy-spinner>
-						<schmancy-typography type="body" class="text-center">
-							${this.retryCount > 0
-								? `Retrying court assignment (${this.retryCount}/${this.MAX_RETRIES})...`
-								: 'Calculating pricing based on availability...'}
-						</schmancy-typography>
-						<schmancy-typography type="label" token="sm" class="text-surface-on-variant text-center mt-2">
-							Finding the best court and prices for your booking
-						</schmancy-typography>
-					</div>
+				<div
+					class="fixed inset-0 z-50  bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
+				>
+					<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
 				</div>
 			`
 		}

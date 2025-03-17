@@ -218,11 +218,9 @@ export class CheckoutForm extends $LitElement() {
 						>
 							<schmancy-flex flow="row" gap="sm" align="center" class="p-6 rounded-lg" justify="center">
 								<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
-								<schmancy-flex flow="col" gap="sm" class="max-w-md">
+								<schmancy-flex justify="center" align="center" flow="col" gap="sm" class="max-w-md">
 									<schmancy-typography type="title" token="sm">Processing Payment</schmancy-typography>
-									<schmancy-typography type="body" token="sm">
-										Please don't close this window. We're processing your payment and securing your court booking.
-									</schmancy-typography>
+									<schmancy-typography type="body" token="sm"> Please don't close this window. </schmancy-typography>
 								</schmancy-flex>
 							</schmancy-flex>
 						</div>

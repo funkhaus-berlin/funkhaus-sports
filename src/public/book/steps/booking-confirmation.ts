@@ -1,6 +1,6 @@
 // src/public/book/steps/booking-confirmation.ts
 
-import { $notify } from '@mhmo91/schmancy'
+import { $notify, fullHeight } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, HTMLTemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
@@ -65,88 +65,30 @@ export class BookingConfirmation extends $LitElement() {
 		const calendarUrl = this.utilities.generateCalendarFile(this.booking, this.selectedCourt?.name)
 
 		return html`
-			<style>
-				:host {
-					display: block;
-					max-width: 100%;
-					padding: 16px;
-				}
-
-				.booking-card {
-					min-height: calc(100vh - 32px);
-					display: flex;
-					flex-direction: column;
-					justify-content: space-between;
-					padding: 24px 16px;
-				}
-
-				.details-grid {
-					display: grid;
-					grid-template-columns: 1fr 1fr;
-					gap: 16px;
-				}
-
-				.detail-item {
-					margin-bottom: 12px;
-				}
-
-				.actions {
-					display: flex;
-					flex-wrap: wrap;
-					gap: 12px;
-					justify-content: center;
-					margin-top: 24px;
-				}
-
-				.qr-container {
-					position: relative;
-					width: fit-content;
-					margin: 0 auto;
-				}
-
-				.confirmation-header {
-					margin-bottom: 24px;
-				}
-
-				.booking-details {
-					margin-bottom: 24px;
-				}
-			</style>
-
-			<schmancy-surface type="containerLow" rounded="all" class="booking-card">
-				<!-- Success Header -->
-				<div class="confirmation-header flex items-center justify-center gap-3 text-primary-default">
-					<schmancy-icon size="large">check_circle</schmancy-icon>
-					<schmancy-typography type="headline" token="md">Booking Confirmed!</schmancy-typography>
-				</div>
-
-				<!-- Essential Booking Info -->
-				<div class="booking-details">
-					<!-- QR Code & Reference -->
-					<div class="text-center mb-6">
-						${when(
-							this.booking.id,
-							() => this.renderQRCode(),
-							() => html`<p>No booking ID available</p>`,
-						)}
+			<schmancy-surface ${fullHeight()} type="container" rounded="all">
+				<schmancy-grid class="h-full" justify="center" gap="md">
+					<div class="pt-4 md:pt-8 lg:pt-16 xl:pt-20 flex items-center justify-center gap-3 text-primary-default">
+						<schmancy-icon size="large">check_circle</schmancy-icon>
+						<schmancy-typography type="headline" token="md">Booking Confirmed!</schmancy-typography>
 					</div>
-
-					<!-- Primary Details -->
-					<schmancy-grid class="px-6 py-6 bg-surface-high rounded-md">
-						<div class="details-grid">
-							${this.renderDetailItem('Date', dateFormatted)} ${this.renderDetailItem('Time', timeFormatted)}
-							${this.renderDetailItem('Court', this.selectedCourt?.name || 'Court')}
-							${this.renderDetailItem(
-								'Total',
-								html`<span class="text-primary-default">&euro;${this.booking.price.toFixed(2)}</span>`,
-							)}
-						</div>
+					${when(
+						this.booking.id,
+						() => this.renderQRCode(),
+						() => html`<p>No booking ID available</p>`,
+					)}
+					<schmancy-grid gap="md" justify="start" cols="1fr 1fr" class="px-6 py-6 bg-surface-high rounded-md">
+						${this.renderDetailItem('Date', dateFormatted)} ${this.renderDetailItem('Time', timeFormatted)}
+						${this.renderDetailItem('Court', this.selectedCourt?.name || 'Court')}
+						${this.renderDetailItem(
+							'Total',
+							html`<span class="text-primary-default">&euro;${this.booking.price.toFixed(2)}</span>`,
+						)}
 					</schmancy-grid>
-				</div>
+				</schmancy-grid>
 
 				<!-- Actions -->
-				<div class="actions">
-					<schmancy-button variant="filled" href=${calendarUrl} download="tennis-court-booking.ics">
+				<sch-flex justify="center" gap="4" class="p-6">
+					<schmancy-button variant="filled" href=${calendarUrl}>
 						<schmancy-icon>calendar_month</schmancy-icon>
 						Add to Calendar
 					</schmancy-button>
@@ -158,7 +100,7 @@ export class BookingConfirmation extends $LitElement() {
 						Share
 					</schmancy-button>
 					<schmancy-button
-						variant="filled tonal"
+						variant="outlined"
 						@click=${() => {
 							bookingContext.clear()
 							this.onNewBooking?.()
@@ -167,7 +109,7 @@ export class BookingConfirmation extends $LitElement() {
 						<schmancy-icon>add</schmancy-icon>
 						Book Again
 					</schmancy-button>
-				</div>
+				</sch-flex>
 			</schmancy-surface>
 		`
 	}
@@ -177,10 +119,10 @@ export class BookingConfirmation extends $LitElement() {
 	 */
 	private renderDetailItem(label: string, value: string | HTMLTemplateResult) {
 		return html`
-			<div class="detail-item">
-				<schmancy-typography type="label" token="sm" class="text-surface-on-variant mb-1">${label}</schmancy-typography>
+			<schmancy-grid>
+				<schmancy-typography type="label" token="sm" class="text-surface-on-variant">${label}</schmancy-typography>
 				<schmancy-typography type="body" weight="medium">${value}</schmancy-typography>
-			</div>
+			</schmancy-grid>
 		`
 	}
 
@@ -189,7 +131,7 @@ export class BookingConfirmation extends $LitElement() {
 	 */
 	private renderQRCode() {
 		return html`
-			<div class="qr-container">
+			<schmancy-grid justify="center" gap="md" class="p-6">
 				<img
 					src=${this.utilities.generateQRCodeDataUrl(this.booking, this.selectedCourt)}
 					alt="Booking QR Code"
@@ -197,10 +139,11 @@ export class BookingConfirmation extends $LitElement() {
 					height="150"
 					class="mx-auto mb-3"
 				/>
-				<div class="" @click=${() => this.downloadQRCode()} title="Download QR Code">
-					<schmancy-icon-button class="animate-bounce" variant="filled">download</schmancy-icon-button>
-				</div>
-			</div>
+
+				<schmancy-icon-button @click=${() => this.downloadQRCode()} class="animate-bounce" variant="filled"
+					>download</schmancy-icon-button
+				>
+			</schmancy-grid>
 		`
 	}
 
