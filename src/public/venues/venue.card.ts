@@ -220,14 +220,6 @@ export default class FunkhausVenueCard extends $LitElement() {
 		`
 	}
 
-	// Format venue type name
-	private formatVenueType(venueType: string): string {
-		return venueType
-			.replace(/([A-Z])/g, ' $1')
-			.replace(/^./, str => str.toUpperCase())
-			.trim()
-	}
-
 	// Format facility name
 	private formatFacilityName(facility: string): string {
 		return facility

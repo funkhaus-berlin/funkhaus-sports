@@ -1,6 +1,6 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
-import { css, html } from 'lit'
+import { css, html, PropertyValues } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
@@ -77,8 +77,8 @@ export class DateSelectionStep extends $LitElement(css`
 	// Track viewport size to determine layout
 	@state() private isMobile = window.innerWidth < 640
 	@state() private mobileColumns = 3
-	@state() private currentMonth = ''
-	@state() private currentYear = ''
+	@state() currentMonth = ''
+	@state() currentYear = ''
 	@state() private contentHeight = 0
 
 	// Animation keyframes and options
@@ -469,8 +469,8 @@ export class DateSelectionStep extends $LitElement(css`
 		const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 		// Date range for display
-		const startDateDisplay = dayjs(dates[0]).format('MMM D')
-		const endDateDisplay = dayjs(dates[dates.length - 1]).format('MMM D')
+		// const startDateDisplay = dayjs(dates[0]).format('MMM D')
+		// const endDateDisplay = dayjs(dates[dates.length - 1]).format('MMM D')
 
 		// Calculate padding using golden ratio
 		Math.round(16 * (this.active ? GOLDEN_RATIO : 1))
