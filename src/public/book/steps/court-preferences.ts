@@ -127,7 +127,7 @@ export class CourtPreferencesStep extends $LitElement() {
 			'max-w-full': true,
 			'bg-surface-low': true,
 			'rounded-lg': true,
-			'shadow-sm': true,
+			'shadow-xs': true,
 			'py-6 px-4': this.active,
 			'py-3 px-2': !this.active,
 		}
@@ -206,7 +206,7 @@ export class CourtPreferencesStep extends $LitElement() {
 						<div
 							class="flex items-center justify-center cursor-pointer h-16 rounded-xl transition-all
                 ${this.localPreferences.preferIndoor
-								? 'bg-primary-default text-primary-on shadow-sm'
+								? 'bg-primary-default text-primary-on shadow-xs'
 								: 'bg-surface-container hover:bg-surface-container-high'}"
 							@click=${() =>
 								this.updatePreferences({
@@ -222,7 +222,7 @@ export class CourtPreferencesStep extends $LitElement() {
 						<div
 							class="flex items-center justify-center cursor-pointer h-16 rounded-xl transition-all
                 ${this.localPreferences.preferOutdoor
-								? 'bg-primary-default text-primary-on shadow-sm'
+								? 'bg-primary-default text-primary-on shadow-xs'
 								: 'bg-surface-container hover:bg-surface-container-high'}"
 							@click=${() =>
 								this.updatePreferences({

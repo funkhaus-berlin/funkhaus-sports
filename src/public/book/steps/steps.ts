@@ -118,7 +118,7 @@ export class FunkhausBookingSteps extends $LitElement() {
 			'cursor-pointer': this.clickable && isActive, // Only completed and current steps are clickable
 			'cursor-not-allowed': this.clickable && !isActive,
 			'min-w-max': true, // Ensure minimum width based on content
-			'px-1': true, // Add horizontal padding
+			'px-0': true, // Add horizontal padding
 			'py-2': true, // Add consistent vertical padding for all steps
 		}
 
@@ -151,7 +151,7 @@ export class FunkhausBookingSteps extends $LitElement() {
 		return html`
 			<schmancy-flex
 				align="center"
-				gap="sm"
+				gap="md"
 				class=${classMap(stepClasses)}
 				@click=${() => this.handleStepClick(stepNumber)}
 			>

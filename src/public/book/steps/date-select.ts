@@ -304,7 +304,7 @@ export class DateSelectionStep extends $LitElement() {
 					: ''}
 
 				<!-- Dates Container - with calendar-like styling -->
-				<div class="date-grid-container px-4 overflow-auto">
+				<div class="date-grid-container overflow-auto">
 					<!-- When active, use responsive grid -->
 					${this.active
 						? this.isMobile

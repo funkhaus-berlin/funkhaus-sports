@@ -1,5 +1,3 @@
-// src/public/book/components/checkout-form.ts
-
 import { $notify, SchmancyAutocompleteChangeEvent, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { Stripe, StripeElements } from '@stripe/stripe-js'
@@ -11,7 +9,6 @@ import { catchError, finalize, from, of, switchMap } from 'rxjs'
 import countries from 'src/assets/countries'
 import { BookingService } from 'src/bookingServices/booking.service'
 import { Court } from 'src/db/courts.collection'
-import { BookingFormData } from 'src/db/interface'
 import { auth } from 'src/firebase/firebase'
 import { $stripeElements, createPaymentIntent } from 'src/public/stripe'
 import { Booking, bookingContext } from '../context'
@@ -27,128 +24,118 @@ export class CheckoutForm extends $LitElement() {
 	@property({ type: Object }) selectedCourt?: Court
 	@property({ attribute: false }) onBookingComplete?: (booking: Booking) => void
 
-	@state() formData = new BookingFormData()
 	@state() processing = false
 	@state() error: string | null = null
-	@state() success: boolean = false
-	@state() formValidity: Record<string, boolean> = {
-		email: true,
-		name: true,
-		phoneNumber: true,
-		address: true,
-		postalCode: true,
-		city: true,
-		country: true,
-	}
-	@state() emailsMatch: boolean = true
+	@state() formValidity: Record<string, boolean> = {}
 
-	// Add booking service
+	// Services
 	private bookingService = new BookingService()
 	private stripe: Stripe | null = null
 	private elements?: StripeElements
 
-	// Keep track of payment intent for error handling
+	// For error handling
 	paymentIntentId?: string
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
 		// Set default country if not set
-		if (!this.formData.country) {
-			this.formData.country = 'DE' // Default to Germany
+		if (!this.booking.customerAddress?.country) {
+			bookingContext.set(
+				{
+					customerAddress: {
+						...this.booking.customerAddress,
+						country: 'DE', // Default to Germany
+					},
+				},
+				true,
+			)
 		}
 
-		// Set elements from context
+		// Initialize Stripe elements
 		$stripeElements.subscribe(elements => {
 			this.elements = elements
 		})
 
-		// Initialize Stripe
 		this.initializeStripe()
 	}
 
-	// Initialize Stripe
+	/**
+	 * Initialize Stripe for payment processing
+	 */
 	private async initializeStripe() {
 		try {
 			const stripePromise = import('src/public/stripe').then(module => module.default)
 			this.stripe = await stripePromise
 
 			if (!this.stripe) {
-				this.error = 'Unable to initialize payment system'
-				$notify.error(this.error)
+				this.setError('Unable to initialize payment system')
 			}
 		} catch (error) {
 			console.error('Error initializing Stripe:', error)
-			this.error = 'Payment system initialization failed'
-			$notify.error(this.error)
+			this.setError('Payment system initialization failed')
 		}
 	}
 
-	// Process payment and create booking
+	/**
+	 * Process payment when form is submitted
+	 */
 	async processPayment(e: Event) {
 		e.preventDefault()
 
-		// First, validate the form
 		if (!this.validateForm()) {
 			return
 		}
 
-		const elements = this.elements
-		const stripe = this.stripe
-
-		if (!stripe || !elements) {
-			this.error = 'Payment processing is not available. Please try again later.'
-			$notify.error(this.error)
+		if (!this.stripe || !this.elements) {
+			this.setError('Payment processing is not available. Please try again later.')
 			return
 		}
 
-		// Validate payment form
+		// Start processing
 		this.processing = true
-		const { error } = await elements?.submit()
+		this.error = null
+
+		// Validate Stripe payment form
+		const { error } = await this.elements.submit()
 
 		if (error) {
 			this.processing = false
-
-			if (error.type === 'card_error' || error.type === 'validation_error') {
-				this.error = error.message || 'Card validation failed'
-				$notify.error(this.error)
-			} else {
-				this.error = 'Something went wrong, please try again.'
-				$notify.error(this.error)
-			}
+			this.handleStripeValidationError(error)
 			return
 		}
 
-		// Update booking with customer details
-		bookingContext.set(
-			{
-				userName: this.formData.name,
-				customerEmail: this.formData.email,
-				customerPhone: this.formData.phoneNumber,
-				customerAddress: {
-					street: this.formData.address,
-					city: this.formData.city,
-					postalCode: this.formData.postalCode,
-					country: this.formData.country,
-				},
-			},
-			true,
-		)
-
-		// Process payment without relying on anonymous auth
-		// Use a random UUID for guest users
+		// Use existing ID or generate a guest ID
 		const userId = auth.currentUser?.uid || `guest-${this.generateUUID()}`
 
-		// Update booking with user ID
-		bookingContext.set(
-			{
-				userId,
-			},
-			true,
-		)
+		// Update booking with user ID if not already set
+		if (!this.booking.userId) {
+			bookingContext.set({ userId }, true)
+		}
 
 		this.processStripePayment(userId)
 	}
 
-	// Generate a UUID for guest users
+	/**
+	 * Handle validation errors from Stripe
+	 */
+	private handleStripeValidationError(error: any) {
+		if (error.type === 'card_error' || error.type === 'validation_error') {
+			this.setError(error.message || 'Card validation failed')
+		} else {
+			this.setError('Something went wrong with the payment form, please try again.')
+		}
+	}
+
+	/**
+	 * Set error and show notification
+	 */
+	private setError(message: string) {
+		this.error = message
+		$notify.error(message)
+	}
+
+	/**
+	 * Generate a UUID for guest users and booking IDs
+	 */
 	private generateUUID(): string {
 		return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
 			const r = (Math.random() * 16) | 0,
@@ -157,66 +144,36 @@ export class CheckoutForm extends $LitElement() {
 		})
 	}
 
-	// Process the Stripe payment
+	/**
+	 * Process payment with Stripe and create booking
+	 */
 	private processStripePayment(userId: string) {
-		// First generate a booking ID if we don't have one yet
+		// Use existing ID or generate new one
 		const bookingId = this.booking.id || `booking-${this.generateUUID()}`
 
-		// Update booking context with the ID and customer details
-		bookingContext.set(
-			{
-				id: bookingId,
-			},
-			true,
-		)
+		// Ensure booking ID is set in context
+		if (!this.booking.id) {
+			bookingContext.set({ id: bookingId }, true)
+		}
 
-		// Create the booking first
+		// Create booking data
 		const bookingData: Booking = {
 			...this.booking,
 			id: bookingId,
-			userName: this.formData.name,
-			customerEmail: this.formData.email,
-			customerPhone: this.formData.phoneNumber,
-			customerAddress: {
-				street: this.formData.address,
-				city: this.formData.city,
-				postalCode: this.formData.postalCode,
-				country: this.formData.country,
-			},
 			userId: userId,
 			paymentStatus: 'pending',
 		}
 
-		// Prepare payment data with the correct structure
-		const paymentData = {
-			amount: Math.round(this.booking.price * 100), // Convert to cents
-			currency: 'eur',
-			email: this.formData.email,
-			name: this.formData.name,
-			phone: this.formData.phoneNumber,
-			address: this.formData.address,
-			postalCode: this.formData.postalCode,
-			city: this.formData.city,
-			country: this.formData.country,
-			courtId: this.booking.courtId,
-			eventID: 'court-booking',
-			uid: userId,
-			bookingId: bookingId, // Always use a booking ID
-			date: this.booking.date,
-			startTime: this.booking.startTime,
-			endTime: this.booking.endTime,
-		}
+		// Payment data for Stripe
+		const paymentData = this.preparePaymentData(bookingData)
 
-		// First create the booking, then process payment
+		// First create booking, then process payment
 		from(this.bookingService.createBooking(bookingData))
 			.pipe(
 				switchMap(createdBooking => {
 					console.log('Booking created:', createdBooking)
-
-					// Update booking context with the created booking
 					bookingContext.set(createdBooking)
 
-					// Now process the payment with Stripe
 					return from(createPaymentIntent(paymentData)).pipe(
 						switchMap(response => {
 							this.paymentIntentId = response.paymentIntentId
@@ -225,38 +182,13 @@ export class CheckoutForm extends $LitElement() {
 								throw new Error('Payment system not available')
 							}
 
-							return from(
-								this.stripe.confirmPayment({
-									clientSecret: response.clientSecret,
-									elements: this.elements,
-									confirmParams: {
-										payment_method_data: {
-											billing_details: {
-												name: this.formData.name,
-												email: this.formData.email,
-												phone: this.formData.phoneNumber,
-												address: {
-													country: this.formData.country,
-													state: this.formData.city,
-													city: this.formData.city,
-													line1: this.formData.address,
-													line2: '',
-													postal_code: this.formData.postalCode,
-												},
-											},
-										},
-										return_url: `${window.location.href.split('?')[0]}?booking=${bookingId}`,
-										receipt_email: this.formData.email,
-									},
-								}),
-							)
+							return from(this.confirmStripePayment(response.clientSecret, bookingId))
 						}),
 					)
 				}),
 				catchError(error => {
 					console.error('Payment or booking error:', error)
-					this.error = this.getReadableErrorMessage(error)
-					$notify.error(this.error)
+					this.setError(this.getReadableErrorMessage(error))
 					return of(null)
 				}),
 				finalize(() => {
@@ -265,14 +197,11 @@ export class CheckoutForm extends $LitElement() {
 			)
 			.subscribe(result => {
 				if (result?.error) {
-					this.error = this.getReadableErrorMessage(result.error)
-					$notify.error(this.error)
+					this.setError(this.getReadableErrorMessage(result.error))
 				} else if (!result) {
-					// Null result means we caught an error earlier
-					console.log('Error already handled')
+					// Error was already handled
 				} else {
-					// For successful payments that don't redirect (rare), we can trigger completion here
-					// But typically Stripe redirects to return_url
+					// For successful payments that don't redirect
 					this.dispatchEvent(
 						new CustomEvent('booking-complete', {
 							detail: { booking: this.booking },
@@ -283,11 +212,64 @@ export class CheckoutForm extends $LitElement() {
 			})
 	}
 
-	// Provide more user-friendly error messages
-	private getReadableErrorMessage(error: any): string {
-		const defaultMessage = 'Something went wrong with the payment. Please try again.'
+	/**
+	 * Prepare payment data for Stripe
+	 */
+	private preparePaymentData(booking: Booking) {
+		return {
+			amount: Math.round(booking.price * 100), // Convert to cents
+			currency: 'eur',
+			email: booking.customerEmail || '',
+			name: booking.userName || '',
+			phone: booking.customerPhone || '',
+			address: booking.customerAddress?.street || '',
+			postalCode: booking.customerAddress?.postalCode || '',
+			city: booking.customerAddress?.city || '',
+			country: booking.customerAddress?.country || '',
+			courtId: booking.courtId,
+			eventID: 'court-booking',
+			uid: booking.userId,
+			bookingId: booking.id,
+			date: booking.date,
+			startTime: booking.startTime,
+			endTime: booking.endTime,
+		}
+	}
 
-		if (!error) return defaultMessage
+	/**
+	 * Confirm payment with Stripe
+	 */
+	private confirmStripePayment(clientSecret: string, bookingId: string) {
+		return this.stripe!.confirmPayment({
+			clientSecret,
+			elements: this.elements!,
+			confirmParams: {
+				payment_method_data: {
+					billing_details: {
+						name: this.booking.userName || '',
+						email: this.booking.customerEmail || '',
+						phone: this.booking.customerPhone || '',
+						address: {
+							country: this.booking.customerAddress?.country || '',
+							state: this.booking.customerAddress?.city || '',
+							city: this.booking.customerAddress?.city || '',
+							line1: this.booking.customerAddress?.street || '',
+							line2: '',
+							postal_code: this.booking.customerAddress?.postalCode || '',
+						},
+					},
+				},
+				return_url: `${window.location.href.split('?')[0]}?booking=${bookingId}`,
+				receipt_email: this.booking.customerEmail || '',
+			},
+		})
+	}
+
+	/**
+	 * Provide user-friendly error messages
+	 */
+	private getReadableErrorMessage(error: any): string {
+		if (!error) return 'Something went wrong with the payment. Please try again.'
 
 		if (error.type === 'card_error') {
 			return error.message || 'Your card was declined. Please try another payment method.'
@@ -297,7 +279,7 @@ export class CheckoutForm extends $LitElement() {
 			return error.message || 'Please check your card details and try again.'
 		}
 
-		if (error.message && error.message.includes('Network')) {
+		if (error.message?.includes('Network')) {
 			return 'Network error. Please check your internet connection and try again.'
 		}
 
@@ -305,62 +287,99 @@ export class CheckoutForm extends $LitElement() {
 			return 'Payment not processed. Please try again.'
 		}
 
-		if (error.message && error.message.includes('auth/')) {
+		if (error.message?.includes('auth/')) {
 			return 'Unable to authenticate. You can continue as a guest.'
 		}
 
-		return defaultMessage
+		return 'Something went wrong with the payment. Please try again.'
 	}
 
-	// Validate the form
+	/**
+	 * Validate form fields
+	 */
 	private validateForm(): boolean {
+		const requiredFields = [
+			{ key: 'userName', label: 'Name' },
+			{ key: 'customerEmail', label: 'Email' },
+			{ key: 'customerPhone', label: 'Phone number' },
+			{ key: 'customerAddress.street', label: 'Street address' },
+			{ key: 'customerAddress.postalCode', label: 'Postal code' },
+			{ key: 'customerAddress.city', label: 'City' },
+			{ key: 'customerAddress.country', label: 'Country' },
+		]
+
 		let isValid = true
-		const newFormValidity = { ...this.formValidity }
+		const newFormValidity: Record<string, boolean> = {}
+		const missingFields: string[] = []
 
-		// Check required fields
-		const requiredFields = ['name', 'email', 'phoneNumber', 'address', 'postalCode', 'city', 'country']
+		// Check each required field
+		for (const field of requiredFields) {
+			// Handle nested properties like customerAddress.street
+			let value
+			if (field.key.includes('.')) {
+				const [obj, prop] = field.key.split('.')
 
-		requiredFields.forEach(field => {
-			const value = this.formData[field as keyof BookingFormData]
-			const fieldValid = !!value && (value as string).trim() !== ''
-			newFormValidity[field] = fieldValid
-			isValid = isValid && fieldValid
-		})
+				if (obj === 'customerAddress' && this.booking.customerAddress) {
+					value = this.booking.customerAddress[prop as keyof typeof this.booking.customerAddress]
+				} else {
+					value = undefined
+				}
+			} else {
+				value = this.booking[field.key as keyof Booking]
+			}
 
-		// Validate email format
-		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-		const validEmailFormat = emailRegex.test(this.formData.email)
-		newFormValidity.emailFormat = validEmailFormat
-		isValid = isValid && validEmailFormat
+			const fieldValid = !!value && (typeof value === 'string' ? value.trim() !== '' : true)
+			newFormValidity[field.key] = fieldValid
 
-		// Validate phone number format (basic check)
-		const phoneValid = this.formData.phoneNumber.trim().length >= 6
-		newFormValidity.phoneValid = phoneValid
-		isValid = isValid && phoneValid
+			if (!fieldValid) {
+				missingFields.push(field.label)
+				isValid = false
+			}
+		}
 
-		// Validate postal code (basic length check)
-		const postalCodeValid = this.formData.postalCode.trim().length >= 3
-		newFormValidity.postalCodeValid = postalCodeValid
-		isValid = isValid && postalCodeValid
+		// Email format validation
+		if (this.booking.customerEmail) {
+			const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+			const validEmailFormat = emailRegex.test(this.booking.customerEmail)
+			newFormValidity.emailFormat = validEmailFormat
+
+			if (!validEmailFormat) {
+				this.setError('Please enter a valid email address.')
+				this.formValidity = newFormValidity
+				return false
+			}
+		}
+
+		// Phone validation
+		if (this.booking.customerPhone) {
+			const phoneValid = this.booking.customerPhone.trim().length >= 6
+			newFormValidity.phoneValid = phoneValid
+
+			if (!phoneValid) {
+				this.setError('Please enter a valid phone number.')
+				this.formValidity = newFormValidity
+				return false
+			}
+		}
+
+		// Postal code validation
+		if (this.booking.customerAddress?.postalCode) {
+			const postalCodeValid = this.booking.customerAddress.postalCode.trim().length >= 3
+			newFormValidity.postalCodeValid = postalCodeValid
+
+			if (!postalCodeValid) {
+				this.setError('Please enter a valid postal code.')
+				this.formValidity = newFormValidity
+				return false
+			}
+		}
 
 		// Update form validity state
 		this.formValidity = newFormValidity
 
-		// Show specific error message based on what failed
-		if (!isValid) {
-			if (!validEmailFormat) {
-				this.error = 'Please enter a valid email address.'
-				$notify.error(this.error)
-			} else if (!phoneValid) {
-				this.error = 'Please enter a valid phone number.'
-				$notify.error(this.error)
-			} else if (!postalCodeValid) {
-				this.error = 'Please enter a valid postal code.'
-				$notify.error(this.error)
-			} else {
-				this.error = 'Please fill in all required fields.'
-				$notify.error(this.error)
-			}
+		// Show missing fields error if any
+		if (!isValid && missingFields.length > 0) {
+			this.setError(`Please fill in the following required fields: ${missingFields.join(', ')}`)
 		} else {
 			this.error = null
 		}
@@ -368,7 +387,38 @@ export class CheckoutForm extends $LitElement() {
 		return isValid
 	}
 
-	// Show terms and conditions
+	/**
+	 * Update booking context directly when form values change
+	 */
+	private updateBookingField(field: string, value: string): void {
+		// Handle nested properties (e.g., customerAddress.street)
+		if (field.includes('.')) {
+			const [obj, prop] = field.split('.')
+
+			if (obj === 'customerAddress') {
+				bookingContext.set(
+					{
+						customerAddress: {
+							...this.booking.customerAddress,
+							[prop]: value,
+						},
+					},
+					true,
+				)
+			}
+		} else {
+			bookingContext.set(
+				{
+					[field]: value,
+				},
+				true,
+			)
+		}
+	}
+
+	/**
+	 * Show terms and conditions modal
+	 */
 	private showTerms(e: Event) {
 		e.preventDefault()
 		sheet.open({
@@ -417,45 +467,36 @@ export class CheckoutForm extends $LitElement() {
 						<schmancy-grid gap="md" class="grid-cols-1 sm:grid-cols-2 gap-4">
 							<schmancy-input
 								autocomplete="name"
-								.value=${this.formData.name}
+								.value=${this.booking.userName || ''}
 								required
-								.error=${!this.formValidity.name}
+								.error=${this.formValidity['userName'] === false}
 								type="text"
 								class="w-full"
 								placeholder="Full Name"
-								@change=${(e: any) => {
-									this.formData.name = e.detail.value
-									this.formValidity.name = !!e.detail.value
-								}}
+								@change=${(e: any) => this.updateBookingField('userName', e.detail.value)}
 							></schmancy-input>
 
 							<schmancy-input
 								autocomplete="tel"
-								.value=${this.formData.phoneNumber}
+								.value=${this.booking.customerPhone || ''}
 								required
-								.error=${!this.formValidity.phoneNumber}
+								.error=${this.formValidity['customerPhone'] === false}
 								type="tel"
 								class="w-full"
 								placeholder="Phone Number"
-								@change=${(e: any) => {
-									this.formData.phoneNumber = e.detail.value
-									this.formValidity.phoneNumber = !!e.detail.value
-								}}
+								@change=${(e: any) => this.updateBookingField('customerPhone', e.detail.value)}
 							></schmancy-input>
 						</schmancy-grid>
 
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
 							<schmancy-input
 								autocomplete="email"
-								.value=${this.formData.email}
+								.value=${this.booking.customerEmail || ''}
 								required
-								.error=${!this.formValidity.email}
+								.error=${this.formValidity['customerEmail'] === false || this.formValidity['emailFormat'] === false}
 								type="email"
 								placeholder="Email Address"
-								@change=${(e: any) => {
-									this.formData.email = e.detail.value
-									this.formValidity.email = !!e.detail.value
-								}}
+								@change=${(e: any) => this.updateBookingField('customerEmail', e.detail.value)}
 							></schmancy-input>
 						</div>
 					</schmancy-surface>
@@ -466,43 +507,34 @@ export class CheckoutForm extends $LitElement() {
 
 						<schmancy-input
 							autocomplete="street-address"
-							.value=${this.formData.address}
+							.value=${this.booking.customerAddress?.street || ''}
 							required
-							.error=${!this.formValidity.address}
+							.error=${this.formValidity['customerAddress.street'] === false}
 							type="text"
 							class="w-full mb-4"
 							placeholder="Street Address"
-							@change=${(e: any) => {
-								this.formData.address = e.detail.value
-								this.formValidity.address = !!e.detail.value
-							}}
+							@change=${(e: any) => this.updateBookingField('customerAddress.street', e.detail.value)}
 						></schmancy-input>
 
 						<div class="grid grid-cols-2 gap-4 mb-4">
 							<schmancy-input
 								autocomplete="postal-code"
-								.value=${this.formData.postalCode}
+								.value=${this.booking.customerAddress?.postalCode || ''}
 								required
-								.error=${!this.formValidity.postalCode}
+								.error=${this.formValidity['customerAddress.postalCode'] === false}
 								type="text"
 								placeholder="Postal Code"
-								@change=${(e: any) => {
-									this.formData.postalCode = e.detail.value
-									this.formValidity.postalCode = !!e.detail.value
-								}}
+								@change=${(e: any) => this.updateBookingField('customerAddress.postalCode', e.detail.value)}
 							></schmancy-input>
 
 							<schmancy-input
 								autocomplete="address-level2"
-								.value=${this.formData.city}
+								.value=${this.booking.customerAddress?.city || ''}
 								required
-								.error=${!this.formValidity.city}
+								.error=${this.formValidity['customerAddress.city'] === false}
 								type="text"
 								placeholder="City"
-								@change=${(e: any) => {
-									this.formData.city = e.detail.value
-									this.formValidity.city = !!e.detail.value
-								}}
+								@change=${(e: any) => this.updateBookingField('customerAddress.city', e.detail.value)}
 							></schmancy-input>
 						</div>
 
@@ -510,12 +542,10 @@ export class CheckoutForm extends $LitElement() {
 							.autocomplete=${'country-name'}
 							required
 							@change=${(e: SchmancyAutocompleteChangeEvent) => {
-								console.log(e)
-								this.formData.country = e.detail.value as string
-								this.formValidity.country = !!e.detail.value
+								this.updateBookingField('customerAddress.country', e.detail.value as string)
 							}}
 							placeholder="Country"
-							.value=${this.formData.country}
+							.value=${this.booking.customerAddress?.country || ''}
 						>
 							${repeat(
 								countries,
@@ -563,11 +593,5 @@ export class CheckoutForm extends $LitElement() {
 				</schmancy-grid>
 			</schmancy-form>
 		`
-	}
-}
-
-declare global {
-	interface HTMLElementTagNameMap {
-		'funkhaus-checkout-form': CheckoutForm
 	}
 }

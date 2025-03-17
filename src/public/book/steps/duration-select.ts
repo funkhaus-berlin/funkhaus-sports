@@ -92,7 +92,7 @@ export class DurationSelectionStep extends $LitElement() {
 			'max-w-full': true,
 			'bg-surface-low': true,
 			'rounded-lg': true,
-			'shadow-sm': true,
+			'shadow-xs': true,
 			'py-6 px-4': this.active,
 			'py-3 px-2': !this.active,
 		}
@@ -129,11 +129,8 @@ export class DurationSelectionStep extends $LitElement() {
 		return html`
 			<div class=${this.classMap(containerClasses)}>
 				<!-- Title section -->
-				<div class="mb-5">
+				<div class="mb-2">
 					<schmancy-typography type="title" token="md" class="mb-2">Select Duration</schmancy-typography>
-					<schmancy-typography type="body" token="sm" class="text-surface-on-variant">
-						Choose how long you'd like to play
-					</schmancy-typography>
 				</div>
 
 				<!-- Duration options - Using golden ratio for better proportions -->
@@ -166,7 +163,7 @@ export class DurationSelectionStep extends $LitElement() {
 							'hover:translate-y-[-2px]': true,
 							'bg-primary-default text-primary-on': isSelected,
 							'bg-surface-container text-surface-on': !isSelected,
-							'shadow-sm': isSelected,
+							'shadow-xs': isSelected,
 							group: true,
 						}
 

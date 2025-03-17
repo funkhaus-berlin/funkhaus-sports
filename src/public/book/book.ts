@@ -519,7 +519,7 @@ export class CourtBookingSystem extends $LitElement() {
 			() => html`
 				<date-selection-step
 					.active=${this.step === BookingStep.Date}
-					class="max-w-full sticky top-0 z-30"
+					class="max-w-full sticky top-0 z-30 block p-2"
 					.value=${this.booking.date}
 					@change=${(e: CustomEvent<string>) => this.handleDateSelect(e.detail)}
 				></date-selection-step>
@@ -527,7 +527,7 @@ export class CourtBookingSystem extends $LitElement() {
 				<time-selection-step
 					.hidden=${this.step < BookingStep.Time}
 					.active=${this.step === BookingStep.Time}
-					class="max-w-full"
+					class="max-w-full block p-2"
 					.value=${this.booking?.startTime
 						? dayjs(this.booking.startTime).hour() * 60 + dayjs(this.booking.startTime).minute()
 						: undefined}
@@ -535,6 +535,7 @@ export class CourtBookingSystem extends $LitElement() {
 				></time-selection-step>
 
 				<court-preferences-step
+					class="block p-2"
 					.hidden=${this.step < BookingStep.Preferences}
 					.active=${this.step === BookingStep.Preferences}
 					.preferences=${this.courtPreferences}
@@ -543,7 +544,7 @@ export class CourtBookingSystem extends $LitElement() {
 
 				<duration-selection-step
 					.hidden=${this.step !== BookingStep.Duration}
-					class="max-w-full p-4"
+					class="max-w-full p-2 block"
 					.selectedDuration=${this.duration}
 					@change=${(e: CustomEvent<Duration>) => this.handleDurationSelect(e.detail)}
 				></duration-selection-step>
