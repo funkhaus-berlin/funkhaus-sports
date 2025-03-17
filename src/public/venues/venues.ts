@@ -128,9 +128,9 @@ export class VenueLandingPage extends $LitElement() {
 
 		return html`
 			<schmancy-surface ${fullHeight()} type="container" rounded="all" elevation="0">
-				<div class="max-w-sm mx-auto px-6 py-12 ">
+				<div class="max-w-sm mx-auto px-6 py-8">
 					<!-- Logo Section with golden ratio spacing -->
-					<div class="logo-section text-center mb-16" style="margin-bottom: ${sectionSpacing}px">
+					<div class="logo-section text-center" style="margin-bottom: ${sectionSpacing}px">
 						<object
 							type="image/svg+xml"
 							data="/logo.svg"
@@ -153,7 +153,7 @@ export class VenueLandingPage extends $LitElement() {
 							</div>
 						`,
 						() => html`
-							<div class="cards-container mx-auto" style="max-width: ${Math.round(384 * GOLDEN_RATIO)}px;">
+							<div class="cards-container mx-auto mb-8" style="max-width: ${Math.round(384 * GOLDEN_RATIO)}px;">
 								<div class="grid gap-8" style="gap: ${cardGap * 2}px">
 									${repeat(
 										Array.from(this.venues.values()),
