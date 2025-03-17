@@ -428,7 +428,7 @@ export class CheckoutForm extends $LitElement() {
 
 	render() {
 		return html`
-			<schmancy-form class="px-2" @submit=${this.processPayment}>
+			<schmancy-form @submit=${this.processPayment}>
 				${when(
 					this.processing,
 					() => html`
@@ -459,64 +459,56 @@ export class CheckoutForm extends $LitElement() {
 					`,
 				)}
 
-				<schmancy-grid gap="sm" class="w-full">
+				<schmancy-grid gap="sm" class="w-full px-2">
 					<!-- Personal Information -->
-					<schmancy-surface type="containerLow" rounded="all" class="p-4 mb-4">
-						<schmancy-typography type="title" token="sm" class="mb-4">Personal Information</schmancy-typography>
+					<schmancy-grid gap="sm" class="grid-cols-1 sm:grid-cols-2 gap-4">
+						<schmancy-input
+							autocomplete="name"
+							.value=${this.booking.userName || ''}
+							required
+							.error=${this.formValidity['userName'] === false}
+							type="text"
+							class="w-full"
+							placeholder="Full Name"
+							@change=${(e: any) => this.updateBookingField('userName', e.detail.value)}
+						></schmancy-input>
 
-						<schmancy-grid gap="md" class="grid-cols-1 sm:grid-cols-2 gap-4">
-							<schmancy-input
-								autocomplete="name"
-								.value=${this.booking.userName || ''}
-								required
-								.error=${this.formValidity['userName'] === false}
-								type="text"
-								class="w-full"
-								placeholder="Full Name"
-								@change=${(e: any) => this.updateBookingField('userName', e.detail.value)}
-							></schmancy-input>
+						<schmancy-input
+							autocomplete="tel"
+							.value=${this.booking.customerPhone || ''}
+							required
+							.error=${this.formValidity['customerPhone'] === false}
+							type="tel"
+							class="w-full"
+							placeholder="Phone Number"
+							@change=${(e: any) => this.updateBookingField('customerPhone', e.detail.value)}
+						></schmancy-input>
+					</schmancy-grid>
 
-							<schmancy-input
-								autocomplete="tel"
-								.value=${this.booking.customerPhone || ''}
-								required
-								.error=${this.formValidity['customerPhone'] === false}
-								type="tel"
-								class="w-full"
-								placeholder="Phone Number"
-								@change=${(e: any) => this.updateBookingField('customerPhone', e.detail.value)}
-							></schmancy-input>
-						</schmancy-grid>
-
-						<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-							<schmancy-input
-								autocomplete="email"
-								.value=${this.booking.customerEmail || ''}
-								required
-								.error=${this.formValidity['customerEmail'] === false || this.formValidity['emailFormat'] === false}
-								type="email"
-								placeholder="Email Address"
-								@change=${(e: any) => this.updateBookingField('customerEmail', e.detail.value)}
-							></schmancy-input>
-						</div>
-					</schmancy-surface>
+					<schmancy-input
+						autocomplete="email"
+						.value=${this.booking.customerEmail || ''}
+						required
+						.error=${this.formValidity['customerEmail'] === false || this.formValidity['emailFormat'] === false}
+						type="email"
+						placeholder="Email Address"
+						@change=${(e: any) => this.updateBookingField('customerEmail', e.detail.value)}
+					></schmancy-input>
 
 					<!-- Billing Information -->
-					<schmancy-surface type="containerLow" rounded="all" class="p-4 mb-4">
-						<schmancy-typography type="title" token="sm" class="mb-4">Billing Address</schmancy-typography>
-
+					<schmancy-grid gap="sm">
 						<schmancy-input
 							autocomplete="street-address"
 							.value=${this.booking.customerAddress?.street || ''}
 							required
 							.error=${this.formValidity['customerAddress.street'] === false}
 							type="text"
-							class="w-full mb-4"
+							class="w-full"
 							placeholder="Street Address"
 							@change=${(e: any) => this.updateBookingField('customerAddress.street', e.detail.value)}
 						></schmancy-input>
 
-						<div class="grid grid-cols-2 gap-4 mb-4">
+						<div class="grid grid-cols-2 gap-2">
 							<schmancy-input
 								autocomplete="postal-code"
 								.value=${this.booking.customerAddress?.postalCode || ''}
@@ -553,10 +545,10 @@ export class CheckoutForm extends $LitElement() {
 								c => html` <schmancy-option .label=${c.name ?? ''} .value=${c.code ?? 0}> ${c.name} </schmancy-option>`,
 							)}
 						</schmancy-autocomplete>
-					</schmancy-surface>
+					</schmancy-grid>
 
 					<!-- Payment Details -->
-					<schmancy-surface type="containerLow" rounded="all" class="p-4 mb-4">
+					<schmancy-surface type="containerLow" rounded="all">
 						<schmancy-typography type="title" token="sm" class="mb-4">Payment Details</schmancy-typography>
 
 						<div class="mb-3">
@@ -567,7 +559,7 @@ export class CheckoutForm extends $LitElement() {
 					</schmancy-surface>
 
 					<!-- Terms & Submit Button -->
-					<schmancy-grid class="mb-2" gap="sm" justify="end">
+					<schmancy-grid class="fixed bottom-0 shadow-2 z-10 py-3 bg-surface-lowest" gap="sm" justify="end">
 						<schmancy-typography type="label" class="col-span-1" align="left">
 							<span>
 								By clicking Pay you agree to
