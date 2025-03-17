@@ -3,6 +3,7 @@ import { $notify, SchmancyInputChangeEvent, SchmancySelectChangeEvent, select, s
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
+import { when } from 'lit/directives/when.js'
 import { takeUntil } from 'rxjs'
 import { Court, CourtsDB, CourtTypeEnum, Pricing, SportTypeEnum } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
@@ -173,6 +174,8 @@ export class CourtForm extends $LitElement() {
 					</div>
 				</schmancy-form>
 			</schmancy-surface>
+
+			${when(this.busy, () => html`<schmancy-busy class="fixed inset-0"></schmancy-busy>`)}
 		`
 	}
 
