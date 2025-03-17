@@ -384,6 +384,8 @@ export class DateSelectionStep extends $LitElement() {
 			'w-full': this.active && !isCompact,
 			[heightClass]: true,
 			'w-12': !this.active || isCompact,
+			// Add left margin to the first date tile
+			'first:ml-2': true,
 		}
 
 		// Add border for today

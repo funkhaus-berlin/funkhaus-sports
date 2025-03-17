@@ -151,7 +151,7 @@ export class FunkhausBookingSteps extends $LitElement() {
 		return html`
 			<schmancy-flex
 				align="center"
-				gap="md"
+				gap="sm"
 				class=${classMap(stepClasses)}
 				@click=${() => this.handleStepClick(stepNumber)}
 			>

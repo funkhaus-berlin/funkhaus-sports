@@ -30,6 +30,12 @@ export class PaymentStatusHandler {
 		const bookingId = urlParams.get('booking')
 
 		if (!clientSecret || !bookingId) {
+			// Check if we have just a booking ID - might be a direct navigation to confirmation
+			if (bookingId) {
+				// Redirect to dedicated confirmation route
+				this.redirectToConfirmationRoute(bookingId)
+				return of({ processed: true, success: true, bookingId })
+			}
 			return of({ processed: false, success: false })
 		}
 
@@ -60,42 +66,59 @@ export class PaymentStatusHandler {
 							return { processed: true, success: false, bookingId }
 						}
 
+						let success = false
+
 						switch (paymentIntent.status) {
 							case 'succeeded':
 								$notify.success('Payment successful!')
 								this.updateBookingStatus(bookingId, 'paid')
-								return { processed: true, success: true, bookingId }
+								success = true
+								break
 
 							case 'processing':
 								$notify.info("Payment is processing. We'll update you when payment is received.")
 								this.updateBookingStatus(bookingId, 'processing')
-								return { processed: true, success: false, bookingId }
+								break
 
 							case 'requires_payment_method':
 								$notify.error('Payment failed. Please try another payment method.')
-								return { processed: true, success: false, bookingId }
+								break
 
 							default:
 								$notify.info(`Unexpected payment status: ${paymentIntent.status}`)
-								return { processed: true, success: false, bookingId }
+								break
 						}
+
+						// Always redirect to the confirmation route after processing
+						this.redirectToConfirmationRoute(bookingId)
+
+						return { processed: true, success, bookingId }
 					}),
 				)
 			}),
 			catchError(error => {
 				console.error('Error checking payment status:', error)
 				$notify.error('An error occurred while checking payment status. Please contact support.')
+
+				// Still redirect to confirmation route where recovery can happen
+				if (bookingId) {
+					this.redirectToConfirmationRoute(bookingId)
+				}
+
 				return of({ processed: true, success: false, bookingId })
 			}),
-			tap(result => {
-				// After processing payment status, clean up URL parameters to avoid confusion on page reload
-				if (result.processed) {
-					const url = new URL(window.location.href)
-					url.search = result.bookingId ? `?booking=${result.bookingId}` : ''
-					window.history.replaceState({}, '', url.toString())
-				}
-			}),
 		)
+	}
+
+	/**
+	 * Redirect to the dedicated confirmation route
+	 */
+	private redirectToConfirmationRoute(bookingId: string): void {
+		// Create URL for the booking confirmation route
+		const confirmationUrl = `/booking/confirmation?id=${bookingId}`
+
+		// Use history API to navigate
+		window.location.href = confirmationUrl
 	}
 
 	/**

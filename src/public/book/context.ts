@@ -22,6 +22,8 @@ export interface Booking {
 		postalCode: string
 		country: string
 	}
+	createdAt?: any
+	updatedAt?: any
 }
 
 // Create global context for booking information

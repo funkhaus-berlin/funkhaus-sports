@@ -629,7 +629,7 @@ export class TimeSelectionStep extends $LitElement() {
 			'bg-surface-low': true,
 			'rounded-lg': true,
 			'shadow-sm': true,
-			'py-6': this.active,
+			'pt-4 pb-2': this.active,
 			'py-3': !this.active,
 		}
 
@@ -639,7 +639,7 @@ export class TimeSelectionStep extends $LitElement() {
 				${when(
 					this.active,
 					() => html`
-						<div class="flex justify-between items-center mb-5">
+						<div class="flex justify-between items-center mb-5 px-2">
 							<div class="text-lg font-medium">Select Time</div>
 
 							${when(
@@ -650,10 +650,7 @@ export class TimeSelectionStep extends $LitElement() {
 					`,
 					() =>
 						this.value !== undefined
-							? html`
-									<!-- When inactive but has a selected time, show it -->
-									<div class="text-base font-medium mb-3 text-center">${this._formatTimeDisplay(this.value)}</div>
-							  `
+							? html``
 							: html`
 									<!-- When inactive with no selection -->
 									<div class="text-base font-medium mb-3 text-center">Time</div>
@@ -665,7 +662,7 @@ export class TimeSelectionStep extends $LitElement() {
 					this.loading
 						? html`
 								<div class="flex justify-center items-center py-8">
-									<schmancy-spinner size="32px"></schmancy-spinner>
+									<schmancy-spinner class="size-8"></schmancy-spinner>
 								</div>
 						  `
 						: this.error
@@ -693,7 +690,8 @@ export class TimeSelectionStep extends $LitElement() {
 								${when(
 									this.active && this.timeSlots.length > 0,
 									() => html`
-										<div class="flex justify-between text-xs text-gray-500 mt-4 pt-2 border-t">
+										<schmancy-divider></schmancy-divider>
+										<div class="flex justify-between text-xs text-gray-500 px-2 mt-2">
 											<span>From ${this._formatTimeDisplay(this.timeSlots[0].value)}</span>
 											<span>To ${this._formatTimeDisplay(this.timeSlots[this.timeSlots.length - 1].value)}</span>
 										</div>
@@ -759,8 +757,10 @@ export class TimeSelectionStep extends $LitElement() {
 			// Different sizes based on active state and hour type
 			'w-16 h-20 py-3 px-1': this.active && !isHalfHour,
 			'w-14 h-16 py-2 px-1': this.active && isHalfHour,
-			'w-12 h-16 py-2 px-1': !this.active && !isHalfHour,
+			'w-12 h-18 py-2 px-1': !this.active && !isHalfHour,
 			'w-10 h-12 py-1 px-1': !this.active && isHalfHour,
+			// Add left margin to the first slot
+			'first:ml-2 last:mr-2': true,
 		}
 
 		// Text size classes

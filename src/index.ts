@@ -11,6 +11,7 @@ import { CourtsDB } from './db/courts.collection'
 import { VenuesDB } from './db/venue-collection'
 import { VenueLandingPage } from './public/venues/venues'
 import './schmancy'
+import { BookingConfirmationRoute } from './public/book/booking-confirmation-route'
 @customElement('app-index')
 export class AppIndex extends $LitElement() {
 	@query('schmancy-surface') surface!: HTMLElement
@@ -70,11 +71,29 @@ export class AppIndex extends $LitElement() {
 	}
 
 	render() {
+		// Helper function to determine which component to show based on URL
+		const getRouteComponent = () => {
+			const url = new URL(window.location.href)
+			const path = url.pathname
+
+			// Check for booking confirmation route
+			if (path.startsWith('/booking/confirmation')) {
+				return BookingConfirmationRoute
+			}
+
+			// Check for admin route
+			if (url.searchParams.has('admin')) {
+				return FunkhausAdmin
+			}
+
+			// Default to landing page
+			return VenueLandingPage
+		}
 		return html`
 			<schmancy-theme color="#008080" root>
 				<schmancy-surface ${fullHeight()} type="container">
 					<schmancy-scroll ${fullHeight()}>
-						<schmancy-area name="root" .default=${VenueLandingPage}>
+						<schmancy-area name="root" .default=${getRouteComponent()}>
 							<slot slot="stripe-element" name="stripe-element"></slot>
 						</schmancy-area>
 					</schmancy-scroll>

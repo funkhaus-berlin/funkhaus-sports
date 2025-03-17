@@ -1,5 +1,5 @@
-import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { select } from '@mhmo91/schmancy'
+import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { CourtPreferences } from 'src/bookingServices/court-assignment.service'
@@ -128,8 +128,8 @@ export class CourtPreferencesStep extends $LitElement() {
 			'bg-surface-low': true,
 			'rounded-lg': true,
 			'shadow-xs': true,
-			'py-6 px-4': this.active,
-			'py-3 px-2': !this.active,
+			'py-6': this.active,
+			'py-3': !this.active,
 		}
 
 		// If not active, show compact view that remains interactive
@@ -175,6 +175,8 @@ export class CourtPreferencesStep extends $LitElement() {
 								</span>
 							</div>
 
+							<!-- any option (selected by default) -->
+
 							${!this.localPreferences.preferIndoor && !this.localPreferences.preferOutdoor
 								? html`<div class="text-surface-on-variant text-sm flex items-center">No preference</div>`
 								: ''}
@@ -187,19 +189,12 @@ export class CourtPreferencesStep extends $LitElement() {
 		return html`
 			<div class=${this.classMap(containerClasses)}>
 				<!-- Title and explanation -->
-				<div class="mb-5">
+				<sch-flex>
 					<schmancy-typography type="title" token="md" class="mb-2">Court Preferences</schmancy-typography>
-					<schmancy-typography type="body" token="sm" class="text-surface-on-variant">
-						Tell us what you prefer and we'll choose the best court for you
-					</schmancy-typography>
-				</div>
-
+					<schmancy-typography> We will try to match your preferences based on availability </schmancy-typography>
+				</sch-flex>
 				<!-- Court type preference -->
-				<schmancy-surface type="containerLow" rounded="all" class="p-4 mb-4">
-					<schmancy-typography type="label" token="md" class="mb-3 block">
-						Where would you like to play?
-					</schmancy-typography>
-
+				<schmancy-surface type="containerLow" rounded="all" class="mb-4">
 					<!-- Grid using golden ratio proportions -->
 					<div class="grid grid-cols-2 gap-3">
 						<!-- Indoor option with icon - using golden ratio for proportions -->
@@ -235,16 +230,6 @@ export class CourtPreferencesStep extends $LitElement() {
 						</div>
 					</div>
 				</schmancy-surface>
-
-				<!-- Navigation -->
-				<div class="flex justify-end mt-6">
-					<schmancy-button
-						variant="filled"
-						@click=${() => this.dispatchEvent(new CustomEvent('change', { detail: this.localPreferences }))}
-					>
-						Continue
-					</schmancy-button>
-				</div>
 			</div>
 		`
 	}
