@@ -471,7 +471,7 @@ export class CheckoutForm extends $LitElement() {
 
 	render() {
 		return html`
-			<schmancy-form @submit=${this.processPayment} ?inert=${this.processing}>
+			<schmancy-form @submit=${this.processPayment} .inert=${this.processing}>
 				${when(
 					this.processing,
 					() => html`

@@ -4,6 +4,9 @@ import dayjs from 'dayjs'
 import { css, html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { debounceTime, fromEvent, takeUntil } from 'rxjs'
+import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
+import { courtsContext } from '../../../admin/venues/courts/context'
+import { Court } from '../../../db/courts.collection'
 import { Booking, bookingContext } from '../context'
 import { Duration } from '../types'
 
@@ -23,23 +26,13 @@ export class DurationSelectionStep extends $LitElement(css`
 
 	// Data binding to booking context
 	@select(bookingContext) booking!: Booking
+	@select(courtsContext) courts!: Map<string, Court>
 
 	// Track if we're on a mobile device
 	@state() isMobile = window.innerWidth < 640
 	@state() recommendedDuration: number = 60 // Default to 1 hour as recommended
-
-	// Common durations for booking
-	private durations: Duration[] = [
-		{ label: '30m', value: 30, price: 15 },
-		{ label: '1h', value: 60, price: 30 },
-		{ label: '1.5h', value: 90, price: 45 },
-		{ label: '2h', value: 120, price: 60 },
-		{ label: '2.5h', value: 150, price: 75 },
-		{ label: '3h', value: 180, price: 90 },
-	]
-
-	// Define full labels for desktop view
-	private fullLabels = ['30 min', '1 hour', '1.5 hours', '2 hours', '2.5 hours', '3 hours']
+	@state() durations: Duration[] = []
+	@state() selectedCourt?: Court
 
 	connectedCallback() {
 		super.connectedCallback()
@@ -54,12 +47,31 @@ export class DurationSelectionStep extends $LitElement(css`
 			})
 	}
 
-	firstupdated() {
-		// Initial check
-		this.checkMobileView()
+	disconnectedCallback() {
+		super.disconnectedCallback()
+		window.removeEventListener('resize', this.handleResize)
+	}
+
+	firstUpdated(_changedProperties: PropertyValues): void {
+		super.firstUpdated(_changedProperties)
+
 		// Calculate current duration from booking
 		this.calculateDurationFromBooking()
+
+		// Update durations based on booking data and selected court
+		this.updateDurations()
 	}
+
+	updated(changedProperties: PropertyValues): void {
+		super.updated(changedProperties)
+
+		// If booking or courts context changes, recalculate
+		if (changedProperties.has('booking') || changedProperties.has('courts')) {
+			this.calculateDurationFromBooking()
+			this.updateDurations()
+		}
+	}
+
 	/**
 	 * Handle window resize events
 	 */
@@ -79,22 +91,6 @@ export class DurationSelectionStep extends $LitElement(css`
 		}
 	}
 
-	protected firstUpdated(_changedProperties: PropertyValues): void {
-		super.firstUpdated(_changedProperties)
-
-		// Calculate current duration if booking has start and end times
-		this.calculateDurationFromBooking()
-	}
-
-	protected updated(changedProperties: PropertyValues): void {
-		super.updated(changedProperties)
-
-		// If booking changes, recalculate duration
-		if (changedProperties.has('booking')) {
-			this.calculateDurationFromBooking()
-		}
-	}
-
 	/**
 	 * Calculate duration from booking start and end times
 	 */
@@ -107,6 +103,35 @@ export class DurationSelectionStep extends $LitElement(css`
 			if (this.selectedDuration !== duration) {
 				this.selectedDuration = duration
 			}
+		}
+	}
+
+	/**
+	 * Update durations based on selected court and start time
+	 */
+	private updateDurations(): void {
+		// Find selected court
+		if (this.booking.courtId && this.courts) {
+			this.selectedCourt = this.courts.get(this.booking.courtId)
+		}
+
+		// If we have a court and start time, calculate prices
+		if (this.selectedCourt && this.booking.startTime) {
+			this.durations = pricingService.getStandardDurationPrices(
+				this.selectedCourt,
+				this.booking.startTime,
+				this.booking.userId,
+			)
+		} else {
+			// Fallback to default durations if court not yet selected
+			this.durations = [
+				{ label: '30m', value: 30, price: 15 },
+				{ label: '1h', value: 60, price: 30 },
+				{ label: '1.5h', value: 90, price: 45 },
+				{ label: '2h', value: 120, price: 60 },
+				{ label: '2.5h', value: 150, price: 75 },
+				{ label: '3h', value: 180, price: 90 },
+			]
 		}
 	}
 
@@ -133,6 +158,22 @@ export class DurationSelectionStep extends $LitElement(css`
 
 		// Dispatch change event for parent component
 		this.dispatchEvent(new CustomEvent('change', { detail: duration }))
+	}
+
+	/**
+	 * Get full labels for durations
+	 */
+	private getFullLabel(duration: Duration): string {
+		const map: Record<number, string> = {
+			30: '30 min',
+			60: '1 hour',
+			90: '1.5 hours',
+			120: '2 hours',
+			150: '2.5 hours',
+			180: '3 hours',
+		}
+
+		return map[duration.value] || `${duration.value} min`
 	}
 
 	render() {
@@ -215,11 +256,11 @@ export class DurationSelectionStep extends $LitElement(css`
 											: ''}
 
 										<!-- Duration label -->
-										<div class="font-medium">${this.fullLabels[this.durations.indexOf(duration)]}</div>
+										<div class="font-medium">${this.getFullLabel(duration)}</div>
 
 										<!-- Price -->
 										<div class="font-bold ${isSelected ? 'text-primary-on' : 'text-primary-default'}">
-											€${duration.price}
+											€${duration.price.toFixed(2)}
 										</div>
 									</div>
 								`
@@ -271,7 +312,7 @@ export class DurationSelectionStep extends $LitElement(css`
 
 								<!-- Duration label -->
 								<schmancy-typography type="title" token="md" weight=${isSelected ? 'bold' : 'normal'} class="mb-1">
-									${this.fullLabels[this.durations.indexOf(duration)]}
+									${this.getFullLabel(duration)}
 								</schmancy-typography>
 
 								<!-- Price -->
@@ -280,7 +321,7 @@ export class DurationSelectionStep extends $LitElement(css`
 									token="sm"
 									class="font-bold ${isSelected ? 'text-primary-on' : 'text-primary-default'}"
 								>
-									€${duration.price}
+									€${duration.price.toFixed(2)}
 								</schmancy-typography>
 
 								${isSelected ? html`<schmancy-icon class="mt-1" size="18px">check_circle</schmancy-icon>` : ''}

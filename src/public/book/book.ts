@@ -14,6 +14,7 @@ import {
 	CourtAssignmentStrategy,
 	CourtPreferences,
 } from 'src/bookingServices/court-assignment.service'
+import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
@@ -330,14 +331,6 @@ export class CourtBookingSystem extends $LitElement() {
 		const startTime = dayjs(this.booking.startTime)
 		const endTime = startTime.add(duration.value, 'minute').toISOString()
 
-		bookingContext.set({
-			endTime,
-			price: duration.price,
-		})
-
-		// Update stripe with new price
-		$stripe.next(duration.price)
-
 		// Start court assignment
 		this.bookingInProgress = true
 
@@ -379,9 +372,18 @@ export class CourtBookingSystem extends $LitElement() {
 
 			this.selectedCourt = selectedCourt
 
+			// Calculate the actual price based on the court's pricing structure
+			const price = pricingService.calculatePrice(selectedCourt, this.booking.startTime, endTime, this.booking.userId)
+
+			// Update the booking context with court, duration, and calculated price
 			bookingContext.set({
 				courtId: selectedCourt.id,
+				endTime,
+				price: price, // Use dynamically calculated price
 			})
+
+			// Update stripe with new price
+			$stripe.next(price)
 
 			$notify.success(`Court ${selectedCourt.name} assigned for your booking`)
 
