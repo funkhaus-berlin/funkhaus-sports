@@ -1,10 +1,12 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
-import { html, PropertyValues } from 'lit'
+import { css, html, PropertyValues } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { styleMap } from 'lit/directives/style-map.js'
+import { debounceTime, startWith } from 'rxjs'
+import { bookingContext } from '../context'
 
 // Define golden ratio constant
 const GOLDEN_RATIO = 1.618
@@ -14,7 +16,15 @@ const GOLDEN_RATIO = 1.618
  * Uses fixed dimensions and absolute positioning to prevent any layout shifts
  */
 @customElement('date-selection-step')
-export class DateSelectionStep extends $LitElement() {
+export class DateSelectionStep extends $LitElement(css`
+	.scrollbar-hide {
+		-ms-overflow-style: none; /* IE and Edge */
+		scrollbar-width: none; /* Firefox */
+	}
+	.scrollbar-hide::-webkit-scrollbar {
+		display: none; /* Chrome, Safari, and Opera */
+	}
+`) {
 	// Use private backing field for the value property with custom getter/setter
 	private _value?: string
 
@@ -108,11 +118,6 @@ export class DateSelectionStep extends $LitElement() {
 
 		// Set up window resize listener
 		window.addEventListener('resize', this._handleResize)
-
-		// Set default value to today if not provided
-		if (!this.value) {
-			this.value = this._todayISO
-		}
 	}
 
 	disconnectedCallback(): void {
@@ -144,6 +149,11 @@ export class DateSelectionStep extends $LitElement() {
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
+		// Set default value to today if not provided
+		if (!this.value) {
+			this.value = this._todayISO
+		}
+
 		// Set current month and year
 		this.currentMonth = this._today.format('MMMM')
 		this.currentYear = this._today.format('YYYY')
@@ -161,8 +171,10 @@ export class DateSelectionStep extends $LitElement() {
 		})
 
 		// Scroll to selected date on first render
-		this.updateComplete.then(() => {
-			requestAnimationFrame(() => this._scrollToSelectedDate())
+		bookingContext.$.pipe(startWith(bookingContext.value), debounceTime(500)).subscribe({
+			next: () => {
+				this._scrollToSelectedDate()
+			},
 		})
 	}
 
@@ -531,13 +543,8 @@ export class DateSelectionStep extends $LitElement() {
 
 					<!-- Compact View -->
 					<div class="compact-view">
-						<!-- Compact header for better usability -->
-						<div class="mb-2 px-3">
-							<div class="text-base font-medium">Select Date</div>
-						</div>
-
 						<!-- Horizontal scroll for compact view -->
-						<div class="flex gap-2 overflow-x-auto scrollbar-hide snap-x py-1">
+						<div class="flex gap-0 overflow-x-auto scrollbar-hide snap-x py-1">
 							${repeat(
 								dates,
 								date => date.toISOString(),
@@ -563,7 +570,7 @@ export class DateSelectionStep extends $LitElement() {
 		const compactWidth = 'w-14'
 		const compactHeight = `h-${Math.round(14 * GOLDEN_RATIO)}`
 		const activeWidth = 'w-full'
-		const activeHeight = isCompact ? compactHeight : 'h-16'
+		const activeHeight = isCompact ? compactHeight : 'h-20'
 
 		// Tailwind classes for date tile
 		const tileClasses = {
@@ -588,18 +595,18 @@ export class DateSelectionStep extends $LitElement() {
 			[activeHeight]: !isCompact,
 
 			// Padding
-			'py-1': isCompact,
-			'py-2': !isCompact,
-			'px-1': true,
+			'py-3': isCompact,
+			'py-4': !isCompact,
+			'px-3': true,
 
 			// Colors and states
 			'bg-primary-default': isSelected,
 			'text-primary-on': isSelected,
-			'bg-surface-container-high': !isSelected && !isPastDate,
+			'bg-surface-high': !isSelected && !isPastDate,
 			'text-surface-on': !isSelected && !isPastDate,
 			'opacity-50': isPastDate,
-			'border-2': isToday && !isSelected,
-			'border-primary-default': isToday && !isSelected,
+			'border-0': isToday && !isSelected,
+			'border-tertiary-default': isToday && !isSelected,
 			'hover:shadow-md': !isPastDate,
 			'hover:-translate-y-1': !isPastDate,
 			'shadow-sm': isSelected,

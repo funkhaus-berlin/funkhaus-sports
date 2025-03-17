@@ -338,24 +338,14 @@ export class TimeSelectionStep extends $LitElement() {
 
 		// If booking context changes, check for relevant changes
 		if (changedProperties.has('booking') && this.booking) {
-			// Handle startTime changes
-			if (
-				this.booking.startTime &&
-				(!changedProperties.get('booking') ||
-					(changedProperties.get('booking') as Booking)?.startTime !== this.booking.startTime)
-			) {
-				const startTime = dayjs(this.booking.startTime)
-				const minutes = startTime.hour() * 60 + startTime.minute()
-				if (this._value !== minutes) {
-					this._value = minutes
-				}
-			}
-
 			// Handle date changes
 			if (
 				this.booking.date &&
 				(!changedProperties.get('booking') || (changedProperties.get('booking') as Booking)?.date !== this.booking.date)
 			) {
+				// Clear the entire cache when dates change
+				timeSlotCache.clear() // <-- Add this line to clear all cached time slots
+
 				this.selectedDate = this.booking.date
 				this.selectedDate$.next(this.booking.date)
 
@@ -541,13 +531,6 @@ export class TimeSelectionStep extends $LitElement() {
 	}
 
 	/**
-	 * Format time for display - memoized for performance
-	 */
-	private _formatTimeDisplay(minutes: number): string {
-		return dayjs().startOf('day').add(minutes, 'minutes').format('h:mm A')
-	}
-
-	/**
 	 * Get formatted operating hours display - with caching
 	 */
 	private _getOperatingHoursDisplay(): string {
@@ -692,36 +675,21 @@ export class TimeSelectionStep extends $LitElement() {
 	}
 
 	/**
-	 * Render time slots timeline with lit directives for performance
-	 */
-	private _renderTimeline() {
-		// Get filtered slots (memoized)
-		const timelineSlots = this._getTimelineSlots()
-
-		return html`
-			<!-- Timeline with horizontal scroll -->
-			<schmancy-scroll hide>
-				<div class=${this.active ? 'flex gap-2 pb-2 mb-2' : 'flex gap-1 pb-1'}>
-					${repeat(
-						timelineSlots,
-						slot => slot.value, // Use value as key for efficient DOM updates
-						slot => this._renderTimeSlot(slot),
-					)}
-				</div>
-			</schmancy-scroll>
-		`
-	}
-
-	/**
-	 * Render individual time slot with memoization
+	 * Render individual time slot with enhanced visuals
 	 */
 	private _renderTimeSlot(slot: TimeSlot) {
 		const hour = Math.floor(slot.value / 60)
 		const minute = slot.value % 60
 		const isHalfHour = minute === 30
 		const isSelected = this.value === slot.value
+		const isHovered = this.hoveredTime === slot.value
 
-		// Classes for time slots
+		// Use 12-hour format with better formatting
+		const hourDisplay = hour % 12 || 12 // Convert 0 to 12 for 12 AM
+		const timeString = isHalfHour ? `${hourDisplay}:30` : `${hourDisplay}:00`
+		const period = hour >= 12 ? 'PM' : 'AM'
+
+		// Classes for time slots - focusing just on the tile improvements
 		const slotClasses = {
 			'flex-none': true,
 			'rounded-lg': true,
@@ -729,43 +697,56 @@ export class TimeSelectionStep extends $LitElement() {
 			'flex-col': true,
 			'items-center': true,
 			'justify-center': true,
-			'transition-colors': true,
-			'duration-200': true,
 			relative: true,
+
+			// Improved transitions
+			'transition-all': true,
+			'duration-200': true,
+			'transform-gpu': true, // Hardware acceleration
+
+			// Interaction states
 			'cursor-pointer': slot.available,
 			'cursor-not-allowed': !slot.available,
+			'hover:-translate-y-1': slot.available && !isSelected, // Subtle lift effect
+
+			// Visual states with better colors
 			'bg-primary-default': isSelected,
 			'text-primary-on': isSelected,
-			'bg-surface-high': !isSelected && slot.available,
+			'bg-surface-high': !isSelected && slot.available && !isHovered,
+			'bg-primary-container': !isSelected && slot.available && isHovered, // Subtle highlight on hover
 			'text-surface-on': !isSelected && slot.available,
-			'bg-gray-200': !slot.available,
+			'bg-gray-100': !slot.available,
 			'text-gray-400': !slot.available,
+
+			// Better shadows
 			'shadow-sm': isSelected,
-			'hover:shadow-sm': slot.available && !isSelected,
-			// Different sizes based on active state and hour type
+			'hover:shadow-md': slot.available && !isSelected,
+
+			// Keep original sizing to maintain layout
 			'w-16 h-20 py-3 px-1': this.active && !isHalfHour,
 			'w-14 h-16 py-2 px-1': this.active && isHalfHour,
 			'w-12 h-18 py-2 px-1': !this.active && !isHalfHour,
 			'w-10 h-12 py-1 px-1': !this.active && isHalfHour,
-			// Add left margin to the first slot
+
+			// Spacing
 			'first:ml-2 last:mr-2': true,
 		}
 
-		// Text size classes
-		const textClasses = {
+		// Improved text classes
+		const timeClasses = {
 			'font-bold': true,
 			'text-base': this.active && !isHalfHour,
 			'text-sm': (this.active && isHalfHour) || (!this.active && !isHalfHour),
 			'text-xs': !this.active && isHalfHour,
 		}
 
-		const subTextClasses = {
+		const periodClasses = {
 			'font-medium': true,
 			'text-xs': this.active,
 			'text-xs opacity-75': !this.active,
 		}
 
-		// Use keyed to ensure proper re-rendering when slot changes
+		// Use keyed for efficient updates
 		return keyed(
 			slot.value,
 			html`
@@ -776,25 +757,46 @@ export class TimeSelectionStep extends $LitElement() {
 					@pointerleave=${this._handleTimeLeave}
 					data-time-value=${slot.value}
 				>
-					<!-- Availability indicator dot -->
+					<!-- Better positioned availability indicator -->
 					${when(
 						this.active,
 						() => html`
 							<div
-								class="absolute top-1 right-1 w-2 h-2 rounded-full ${slot.available
-									? 'bg-success-default'
-									: 'bg-error-default'}"
+								class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full 
+				  ${slot.available ? 'bg-success-default' : 'bg-error-default'}"
 							></div>
 						`,
 					)}
 
-					<div class=${this.classMap(textClasses)}>
-						${isHalfHour ? html`${hour > 12 ? hour - 12 : hour}:30` : html`${hour > 12 ? hour - 12 : hour}`}
-					</div>
-					<div class=${this.classMap(subTextClasses)}>${hour >= 12 ? 'PM' : 'AM'}</div>
+					<!-- Improved time display -->
+					<div class=${this.classMap(timeClasses)}>${timeString}</div>
+
+					<!-- Period indicator -->
+					<div class=${this.classMap(periodClasses)}>${period}</div>
 				</div>
 			`,
 		)
+	}
+
+	/**
+	 * Render timeline with original structure
+	 */
+	private _renderTimeline() {
+		// Get filtered slots (memoized)
+		const timelineSlots = this._getTimelineSlots()
+
+		return html`
+			<!-- Keep original timeline structure -->
+			<schmancy-scroll hide>
+				<div class=${this.active ? 'flex gap-2 pb-2 mb-2' : 'flex gap-1 pb-1'}>
+					${repeat(
+						timelineSlots,
+						slot => slot.value, // Use value as key for efficient DOM updates
+						slot => this._renderTimeSlot(slot),
+					)}
+				</div>
+			</schmancy-scroll>
+		`
 	}
 
 	// Force browser to re-render component

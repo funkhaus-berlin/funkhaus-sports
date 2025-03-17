@@ -191,9 +191,11 @@ export class CourtPreferencesStep extends $LitElement() {
 			<div class=${this.classMap(containerClasses)}>
 				<!-- Title and explanation -->
 				<sch-flex>
-					<schmancy-typography type="title" token="md">Court Preferences</schmancy-typography>
-					<schmancy-typography type="label">
-						We will try to match your preferences based on availability
+					<schmancy-typography type="title" token="md"
+						>Court Preferences <span class="text-small">(Non binding)</span>
+					</schmancy-typography>
+					<schmancy-typography type="label" token="sm">
+						<span class="text-outline"> We will try to match your preferences based on availability </span>
 					</schmancy-typography>
 				</sch-flex>
 				<!-- Court type preference -->
