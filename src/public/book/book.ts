@@ -89,7 +89,7 @@ export class CourtBookingSystem extends $LitElement() {
 		this.initializeStep()
 
 		// Set initial price for stripe
-		$stripe.next(this.booking.price || 30)
+		$stripe.next(this.booking.price)
 
 		// Initialize history state if needed
 		if (!window.history.state) {
@@ -292,7 +292,6 @@ export class CourtBookingSystem extends $LitElement() {
 			if (!result.success) {
 				// Court assignment failed
 				this.error = result.error || 'No available courts found. Please try another time.'
-				$notify.error(this.error ?? '')
 				this.navigateToStep(BookingStep.Time)
 				return
 			}
@@ -309,7 +308,7 @@ export class CourtBookingSystem extends $LitElement() {
 			})
 
 			// Update stripe with new price
-			$stripe.next(result.price ?? 0)
+			// $stripe.next(result.price!)
 
 			// Navigate to payment step
 			this.navigateToStep(BookingStep.Payment)
@@ -317,7 +316,6 @@ export class CourtBookingSystem extends $LitElement() {
 			// Handle unexpected errors
 			console.error('Error in court assignment flow:', error)
 			this.error = 'An unexpected error occurred. Please try again.'
-			$notify.error(this.error)
 		} finally {
 			this.bookingInProgress = false
 		}
@@ -429,12 +427,12 @@ export class CourtBookingSystem extends $LitElement() {
 		if (!this.error) return ''
 
 		return html`
-			<div class="bg-error-container text-error-on rounded-lg p-4 mb-4">
-				<schmancy-flex align="center" gap="sm">
+			<div class="bg-error-container text-error-onContainer rounded-lg p-2 flex">
+				<schmancy-flex justify="center" align="center" gap="sm">
 					<schmancy-icon>error</schmancy-icon>
 					<schmancy-typography>${this.error}</schmancy-typography>
+					<schmancy-button variant="text" @click=${() => (this.error = null)}> Dismiss </schmancy-button>
 				</schmancy-flex>
-				<schmancy-button variant="text" @click=${() => (this.error = null)} class="mt-2"> Dismiss </schmancy-button>
 			</div>
 		`
 	}

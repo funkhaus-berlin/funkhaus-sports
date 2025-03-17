@@ -69,20 +69,6 @@ export class CheckoutForm extends $LitElement() {
 
 		// Cancel any ongoing payment processing
 		this.paymentService.cancelProcessing()
-
-		// Clean up Stripe Elements if they exist
-		if (this.elements) {
-			// Unmount any created elements
-			try {
-				const elementContainer = document.getElementById('stripe-element')
-				if (elementContainer) {
-					// Clear the element's content
-					elementContainer.innerHTML = ''
-				}
-			} catch (error) {
-				console.error('Error cleaning up Stripe elements:', error)
-			}
-		}
 	}
 
 	// Setup methods
@@ -352,13 +338,7 @@ export class CheckoutForm extends $LitElement() {
 					</schmancy-grid>
 
 					<!-- Payment Details -->
-					<schmancy-surface type="containerLow" rounded="all">
-						<div class="mb-3 px-2">
-							<section class="relative block">
-								<slot name="stripe-element"></slot>
-							</section>
-						</div>
-					</schmancy-surface>
+					<slot name="stripe-element"></slot>
 
 					<!-- Terms & Submit Button -->
 					<schmancy-grid class="pr-4" gap="sm" justify="end">

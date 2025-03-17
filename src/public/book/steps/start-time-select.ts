@@ -323,9 +323,15 @@ export class TimeSelectionStep extends $LitElement() {
 
 					this.loading = false
 				}),
-				// Scroll to the selected time after render
+				// Scroll to the right time slot
 				tap(() => {
-					if (this._value !== undefined) {
+					const isToday = dayjs(this.selectedDate).isSame(dayjs(), 'day')
+
+					if (isToday) {
+						// If today, find first available time or use selected time
+						this._scrollToFirstAvailableTime()
+					} else if (this._value !== undefined) {
+						// For other days, scroll to selected time if exists
 						requestAnimationFrame(() => this._scrollToSelectedTime())
 					}
 				}),
@@ -353,8 +359,15 @@ export class TimeSelectionStep extends $LitElement() {
 		super.updated(changedProperties)
 
 		// Scroll to selected time when component becomes active
-		if (changedProperties.has('active') && this.active && this._value !== undefined) {
-			requestAnimationFrame(() => this._scrollToSelectedTime())
+		if (changedProperties.has('active') && this.active) {
+			const isToday = dayjs(this.selectedDate).isSame(dayjs(), 'day')
+
+			if (this._value !== undefined) {
+				requestAnimationFrame(() => this._scrollToSelectedTime())
+			} else if (isToday) {
+				// If today with no selection, scroll to first available time
+				this._scrollToFirstAvailableTime()
+			}
 		}
 
 		// If booking context changes, check for relevant changes
@@ -372,6 +385,13 @@ export class TimeSelectionStep extends $LitElement() {
 
 				// Trigger a refresh of availability data
 				this.refreshTrigger$.next(Date.now())
+
+				// Scroll to first available time if it's today
+				const isToday = dayjs(this.booking.date).isSame(dayjs(), 'day')
+				if (isToday) {
+					// Use a slight delay to ensure data is processed
+					setTimeout(() => this._scrollToFirstAvailableTime(), 300)
+				}
 			}
 		}
 	}
@@ -385,11 +405,15 @@ export class TimeSelectionStep extends $LitElement() {
 		this._timelineSlotsCache = null
 
 		const slots: TimeSlot[] = []
-		// const cacheKey = `${this.selectedDate}-${Object.keys(courtsAvailability).join('-')}`
 
 		// Get the day of week for operating hours
 		const dayOfWeek = dayjs(this.selectedDate).format('dddd').toLowerCase()
 		const todayOperatingHours = this.operatingHours?.[dayOfWeek as keyof OperatingHours]
+
+		// Check if selected date is today
+		const isToday = dayjs(this.selectedDate).isSame(dayjs(), 'day')
+		const currentTime = isToday ? dayjs() : null
+		const currentMinutes = currentTime ? currentTime.hour() * 60 + currentTime.minute() : 0
 
 		// Collect all unique time slots across all courts
 		const allTimeSlots = new Set<string>()
@@ -421,9 +445,16 @@ export class TimeSelectionStep extends $LitElement() {
 				withinOperatingHours = value >= openValue && value < closeValue
 			}
 
+			// Check if time slot is in the past for today
+			let isPastTime = false
+			if (isToday && currentTime) {
+				isPastTime = value < currentMinutes
+			}
+
 			if (withinOperatingHours) {
-				// A time slot is available if ANY court has it available
-				const isAvailable = Object.values(courtsAvailability).some(courtSlots => courtSlots[timeKey]?.isAvailable)
+				// A time slot is available if ANY court has it available AND it's not in the past
+				const isAvailable =
+					Object.values(courtsAvailability).some(courtSlots => courtSlots[timeKey]?.isAvailable) && !isPastTime
 
 				slots.push({
 					label: timeKey,
@@ -470,26 +501,39 @@ export class TimeSelectionStep extends $LitElement() {
 			}
 		}
 
+		// Check if selected date is today
+		const isToday = dayjs(this.selectedDate).isSame(dayjs(), 'day')
+		const currentTime = isToday ? dayjs() : null
+		const currentHour = currentTime ? currentTime.hour() : 0
+		const currentMinute = currentTime ? currentTime.minute() : 0
+		const currentTimeMinutes = currentHour * 60 + currentMinute
+
 		// Generate slots
 		for (let hour = startHour; hour < endHour; hour++) {
 			// Full hour slot
 			const timeKey = `${hour.toString().padStart(2, '0')}:00`
 			const value = hour * 60
 
+			// Check if slot is in the past
+			const isPastTime = isToday && value < currentTimeMinutes
+
 			defaultSlots.push({
 				label: timeKey,
 				value,
-				available: true,
+				available: !isPastTime,
 			})
 
 			// Half-hour slot
 			const halfHourKey = `${hour.toString().padStart(2, '0')}:30`
 			const halfHourValue = hour * 60 + 30
 
+			// Check if half-hour slot is in the past
+			const isHalfHourPastTime = isToday && halfHourValue < currentTimeMinutes
+
 			defaultSlots.push({
 				label: halfHourKey,
 				value: halfHourValue,
-				available: true,
+				available: !isHalfHourPastTime,
 			})
 		}
 
@@ -499,6 +543,65 @@ export class TimeSelectionStep extends $LitElement() {
 
 		// Cache these default slots
 		timeSlotCache.set(this.selectedDate, [...defaultSlots])
+	}
+
+	/**
+	 * Find first available time slot after current time and scroll to it
+	 */
+	private _scrollToFirstAvailableTime(): void {
+		// Short delay to ensure DOM is updated
+		requestAnimationFrame(() => {
+			const isToday = dayjs(this.selectedDate).isSame(dayjs(), 'day')
+
+			if (!isToday || this.timeSlots.length === 0) return
+
+			// Find first available time slot
+			const firstAvailable = this.timeSlots.find(slot => slot.available)
+
+			if (firstAvailable) {
+				// Set as selected if no time is currently selected
+				if (this.value === undefined) {
+					this.value = firstAvailable.value
+
+					// Update booking context with the new time if no time is already set
+					if (!this.booking.startTime) {
+						const selectedDate = dayjs(this.booking.date)
+						const hour = Math.floor(firstAvailable.value / 60)
+						const minute = firstAvailable.value % 60
+						const newStartTime = selectedDate.hour(hour).minute(minute)
+
+						bookingContext.set(
+							{
+								startTime: newStartTime.toISOString(),
+							},
+							true,
+						)
+					}
+				}
+
+				// Scroll to the first available time or currently selected time
+				this._scrollToTimeValue(this.value !== undefined ? this.value : firstAvailable.value)
+			}
+		})
+	}
+
+	/**
+	 * Scroll to a specific time value
+	 */
+	private _scrollToTimeValue(timeValue: number): void {
+		try {
+			const timeEl = this.shadowRoot?.querySelector(`[data-time-value="${timeValue}"]`) as HTMLElement
+
+			if (timeEl) {
+				timeEl.scrollIntoView({
+					behavior: 'smooth',
+					block: 'center',
+					inline: 'center',
+				})
+			}
+		} catch (error) {
+			console.error('Error scrolling to time:', error)
+		}
 	}
 
 	/**
@@ -738,7 +841,7 @@ export class TimeSelectionStep extends $LitElement() {
 			'bg-surface-high': !isSelected && slot.available && !isHovered,
 			'bg-primary-container': !isSelected && slot.available && isHovered, // Subtle highlight on hover
 			'text-surface-on': !isSelected && slot.available,
-			'bg-gray-100': !slot.available,
+			'bg-surface-high/50': !slot.available,
 			'text-gray-400': !slot.available,
 
 			// Better shadows
@@ -825,11 +928,5 @@ export class TimeSelectionStep extends $LitElement() {
 	// Force browser to re-render component
 	refreshView() {
 		this.refreshTrigger$.next(Date.now())
-	}
-}
-
-declare global {
-	interface HTMLElementTagNameMap {
-		'time-selection-step': TimeSelectionStep
 	}
 }
