@@ -50,7 +50,7 @@ export default class FunkhausAdmin extends $LitElement() {
 		area.push({
 			component: FunkhausSportsSignin,
 			area: 'root',
-			historyStrategy: 'silent',
+			historyStrategy: 'replace',
 		})
 	}
 

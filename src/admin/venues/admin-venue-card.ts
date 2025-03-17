@@ -57,7 +57,7 @@ export class AdminVenueCard extends $LitElement() {
 
 	render() {
 		// Determine status configuration
-		const statusDetails = STATUS_CONFIG[this.venue.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.inactive
+		STATUS_CONFIG[this.venue.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.inactive
 
 		// Get today's operating hours
 		const todayHours = this.getTodayHours()
@@ -83,15 +83,6 @@ export class AdminVenueCard extends $LitElement() {
 						<schmancy-typography type="headline" token="md" class="font-semibold">
 							${this.venue.name}
 						</schmancy-typography>
-						<schmancy-chip variant="filled" color=${statusDetails.color} .selected=${this.venue.status === 'active'}>
-							<schmancy-icon slot="leading">${statusDetails.icon}</schmancy-icon>
-							${statusDetails.label}
-						</schmancy-chip>
-					</div>
-
-					<!-- Venue Type -->
-					<div class="mb-2">
-						<schmancy-chip variant="outlined"> ${formatEnum(this.venue.venueType)} </schmancy-chip>
 					</div>
 
 					<!-- Main Content Grid -->
