@@ -487,7 +487,9 @@ export class TimeSelectionStep extends $LitElement() {
 		if (!slot.available) return
 
 		// Avoid double processing if the value is the same
-		if (this.value === slot.value) return
+		// if (this.value === slot.value) {
+		// 	return
+		// }
 
 		this.value = slot.value
 
