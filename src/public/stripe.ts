@@ -56,7 +56,7 @@ export function appearance(): Appearance {
 			blockLogoColor: getComputedStyle(document.body).getPropertyValue(
 				SchmancyTheme.sys.color.primary.default.slice(4, -1),
 			),
-			colorText: getComputedStyle(document.body).getPropertyValue(SchmancyTheme.sys.color.primary.default.slice(4, -1)),
+			colorText: getComputedStyle(document.body).getPropertyValue(SchmancyTheme.sys.color.surface.on.slice(4, -1)),
 		},
 		labels: 'above',
 	}
