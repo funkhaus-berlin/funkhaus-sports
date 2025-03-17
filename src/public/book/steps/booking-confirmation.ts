@@ -1,12 +1,16 @@
+// src/public/book/steps/booking-confirmation.ts
+
+import { $notify } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import dayjs from 'dayjs'
-import { html } from 'lit'
+import { html, HTMLTemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
-import qrcode from 'qrcode-generator'
+import { when } from 'lit/directives/when.js'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { Court } from 'src/db/courts.collection'
+import { BookingUtilities } from '../booking-utilities'
 import { Booking, bookingContext } from '../context'
+
 @customElement('booking-confirmation')
 export class BookingConfirmation extends $LitElement() {
 	@property({ type: Object }) booking!: Booking
@@ -16,94 +20,49 @@ export class BookingConfirmation extends $LitElement() {
 	@property({ type: String }) bookingId: string = ''
 	@property({ attribute: false }) onNewBooking?: () => void
 
-	/**
-	 * Generate downloadable calendar file (ICS)
-	 */
-	private generateCalendarFile(): string {
-		const startDate = dayjs(this.booking.startTime)
-		const endDate = dayjs(this.booking.endTime)
-		const eventTitle = `Court Booking: ${this.selectedCourt?.name || 'Tennis Court'}`
-		const location = 'Funkhaus Berlin Sports Center'
-		const start = startDate.format('YYYYMMDDTHHmmss')
-		const end = endDate.format('YYYYMMDDTHHmmss')
-		const now = dayjs().format('YYYYMMDDTHHmmss')
-		const uid = `booking-${this.bookingId || Math.random().toString(36).substring(2, 11)}@funkhaus-sports.com`
-
-		const icsContent = [
-			'BEGIN:VCALENDAR',
-			'VERSION:2.0',
-			'PRODID:-//Funkhaus Berlin Sports//Court Booking//EN',
-			'CALSCALE:GREGORIAN',
-			'METHOD:PUBLISH',
-			'BEGIN:VEVENT',
-			`UID:${uid}`,
-			`DTSTAMP:${now}Z`,
-			`DTSTART:${start}Z`,
-			`DTEND:${end}Z`,
-			`SUMMARY:${eventTitle}`,
-			`LOCATION:${location}`,
-			'STATUS:CONFIRMED',
-			'SEQUENCE:0',
-			'BEGIN:VALARM',
-			'TRIGGER:-PT1H',
-			'ACTION:DISPLAY',
-			'DESCRIPTION:Reminder',
-			'END:VALARM',
-			'END:VEVENT',
-			'END:VCALENDAR',
-		].join('\r\n')
-
-		return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(icsContent)
-	}
-
-	/**
-	 * Generate a QR code with the booking details
-	 */
-	private getQRCodeDataUrl(): string {
-		// First, import the qrcode-generator library
-		// This should be added to your project dependencies
-		// npm install qrcode-generator
-
-		const bookingInfo = JSON.stringify({
-			id: this.booking.id,
-			date: this.booking.date,
-			time: dayjs(this.booking.startTime).format('HH:mm'),
-			court: this.selectedCourt?.name || 'Court',
-		})
-		// Create QR code (type 0 is the default)
-		const qr = qrcode(0, 'M')
-		qr.addData(bookingInfo)
-		qr.make()
-
-		// Return the QR code as a data URL
-		return qr.createDataURL(5) // 5 is the cell size in pixels
-	}
+	// Utilities for booking data formatting and operations
+	private utilities = new BookingUtilities()
 
 	/**
 	 * Download QR code image
 	 */
 	private async downloadQRCode() {
-		const qrDataUrl = await this.getQRCodeDataUrl()
-		const link = document.createElement('a')
-		link.href = qrDataUrl
-		console.log(this.booking.id)
-		const court = courtsContext.value.get(this.booking.courtId)
-		const venue = venuesContext.value.get(court?.venueId || '')
-		const formattedDate = dayjs(this.booking.startTime).format('dddd MMM @HH mm A')
-		const venueName = (venue?.name || 'venue').replace(/[^a-z0-9]/gi, '-').toLowerCase()
-		const courtName = (court?.name || 'court').replace(/[^a-z0-9]/gi, '-').toLowerCase()
-		link.download = `booking-${venueName}-${courtName}-${formattedDate}.png`
-		document.body.appendChild(link)
-		link.click()
-		document.body.removeChild(link)
+		try {
+			// Generate QR code
+			const qrDataUrl = this.utilities.generateQRCodeDataUrl(this.booking, this.selectedCourt)
+
+			// Get court and venue data for filename
+			const court = courtsContext.value.get(this.booking.courtId)
+			const venue = court ? venuesContext.value.get(court.venueId) : undefined
+
+			// Generate filename
+			const filename = this.utilities.generateQRFilename(this.booking, court, venue)
+
+			// Create download link
+			const link = document.createElement('a')
+			link.href = qrDataUrl
+			link.download = filename
+			document.body.appendChild(link)
+			link.click()
+			document.body.removeChild(link)
+
+			$notify.success('QR code downloaded successfully')
+		} catch (error) {
+			console.error('Error downloading QR code:', error)
+			$notify.error('Failed to download QR code')
+		}
 	}
 
 	render() {
-		const startTime = dayjs(this.booking.startTime)
-		const endTime = dayjs(this.booking.endTime)
-		const dateFormatted = startTime.format('ddd, MMM D')
-		const timeFormatted = `${startTime.format('h:mm A')} - ${endTime.format('h:mm A')}`
-		const calendarUrl = this.generateCalendarFile()
+		if (!this.booking || !this.booking.startTime || !this.booking.endTime) {
+			// Render error state if booking data is incomplete
+			return this.renderErrorState()
+		}
+
+		// Format booking details
+		const dateFormatted = this.utilities.formatDate(this.booking.date)
+		const timeFormatted = this.utilities.formatTimeRange(this.booking.startTime, this.booking.endTime)
+		const calendarUrl = this.utilities.generateCalendarFile(this.booking, this.selectedCourt?.name)
 
 		return html`
 			<style>
@@ -145,10 +104,6 @@ export class BookingConfirmation extends $LitElement() {
 					margin: 0 auto;
 				}
 
-				.qr-download-btn:hover {
-					background-color: var(--schmancy-primary-container);
-				}
-
 				.confirmation-header {
 					margin-bottom: 24px;
 				}
@@ -169,62 +124,22 @@ export class BookingConfirmation extends $LitElement() {
 				<div class="booking-details">
 					<!-- QR Code & Reference -->
 					<div class="text-center mb-6">
-						${this.booking.id
-							? html`
-									<div class="qr-container">
-										<img
-											src=${this.getQRCodeDataUrl()}
-											alt="Booking QR Code"
-											width="150"
-											height="150"
-											class="mx-auto mb-3"
-										/>
-										<div
-											class="absolute bottom-0 right-2"
-											@click=${() => this.downloadQRCode()}
-											title="Download QR Code"
-										>
-											<schmancy-icon-button class="animate-bounce" variant="filled">download</schmancy-icon-button>
-										</div>
-									</div>
-							  `
-							: ''}
-						<!-- <schmancy-typography type="label" token="sm" class="text-surface-on-variant mt-3">
-							Booking Reference: #${this.booking.id?.substring(0, 8).toUpperCase() || 'N/A'}
-						</schmancy-typography> -->
+						${when(
+							this.booking.id,
+							() => this.renderQRCode(),
+							() => html`<p>No booking ID available</p>`,
+						)}
 					</div>
 
 					<!-- Primary Details -->
 					<schmancy-grid class="px-6 py-6 bg-surface-high rounded-md">
 						<div class="details-grid">
-							<div class="detail-item">
-								<schmancy-typography type="label" token="sm" class="text-surface-on-variant mb-1"
-									>Date</schmancy-typography
-								>
-								<schmancy-typography type="body" weight="medium">${dateFormatted}</schmancy-typography>
-							</div>
-							<div class="detail-item">
-								<schmancy-typography type="label" token="sm" class="text-surface-on-variant mb-1"
-									>Time</schmancy-typography
-								>
-								<schmancy-typography type="body" weight="medium">${timeFormatted}</schmancy-typography>
-							</div>
-							<div class="detail-item">
-								<schmancy-typography type="label" token="sm" class="text-surface-on-variant mb-1"
-									>Court</schmancy-typography
-								>
-								<schmancy-typography type="body" weight="medium">
-									${this.selectedCourt?.name || 'Court'}
-								</schmancy-typography>
-							</div>
-							<div class="detail-item">
-								<schmancy-typography type="label" token="sm" class="text-surface-on-variant mb-1"
-									>Total</schmancy-typography
-								>
-								<schmancy-typography type="body" weight="medium" class="text-primary-default">
-									€${this.booking.price.toFixed(2)}
-								</schmancy-typography>
-							</div>
+							${this.renderDetailItem('Date', dateFormatted)} ${this.renderDetailItem('Time', timeFormatted)}
+							${this.renderDetailItem('Court', this.selectedCourt?.name || 'Court')}
+							${this.renderDetailItem(
+								'Total',
+								html`<span class="text-primary-default">&euro;${this.booking.price.toFixed(2)}</span>`,
+							)}
 						</div>
 					</schmancy-grid>
 				</div>
@@ -235,7 +150,10 @@ export class BookingConfirmation extends $LitElement() {
 						<schmancy-icon>calendar_month</schmancy-icon>
 						Add to Calendar
 					</schmancy-button>
-					<schmancy-button variant="outlined" @click=${() => this.shareBooking()}>
+					<schmancy-button
+						variant="outlined"
+						@click=${() => this.utilities.shareBooking(this.booking, this.selectedCourt?.name)}
+					>
 						<schmancy-icon>share</schmancy-icon>
 						Share
 					</schmancy-button>
@@ -255,31 +173,53 @@ export class BookingConfirmation extends $LitElement() {
 	}
 
 	/**
-	 * Share booking details using the Web Share API if available
+	 * Render detail item for the booking info grid
 	 */
-	private shareBooking() {
-		const startTime = dayjs(this.booking.startTime)
-		const text = `I've booked a court at Funkhaus Berlin Sports on ${startTime.format('MMMM D')} at ${startTime.format(
-			'h:mm A',
-		)}. Join me!`
+	private renderDetailItem(label: string, value: string | HTMLTemplateResult) {
+		return html`
+			<div class="detail-item">
+				<schmancy-typography type="label" token="sm" class="text-surface-on-variant mb-1">${label}</schmancy-typography>
+				<schmancy-typography type="body" weight="medium">${value}</schmancy-typography>
+			</div>
+		`
+	}
 
-		if (navigator.share) {
-			navigator
-				.share({
-					title: 'My Court Booking',
-					text: text,
-					url: window.location.href,
-				})
-				.catch(error => console.log('Error sharing', error))
-		} else {
-			const textArea = document.createElement('textarea')
-			textArea.value = text
-			document.body.appendChild(textArea)
-			textArea.select()
-			document.execCommand('copy')
-			document.body.removeChild(textArea)
-			alert('Booking details copied to clipboard!')
-		}
+	/**
+	 * Render QR code with download button
+	 */
+	private renderQRCode() {
+		return html`
+			<div class="qr-container">
+				<img
+					src=${this.utilities.generateQRCodeDataUrl(this.booking, this.selectedCourt)}
+					alt="Booking QR Code"
+					width="150"
+					height="150"
+					class="mx-auto mb-3"
+				/>
+				<div class="absolute bottom-0 right-2" @click=${() => this.downloadQRCode()} title="Download QR Code">
+					<schmancy-icon-button class="animate-bounce" variant="filled">download</schmancy-icon-button>
+				</div>
+			</div>
+		`
+	}
+
+	/**
+	 * Render error state when booking data is incomplete
+	 */
+	private renderErrorState() {
+		return html`
+			<schmancy-surface type="containerLow" rounded="all" class="p-6">
+				<schmancy-flex flow="col" align="center" justify="center" gap="md">
+					<schmancy-icon class="text-error-default" size="48px">error</schmancy-icon>
+					<schmancy-typography type="title" token="md">Booking Information Error</schmancy-typography>
+					<schmancy-typography type="body" token="md" class="text-center">
+						We couldn't retrieve complete booking information. This may be due to a temporary system issue.
+					</schmancy-typography>
+					<schmancy-button variant="filled" @click=${() => this.onNewBooking?.()}> Return to Booking </schmancy-button>
+				</schmancy-flex>
+			</schmancy-surface>
+		`
 	}
 }
 
