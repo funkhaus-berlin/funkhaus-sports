@@ -32,6 +32,8 @@ export class CourtForm extends $LitElement() {
 	@select(venuesContext, (venues: Map<string, Venue>) => Array.from(venues.values()))
 	venues: Venue[] = []
 
+	@state() busy = false
+
 	constructor(private editingCourt?: Court) {
 		super()
 		if (editingCourt) {
@@ -186,6 +188,7 @@ export class CourtForm extends $LitElement() {
 	}
 
 	onSave = () => {
+		this.busy = true
 		// Basic validation
 		if (!this.court.name?.trim()) {
 			$notify.error('Court name is required')
