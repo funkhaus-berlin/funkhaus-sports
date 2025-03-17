@@ -340,17 +340,6 @@ export class DurationSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Helper to get venue for a court
-	 */
-	private getVenueForCourt(court: Court): Venue | undefined {
-		// Get venue from context using court's venueId
-		if (court.venueId && venuesContext.value) {
-			return venuesContext.value.get(court.venueId)
-		}
-		return undefined
-	}
-
-	/**
 	 * Handle window resize events
 	 */
 	private handleResize = () => {
