@@ -4,7 +4,7 @@ import { html } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { Court } from 'src/db/courts.collection'
 import { Booking } from '../context'
-
+import qrcode from 'qrcode-generator'
 @customElement('booking-confirmation')
 export class BookingConfirmation extends $LitElement() {
 	@property({ type: Object }) booking!: Booking
@@ -57,17 +57,37 @@ export class BookingConfirmation extends $LitElement() {
 	/**
 	 * Generate a QR code with the booking details
 	 */
-	private generateQRCodeUrl(): string {
-		const bookingInfo = encodeURIComponent(
-			JSON.stringify({
-				id: this.booking.id,
-				date: this.booking.date,
-				time: dayjs(this.booking.startTime).format('HH:mm'),
-				court: this.selectedCourt?.name || 'Court',
-			}),
-		)
+	private getQRCodeDataUrl(): string {
+		// First, import the qrcode-generator library
+		// This should be added to your project dependencies
+		// npm install qrcode-generator
 
-		return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${bookingInfo}`
+		const bookingInfo = JSON.stringify({
+			id: this.booking.id,
+			date: this.booking.date,
+			time: dayjs(this.booking.startTime).format('HH:mm'),
+			court: this.selectedCourt?.name || 'Court',
+		})
+		// Create QR code (type 0 is the default)
+		const qr = qrcode(0, 'M')
+		qr.addData(bookingInfo)
+		qr.make()
+
+		// Return the QR code as a data URL
+		return qr.createDataURL(5) // 5 is the cell size in pixels
+	}
+
+	/**
+	 * Download QR code image
+	 */
+	private async downloadQRCode() {
+		const qrDataUrl = await this.getQRCodeDataUrl()
+		const link = document.createElement('a')
+		link.href = qrDataUrl
+		link.download = `booking-qr-${this.booking.id?.substring(0, 8) || 'code'}.png`
+		document.body.appendChild(link)
+		link.click()
+		document.body.removeChild(link)
 	}
 
 	render() {
@@ -90,89 +110,143 @@ export class BookingConfirmation extends $LitElement() {
 					display: flex;
 					flex-direction: column;
 					justify-content: space-between;
+					padding: 24px 16px;
 				}
 
 				.details-grid {
 					display: grid;
 					grid-template-columns: 1fr 1fr;
-					gap: 12px;
+					gap: 16px;
 				}
 
 				.detail-item {
-					margin-bottom: 8px;
+					margin-bottom: 12px;
 				}
 
 				.actions {
 					display: flex;
 					flex-wrap: wrap;
-					gap: 8px;
+					gap: 12px;
 					justify-content: center;
+					margin-top: 24px;
+				}
+
+				.qr-container {
+					position: relative;
+					width: fit-content;
+					margin: 0 auto;
+				}
+
+				.qr-download-btn {
+					position: absolute;
+					bottom: -8px;
+					right: -8px;
+					border-radius: 50%;
+					width: 36px;
+					height: 36px;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					background-color: var(--schmancy-surface-high);
+					box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+					cursor: pointer;
+					transition: all 0.2s ease;
+				}
+
+				.qr-download-btn:hover {
+					background-color: var(--schmancy-primary-container);
+				}
+
+				.confirmation-header {
+					margin-bottom: 24px;
+				}
+
+				.booking-details {
+					margin-bottom: 24px;
 				}
 			</style>
 
 			<schmancy-surface type="containerLow" rounded="all" class="booking-card">
 				<!-- Success Header -->
-				<div class="flex items-center justify-center gap-2 text-primary-default">
-					<schmancy-icon>check_circle</schmancy-icon>
-					<schmancy-typography type="headline" token="md">Confirmed!</schmancy-typography>
+				<div class="confirmation-header flex items-center justify-center gap-3 text-primary-default">
+					<schmancy-icon size="large">check_circle</schmancy-icon>
+					<schmancy-typography type="headline" token="md">Booking Confirmed!</schmancy-typography>
 				</div>
 
 				<!-- Essential Booking Info -->
-				<div class="grid gap-8">
+				<div class="booking-details">
 					<!-- QR Code & Reference -->
-					<div class="text-center mb-4">
+					<div class="text-center mb-6">
 						${this.booking.id
-							? html`<img
-									src=${this.generateQRCodeUrl()}
-									alt="Booking QR Code"
-									width="120"
-									height="120"
-									class="mx-auto mb-2"
-							  />`
+							? html`
+									<div class="qr-container">
+										<img
+											src=${this.getQRCodeDataUrl()}
+											alt="Booking QR Code"
+											width="150"
+											height="150"
+											class="mx-auto mb-3"
+										/>
+										<div class="qr-download-btn" @click=${() => this.downloadQRCode()} title="Download QR Code">
+											<schmancy-icon size="small">download</schmancy-icon>
+										</div>
+									</div>
+							  `
 							: ''}
-						<schmancy-typography type="label" token="sm" class="text-surface-on-variant">
-							Ref #${this.booking.id?.substring(0, 8).toUpperCase() || 'N/A'}
+						<schmancy-typography type="label" token="sm" class="text-surface-on-variant mt-3">
+							Booking Reference: #${this.booking.id?.substring(0, 8).toUpperCase() || 'N/A'}
 						</schmancy-typography>
 					</div>
 
 					<!-- Primary Details -->
-					<schmancy-grid class="px-6  py-5 bg-surface-high">
+					<schmancy-grid class="px-6 py-6 bg-surface-high rounded-md">
 						<div class="details-grid">
 							<div class="detail-item">
-								<schmancy-typography type="label" token="sm" class="text-surface-on-variant">Date</schmancy-typography>
+								<schmancy-typography type="label" token="sm" class="text-surface-on-variant mb-1"
+									>Date</schmancy-typography
+								>
 								<schmancy-typography type="body" weight="medium">${dateFormatted}</schmancy-typography>
 							</div>
 							<div class="detail-item">
-								<schmancy-typography type="label" token="sm" class="text-surface-on-variant">Time</schmancy-typography>
+								<schmancy-typography type="label" token="sm" class="text-surface-on-variant mb-1"
+									>Time</schmancy-typography
+								>
 								<schmancy-typography type="body" weight="medium">${timeFormatted}</schmancy-typography>
 							</div>
 							<div class="detail-item">
-								<schmancy-typography type="label" token="sm" class="text-surface-on-variant">Court</schmancy-typography>
+								<schmancy-typography type="label" token="sm" class="text-surface-on-variant mb-1"
+									>Court</schmancy-typography
+								>
 								<schmancy-typography type="body" weight="medium">
 									${this.selectedCourt?.name || 'Court'}
 								</schmancy-typography>
 							</div>
 							<div class="detail-item">
-								<schmancy-typography type="label" token="sm" class="text-surface-on-variant">Total</schmancy-typography>
+								<schmancy-typography type="label" token="sm" class="text-surface-on-variant mb-1"
+									>Total</schmancy-typography
+								>
 								<schmancy-typography type="body" weight="medium" class="text-primary-default">
 									€${this.booking.price.toFixed(2)}
 								</schmancy-typography>
 							</div>
 						</div>
 					</schmancy-grid>
+				</div>
 
-					<!-- Actions -->
-					<div class="actions ">
-						<schmancy-button variant="filled" href=${calendarUrl} download="tennis-court-booking.ics">
-							<schmancy-icon>calendar_month</schmancy-icon>
-							Calendar
-						</schmancy-button>
-						<schmancy-button variant="outlined" @click=${() => this.shareBooking()}>
-							<schmancy-icon>share</schmancy-icon>
-							Share
-						</schmancy-button>
-						<schmancy-button variant="filled tonal" @click=${() => this.onNewBooking?.()}> Book Again </schmancy-button>
-					</div>
+				<!-- Actions -->
+				<div class="actions">
+					<schmancy-button variant="filled" href=${calendarUrl} download="tennis-court-booking.ics">
+						<schmancy-icon>calendar_month</schmancy-icon>
+						Add to Calendar
+					</schmancy-button>
+					<schmancy-button variant="outlined" @click=${() => this.shareBooking()}>
+						<schmancy-icon>share</schmancy-icon>
+						Share
+					</schmancy-button>
+					<schmancy-button variant="filled tonal" @click=${() => this.onNewBooking?.()}>
+						<schmancy-icon>add</schmancy-icon>
+						Book Again
+					</schmancy-button>
 				</div>
 			</schmancy-surface>
 		`

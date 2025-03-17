@@ -24,6 +24,7 @@
 		"lit": "^3.2.1",
 		"npm-check-updates": "^17.1.15",
 		"promise-polyfill": "^8.3.0",
+		"qrcode-generator": "^1.4.4",
 		"redux-persist": "^6.0.0",
 		"rxjs": "^7.8.2",
 		"stripe": "^17.7.0",
