@@ -634,8 +634,8 @@ export class CourtBookingSystem extends $LitElement() {
 						<div
 							class="fixed inset-0 z-50 bg-surface-container bg-opacity-60 backdrop-blur-sm flex items-center justify-center"
 						>
-							<schmancy-surface type="container" rounded="all" class="p-6 shadow-lg w-full max-w-md">
-								<schmancy-flex justify="center" flow="col" gap="md" align="center">
+							<schmancy-surface type="container" rounded="all" class="p-6  w-full max-w-md">
+								<schmancy-flex justify="center" flow="row" gap="md" align="center">
 									<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
 									<schmancy-typography type="title" token="sm"
 										>Assigning the best court for your booking...</schmancy-typography
