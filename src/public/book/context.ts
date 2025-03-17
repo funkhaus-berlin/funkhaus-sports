@@ -6,6 +6,7 @@ export interface Booking {
 	userId: string
 	userName: string
 	courtId: string
+	venueId: string // Add this new field
 	startTime: string
 	endTime: string
 	price: number
@@ -44,6 +45,7 @@ export const bookingContext = createContext<Booking>(
 			postalCode: '',
 			country: '',
 		},
+		venueId: '', // Add this new field
 	},
 	'session',
 	'booking',

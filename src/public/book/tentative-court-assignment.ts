@@ -1,12 +1,12 @@
 // src/public/book/tentative-court-assignment.ts
 
-import { firstValueFrom, catchError, of } from 'rxjs'
-import { Court } from 'src/db/courts.collection'
+import { catchError, firstValueFrom, of } from 'rxjs'
 import {
 	CourtAssignmentService,
 	CourtAssignmentStrategy,
 	CourtPreferences,
 } from 'src/bookingServices/court-assignment.service'
+import { Court } from 'src/db/courts.collection'
 
 /**
  * Handles tentative court assignment before duration selection

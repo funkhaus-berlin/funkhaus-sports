@@ -304,6 +304,7 @@ export class CourtBookingSystem extends $LitElement() {
 			bookingContext.set({
 				courtId: result.court!.id,
 				endTime: result.endTime,
+				venueId: result.court!.venueId, // Add venueId to booking context
 				price: result.price,
 			})
 
@@ -477,8 +478,7 @@ export class CourtBookingSystem extends $LitElement() {
 				></duration-selection-step>
 			`,
 			() => html`
-				<booking-summery .booking=${this.booking} .selectedCourt=${this.selectedCourt} .duration=${this.duration}>
-				</booking-summery>
+				<booking-summery .booking=${this.booking} .selectedCourt=${this.selectedCourt}> </booking-summery>
 
 				<funkhaus-checkout-form
 					.booking=${this.booking}

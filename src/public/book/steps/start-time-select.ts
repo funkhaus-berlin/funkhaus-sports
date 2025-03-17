@@ -244,6 +244,15 @@ export class TimeSelectionStep extends $LitElement() {
 				if (venue) {
 					this.selectedVenue = venue
 					this.operatingHours = venue.operatingHours
+					// Update booking context with venueId
+					if (this.booking.venueId !== venueId) {
+						bookingContext.set(
+							{
+								venueId: venueId,
+							},
+							true,
+						)
+					}
 					// Reset the operating hours display cache when venue changes
 					if (this._lastVenueId !== venueId || this._lastSelectedDate !== date) {
 						this._operatingHoursDisplay = null

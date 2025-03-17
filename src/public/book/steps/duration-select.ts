@@ -4,13 +4,15 @@ import dayjs from 'dayjs'
 import { css, html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { debounceTime, fromEvent, takeUntil } from 'rxjs'
-import { CourtAssignmentService } from 'src/bookingServices/court-assignment.service'
+import { venuesContext } from 'src/admin/venues/venue-context'
 import { AvailabilityService } from 'src/bookingServices/availability'
+import { CourtAssignmentService } from 'src/bookingServices/court-assignment.service'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
+import { OperatingHours, Venue } from 'src/db/venue-collection'
 import { courtsContext } from '../../../admin/venues/courts/context'
 import { Court } from '../../../db/courts.collection'
-import { TentativeCourtAssignment } from '../tentative-court-assignment'
 import { Booking, bookingContext } from '../context'
+import { TentativeCourtAssignment } from '../tentative-court-assignment'
 import { Duration } from '../types'
 
 /**
@@ -30,6 +32,7 @@ export class DurationSelectionStep extends $LitElement(css`
 	@property({ type: Number }) selectedDuration!: number
 	@property({ type: Boolean }) active = true
 	@property({ type: Boolean }) hidden = false
+	@state() selectedVenue?: Venue = undefined
 
 	// Data binding to booking context
 	@select(bookingContext) booking!: Booking
@@ -264,29 +267,87 @@ export class DurationSelectionStep extends $LitElement(css`
 	/**
 	 * Update prices based on the tentatively assigned court
 	 */
+	/**
+	 * Update durations based on venue operating hours
+	 */
 	private updateDurationPrices(court: Court) {
 		if (!court || !this.booking.startTime) return
 
-		// Get the updated durations with prices based on court
-		const updatedDurations = pricingService.getStandardDurationPrices(
-			court,
-			this.booking.startTime,
-			this.booking.userId,
-		)
+		// Get venue directly from venueId in booking context
+		const venue = this.booking.venueId
+			? venuesContext.value.get(this.booking.venueId)
+			: venuesContext.value.get(court.venueId)
 
-		// Find the most popular/recommended duration (typically 1 hour)
-		const recommendedDuration = updatedDurations.find(d => d.value === 60) || updatedDurations[1]
+		// Get the day of week for operating hours
+		const startTime = dayjs(this.booking.startTime)
+		const dayOfWeek = startTime.format('dddd').toLowerCase()
+		const operatingHours = venue?.operatingHours?.[dayOfWeek as keyof OperatingHours]
+
+		// Calculate available time until closing
+		let maxAvailableMinutes = 180 // Default max (3 hours)
+
+		if (operatingHours) {
+			// Parse closing time
+			const [closeHour, closeMinute] = operatingHours.close.split(':').map(Number)
+			const closeTimeMinutes = closeHour * 60 + (closeMinute || 0)
+
+			// Calculate current time in minutes since midnight
+			const currentHour = startTime.hour()
+			const currentMinute = startTime.minute()
+			const currentTimeMinutes = currentHour * 60 + currentMinute
+
+			// Calculate available minutes until closing
+			maxAvailableMinutes = closeTimeMinutes - currentTimeMinutes
+
+			// Apply a small buffer to ensure bookings don't end exactly at closing time
+			maxAvailableMinutes -= 15
+
+			// Ensure we have a positive value
+			maxAvailableMinutes = Math.max(0, maxAvailableMinutes)
+		}
+
+		// Get standard durations from pricing service
+		let standardDurations = pricingService.getStandardDurationPrices(court, this.booking.startTime, this.booking.userId)
+
+		// Filter durations to only include those that fit within operating hours
+		standardDurations = standardDurations.filter(duration => duration.value <= maxAvailableMinutes)
+
+		// If no durations fit, add at least a 30-minute option if possible
+		if (standardDurations.length === 0 && maxAvailableMinutes >= 30) {
+			const minDuration = {
+				label: '30m',
+				value: 30,
+				price: Math.round(court.pricing?.baseHourlyRate / 2) || 15,
+			}
+			standardDurations = [minDuration]
+		}
+
+		// Find the recommended duration (typically 1 hour or closest available)
+		const recommendedDuration =
+			standardDurations.find(d => d.value === 60) || standardDurations[Math.floor(standardDurations.length / 2)]
+
 		if (recommendedDuration) {
 			this.recommendedDuration = recommendedDuration.value
 		}
 
 		// Update durations
-		this.durations = updatedDurations
+		this.durations = standardDurations
 		this.requestUpdate()
 
 		// Log for debugging
-		console.log('Updated duration prices based on court:', court.name)
-		console.log('Recommended duration:', this.recommendedDuration)
+		console.log('Available durations based on venue hours:', standardDurations)
+		console.log('Max available minutes until closing:', maxAvailableMinutes)
+	}
+
+	/**
+	 * Helper to get venue for a court
+	 */
+	private getVenueForCourt(court: Court): Venue | undefined {
+		// Get venue from context using court's venueId
+		if (court.venueId && venuesContext.value) {
+			return venuesContext.value.get(court.venueId)
+		}
+		return undefined
 	}
 
 	/**

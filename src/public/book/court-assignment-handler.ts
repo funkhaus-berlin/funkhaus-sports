@@ -22,6 +22,7 @@ export interface CourtAssignmentResult {
 	price?: number
 	endTime?: string
 	error?: string
+	venueId?: string
 }
 
 /**
@@ -167,6 +168,7 @@ export class CourtAssignmentHandler {
 			return {
 				success: true,
 				court: result.selectedCourt,
+				venueId: result.selectedCourt.venueId, // Add venueId to result
 				price,
 				endTime,
 			}
