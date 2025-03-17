@@ -485,17 +485,17 @@ export class CheckoutForm extends $LitElement() {
 						></schmancy-input>
 					</schmancy-grid>
 
-					<schmancy-input
-						class="px-2"
-						autocomplete="email"
-						.value=${this.booking.customerEmail || ''}
-						required
-						.error=${this.formValidity['customerEmail'] === false || this.formValidity['emailFormat'] === false}
-						type="email"
-						placeholder="Email Address"
-						@change=${(e: any) => this.updateBookingField('customerEmail', e.detail.value)}
-					></schmancy-input>
-
+					<schmancy-grid class="px-2">
+						<schmancy-input
+							autocomplete="email"
+							.value=${this.booking.customerEmail || ''}
+							required
+							.error=${this.formValidity['customerEmail'] === false || this.formValidity['emailFormat'] === false}
+							type="email"
+							placeholder="Email Address"
+							@change=${(e: any) => this.updateBookingField('customerEmail', e.detail.value)}
+						></schmancy-input>
+					</schmancy-grid>
 					<!-- Billing Information -->
 					<schmancy-grid class="px-2" gap="sm">
 						<schmancy-input
