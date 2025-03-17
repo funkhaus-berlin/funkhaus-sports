@@ -1,6 +1,6 @@
 import { SchmancyTheme } from '@mhmo91/schmancy'
 import { Appearance, Stripe, StripeElements, loadStripe } from '@stripe/stripe-js'
-import { BehaviorSubject, from, map, switchMap, tap } from 'rxjs'
+import { BehaviorSubject, from, map, switchMap } from 'rxjs'
 export const PUBLISHABLE_KEY = import.meta.env.DEV
 	? 'pk_test_51R2BaDDCyjpKeQTnOtoBfOdXM8ZoXzo6Ou8r9SyJLvEZUkWqiJLz50PXkfhhvzPfxFVcysLd0RNJz5CMJV3Jf4uU00JAAIVSYk'
 	: 'pk_live_51Om1siKOjLfImK4i9mR0y7bBT9o0dWqGOLjNpSJgkewp0Jz4Hfgpiyv4f2IlcZlLky1dKH3YkYub6FSEkpgAATUD00FsCFDsmV'
@@ -10,7 +10,6 @@ export const stripePromise: Promise<Stripe | null> = loadStripe(PUBLISHABLE_KEY,
 
 export const $stripeElements = new BehaviorSubject<StripeElements | undefined>(undefined)
 export const $stripe = new BehaviorSubject<number>(100)
-
 export function createPaymentIntent(body: any) {
 	return from(
 		fetch('/api/create-payment-intent', {
@@ -21,13 +20,22 @@ export function createPaymentIntent(body: any) {
 			body: JSON.stringify(body),
 		}),
 	).pipe(
-		tap(res => {
+		switchMap(res => {
 			if (!res.ok) {
 				console.error('Payment intent creation failed:', res.status, res.statusText)
+				// Return the error response as JSON if possible, otherwise create an error object
+				return res.json().catch(() => ({
+					error: `Payment failed with status: ${res.status} ${res.statusText}`,
+				}))
 			}
+			return res.json()
 		}),
-		switchMap(res => res.json()),
-		map((body: { orderID: string; clientSecret: string; paymentIntentId: string }) => body),
+		map(responseBody => {
+			if (responseBody.error) {
+				throw new Error(responseBody.error)
+			}
+			return responseBody as { orderID: string; clientSecret: string; paymentIntentId: string }
+		}),
 	)
 }
 

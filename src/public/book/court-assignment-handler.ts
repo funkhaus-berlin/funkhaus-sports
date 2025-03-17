@@ -72,16 +72,25 @@ export class CourtAssignmentHandler {
 			if (tentativeCourt) {
 				// Check if the previously tentatively assigned court is still available
 				// Access availabilityService directly, not through courtAssignmentService
-				const isTentativeCourtAvailable = await firstValueFrom(
-					this.availabilityService
-						.isCourtAvailableForTimeRange(booking.date, tentativeCourt.id, startTime.toISOString(), endTime)
-						.pipe(
-							catchError(error => {
-								console.warn('Error checking tentative court availability:', error)
-								return of(false)
-							}),
-						),
-				)
+				let isTentativeCourtAvailable: boolean
+
+				try {
+					// Check if the previously tentatively assigned court is still available
+					isTentativeCourtAvailable = await firstValueFrom(
+						this.availabilityService
+							.isCourtAvailableForTimeRange(booking.date, tentativeCourt.id, startTime.toISOString(), endTime)
+							.pipe(
+								catchError(error => {
+									console.warn('Error checking tentative court availability:', error)
+									return of(false)
+								}),
+							),
+					)
+				} catch (error) {
+					console.error('Unexpected error checking court availability:', error)
+					// Fall back to normal court assignment
+					isTentativeCourtAvailable = false
+				}
 
 				if (isTentativeCourtAvailable) {
 					// Use the tentative court directly if it's available

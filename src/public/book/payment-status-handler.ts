@@ -32,8 +32,11 @@ export class PaymentStatusHandler {
 		if (!clientSecret || !bookingId) {
 			// Check if we have just a booking ID - might be a direct navigation to confirmation
 			if (bookingId) {
-				// Redirect to dedicated confirmation route
-				this.redirectToConfirmationRoute(bookingId)
+				// Check if we're already on the confirmation route to avoid redirect loops
+				if (!window.location.pathname.includes('/booking/confirmation')) {
+					// Redirect to dedicated confirmation route
+					this.redirectToConfirmationRoute(bookingId)
+				}
 				return of({ processed: true, success: true, bookingId })
 			}
 			return of({ processed: false, success: false })

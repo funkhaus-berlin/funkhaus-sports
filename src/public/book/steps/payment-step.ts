@@ -69,6 +69,20 @@ export class CheckoutForm extends $LitElement() {
 
 		// Cancel any ongoing payment processing
 		this.paymentService.cancelProcessing()
+
+		// Clean up Stripe Elements if they exist
+		if (this.elements) {
+			// Unmount any created elements
+			try {
+				const elementContainer = document.getElementById('stripe-element')
+				if (elementContainer) {
+					// Clear the element's content
+					elementContainer.innerHTML = ''
+				}
+			} catch (error) {
+				console.error('Error cleaning up Stripe elements:', error)
+			}
+		}
 	}
 
 	// Setup methods

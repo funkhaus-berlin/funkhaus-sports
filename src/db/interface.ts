@@ -3,7 +3,6 @@
  */
 export class BookingFormData {
 	email: string
-	repeatEmail: string
 	name: string
 	phoneNumber: string
 	address: string
@@ -13,7 +12,6 @@ export class BookingFormData {
 
 	constructor() {
 		this.email = ''
-		this.repeatEmail = ''
 		this.name = ''
 		this.phoneNumber = ''
 		this.address = ''
@@ -23,18 +21,10 @@ export class BookingFormData {
 	}
 
 	/**
-	 * Validates email consistency
-	 */
-	validateEmails(): boolean {
-		return this.email === this.repeatEmail
-	}
-
-	/**
 	 * Validates all form data
 	 */
 	validateData(): boolean {
 		return (
-			this.validateEmails() &&
 			this.name.trim() !== '' &&
 			this.phoneNumber.trim() !== '' &&
 			this.address.trim() !== '' &&

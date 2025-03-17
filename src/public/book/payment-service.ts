@@ -119,7 +119,6 @@ export class PaymentService {
 
 				return from(createPaymentIntent(paymentData)).pipe(
 					switchMap(response => {
-						const paymentIntentId = response.paymentIntentId
 						const clientSecret = response.clientSecret
 
 						if (!stripe || !elements) {

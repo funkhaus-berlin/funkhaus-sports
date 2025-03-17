@@ -157,11 +157,23 @@ export class TimeSelectionStep extends $LitElement() {
 
 			if (savedValue) {
 				const parsedValue = parseInt(savedValue, 10)
-				if (!isNaN(parsedValue)) {
+				if (!isNaN(parsedValue) && savedDate) {
 					this._value = parsedValue
+
+					// Update booking context with the restored time
+					const selectedDate = dayjs(savedDate)
+					const hour = Math.floor(parsedValue / 60)
+					const minute = parsedValue % 60
+					const startTime = selectedDate.hour(hour).minute(minute).toISOString()
+
+					// Only update if booking context doesn't already have this value
+					bookingContext.$.pipe(take(1)).subscribe(booking => {
+						if (booking.startTime !== startTime) {
+							bookingContext.set({ startTime }, true)
+						}
+					})
 				}
 			}
-
 			if (savedVenueId && this.venues) {
 				this.selectedVenue = this.venues.get(savedVenueId)
 				if (this.selectedVenue) {
