@@ -259,6 +259,9 @@ export class CourtBookingSystem extends $LitElement() {
 		this.navigateToStep(BookingStep.Duration)
 	}
 
+	// Updated method for CourtBookingSystem class
+
+	// Use a more robust approach to get the tentative court
 	private async handleDurationSelect(duration: Duration): Promise<void> {
 		this.errorHandler.clearError()
 		this.error = null
@@ -267,12 +270,23 @@ export class CourtBookingSystem extends $LitElement() {
 		this.bookingInProgress = true
 
 		try {
+			// Get reference to the tentatively assigned court from the duration component
+			const durationStep = this.shadowRoot?.querySelector('duration-selection-step') as any
+			let tentativeAssignedCourt = null
+
+			// Safely check if we can access the selectedCourt property
+			if (durationStep && typeof durationStep.selectedCourt !== 'undefined') {
+				tentativeAssignedCourt = durationStep.selectedCourt
+				console.log('Using tentative court from duration step:', tentativeAssignedCourt?.name)
+			}
+
 			// Assign court based on preferences and availability
 			const result = await this.courtAssignmentHandler.assignCourt(
 				this.booking,
 				duration.value,
 				Array.from(this.availableCourts.values()),
 				this.courtPreferences,
+				tentativeAssignedCourt,
 			)
 
 			if (!result.success) {

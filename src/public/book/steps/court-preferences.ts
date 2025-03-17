@@ -6,6 +6,7 @@ import { classMap } from 'lit/directives/class-map.js'
 import { styleMap } from 'lit/directives/style-map.js'
 import { CourtPreferences } from 'src/bookingServices/court-assignment.service'
 import { Booking, bookingContext } from '../context'
+import { PreferencesHelper } from '../preferences-helper'
 
 // Context key for storing court preferences
 const PREFERENCES_KEY = 'courtPreferences'
@@ -318,8 +319,8 @@ export class CourtPreferencesStep extends $LitElement(css`
 		// Update local state
 		this.localPreferences = newPreferences
 
-		// Save to storage
-		this.savePreferencesToStorage(newPreferences)
+		// Save to storage using our new helper
+		PreferencesHelper.savePreferences(newPreferences)
 
 		// Add subtle animation to selected option
 		this._animateSelectedOption(updates)

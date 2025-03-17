@@ -481,7 +481,6 @@ export class DateSelectionStep extends $LitElement(css`
 			'max-w-full': true,
 			'bg-surface-low': true,
 			'rounded-lg': true,
-			'shadow-sm': true,
 			'transition-all': true,
 			'duration-300': true,
 			'overflow-hidden': true,
@@ -503,7 +502,7 @@ export class DateSelectionStep extends $LitElement(css`
 					<!-- Active (Expanded) View -->
 					<div class="active-view p-4">
 						<!-- Days of week header -->
-						<div class="grid grid-cols-7 gap-2 mb-3 pb-2 border-b border-outline-variant">
+						<div class="grid grid-cols-7 gap-2 mb-3 pb-2 border-b border-outlineVariant">
 							${daysOfWeek.map(
 								day => html` <div class="text-center text-xs font-semibold text-primary-default">${day}</div> `,
 							)}
