@@ -408,8 +408,12 @@ export class CourtBookingSystem extends $LitElement() {
 	/**
 	 * Handle booking completion
 	 */
+	/**
+	 * Handle booking completion
+	 */
 	private handleBookingComplete(e: CustomEvent): void {
-		this.bookingComplete = true
+		// Show temporary processing overlay
+		this.bookingInProgress = true
 
 		// Update booking with data from event
 		if (e.detail?.booking) {
@@ -431,7 +435,20 @@ export class CourtBookingSystem extends $LitElement() {
 		url.searchParams.delete('step')
 		url.searchParams.set('confirmation', 'true')
 
-		window.history.pushState({ step: 'confirmation' }, '', url.toString())
+		// Use requestAnimationFrame to ensure smoother transitions
+		requestAnimationFrame(() => {
+			// Push state first
+			window.history.pushState({ step: 'confirmation' }, '', url.toString())
+
+			// Then set booking complete with slight delay to avoid rendering issues
+			setTimeout(() => {
+				this.bookingComplete = true
+				this.bookingInProgress = false
+
+				// Force re-render
+				this.requestUpdate()
+			}, 100)
+		})
 	}
 
 	// Helper methods
@@ -446,6 +463,7 @@ export class CourtBookingSystem extends $LitElement() {
 		this.courtPreferences = {}
 
 		// Reset booking context
+		bookingContext.clear()
 		bookingContext.set({
 			id: '',
 			userId: '',
@@ -611,12 +629,21 @@ export class CourtBookingSystem extends $LitElement() {
 				${when(
 					this.bookingInProgress,
 					() => html`
-						<schmancy-busy class="z-50">
-							<schmancy-flex flow="row" gap="sm" align="center">
-								<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
-								<schmancy-typography>Assigning the best court for your booking...</schmancy-typography>
-							</schmancy-flex>
-						</schmancy-busy>
+						<div
+							class="fixed inset-0 z-50 bg-surface-container bg-opacity-60 backdrop-blur-sm flex items-center justify-center"
+						>
+							<schmancy-surface type="container" rounded="all" class="p-6 shadow-lg w-full max-w-md">
+								<schmancy-flex justify="center" flow="col" gap="md" align="center">
+									<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
+									<schmancy-typography type="title" token="sm"
+										>Assigning the best court for your booking...</schmancy-typography
+									>
+									<schmancy-typography type="body" token="sm" class="text-center text-surface-on-variant">
+										We're finding the perfect court for you based on your preferences and availability.
+									</schmancy-typography>
+								</schmancy-flex>
+							</schmancy-surface>
+						</div>
 					`,
 				)}
 			</schmancy-surface>

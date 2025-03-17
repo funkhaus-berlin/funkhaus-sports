@@ -5,7 +5,7 @@ import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import { catchError, finalize, from, of, switchMap } from 'rxjs'
+import { catchError, finalize, from, of, switchMap, Subscription } from 'rxjs'
 import countries from 'src/assets/countries'
 import { BookingService } from 'src/bookingServices/booking.service'
 import { Court } from 'src/db/courts.collection'
@@ -32,6 +32,8 @@ export class CheckoutForm extends $LitElement() {
 	private bookingService = new BookingService()
 	private stripe: Stripe | null = null
 	private elements?: StripeElements
+	private _elementsSubscription?: Subscription
+	private _processingLock: any = null
 
 	// For error handling
 	paymentIntentId?: string
@@ -51,11 +53,26 @@ export class CheckoutForm extends $LitElement() {
 		}
 
 		// Initialize Stripe elements
-		$stripeElements.subscribe(elements => {
+		this._elementsSubscription = $stripeElements.subscribe(elements => {
 			this.elements = elements
 		})
 
 		this.initializeStripe()
+	}
+
+	disconnectedCallback(): void {
+		super.disconnectedCallback()
+
+		// Clean up Stripe elements
+		if (this._elementsSubscription) {
+			this._elementsSubscription.unsubscribe()
+		}
+
+		// Clear processing lock to prevent state updates after disconnection
+		this._processingLock = null
+
+		// Allow any pending processing to complete without updating UI
+		this.processing = false
 	}
 
 	/**
@@ -148,6 +165,13 @@ export class CheckoutForm extends $LitElement() {
 	 * Process payment with Stripe and create booking
 	 */
 	private processStripePayment(userId: string) {
+		// Set processing to true immediately and lock it
+		this.processing = true
+
+		// Create a single-use lockFlag to prevent flickering during processing
+		const lockFlag = {}
+		this._processingLock = lockFlag
+
 		// Use existing ID or generate new one
 		const bookingId = this.booking.id || `booking-${this.generateUUID()}`
 
@@ -171,8 +195,11 @@ export class CheckoutForm extends $LitElement() {
 		from(this.bookingService.createBooking(bookingData))
 			.pipe(
 				switchMap(createdBooking => {
-					console.log('Booking created:', createdBooking)
-					bookingContext.set(createdBooking)
+					// Only update if we haven't navigated away
+					if (this._processingLock === lockFlag) {
+						console.log('Booking created:', createdBooking)
+						bookingContext.set(createdBooking)
+					}
 
 					return from(createPaymentIntent(paymentData)).pipe(
 						switchMap(response => {
@@ -188,14 +215,30 @@ export class CheckoutForm extends $LitElement() {
 				}),
 				catchError(error => {
 					console.error('Payment or booking error:', error)
-					this.setError(this.getReadableErrorMessage(error))
+
+					// Only update error state if we haven't navigated away
+					if (this._processingLock === lockFlag) {
+						this.setError(this.getReadableErrorMessage(error))
+					}
+
 					return of(null)
 				}),
 				finalize(() => {
-					this.processing = false
+					// Only update processing state if we haven't navigated away
+					if (this._processingLock === lockFlag) {
+						// Add a small delay before toggling processing state to prevent flickering
+						setTimeout(() => {
+							if (this._processingLock === lockFlag) {
+								this.processing = false
+							}
+						}, 300)
+					}
 				}),
 			)
 			.subscribe(result => {
+				// Only handle result if we haven't navigated away
+				if (this._processingLock !== lockFlag) return
+
 				if (result?.error) {
 					this.setError(this.getReadableErrorMessage(result.error))
 				} else if (!result) {
@@ -428,21 +471,23 @@ export class CheckoutForm extends $LitElement() {
 
 	render() {
 		return html`
-			<schmancy-form @submit=${this.processPayment}>
+			<schmancy-form @submit=${this.processPayment} ?inert=${this.processing}>
 				${when(
 					this.processing,
 					() => html`
-						<schmancy-busy class="z-50">
-							<schmancy-flex flow="row" gap="sm" align="center" class="p-6 bg-surface-container rounded-lg shadow-md">
+						<div
+							class="absolute inset-0 z-50 bg-surface-container bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
+						>
+							<schmancy-flex flow="row" gap="sm" align="center" class="p-6 bg-surface-container rounded-lg shadow-lg">
 								<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
-								<schmancy-flex flow="col" gap="sm">
+								<schmancy-flex flow="col" gap="sm" class="max-w-md">
 									<schmancy-typography type="title" token="sm">Processing Payment</schmancy-typography>
 									<schmancy-typography type="body" token="sm">
 										Please don't close this window. We're processing your payment and securing your court booking.
 									</schmancy-typography>
 								</schmancy-flex>
 							</schmancy-flex>
-						</schmancy-busy>
+						</div>
 					`,
 				)}
 
@@ -571,7 +616,7 @@ export class CheckoutForm extends $LitElement() {
 							</schmancy-typography>
 							<schmancy-typography class="mb-0" type="label"> Includes: 7% VAT </schmancy-typography>
 						</schmancy-grid>
-						<schmancy-button class="h-[3rem] pb-2" type="submit" variant="filled">
+						<schmancy-button class="h-[3rem] pb-2" type="submit" variant="filled" ?disabled=${this.processing}>
 							<schmancy-typography class="px-4" type="title" token="lg">
 								Pay &euro;${this.booking.price.toFixed(2)}
 							</schmancy-typography>

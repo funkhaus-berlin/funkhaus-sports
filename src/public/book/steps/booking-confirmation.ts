@@ -2,9 +2,11 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { html } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
-import { Court } from 'src/db/courts.collection'
-import { Booking } from '../context'
 import qrcode from 'qrcode-generator'
+import { courtsContext } from 'src/admin/venues/courts/context'
+import { venuesContext } from 'src/admin/venues/venue-context'
+import { Court } from 'src/db/courts.collection'
+import { Booking, bookingContext } from '../context'
 @customElement('booking-confirmation')
 export class BookingConfirmation extends $LitElement() {
 	@property({ type: Object }) booking!: Booking
@@ -84,7 +86,13 @@ export class BookingConfirmation extends $LitElement() {
 		const qrDataUrl = await this.getQRCodeDataUrl()
 		const link = document.createElement('a')
 		link.href = qrDataUrl
-		link.download = `booking-qr-${this.booking.id?.substring(0, 8) || 'code'}.png`
+		console.log(this.booking.id)
+		const court = courtsContext.value.get(this.booking.courtId)
+		const venue = venuesContext.value.get(court?.venueId || '')
+		const formattedDate = dayjs(this.booking.startTime).format('dddd MMM @HH mm A')
+		const venueName = (venue?.name || 'venue').replace(/[^a-z0-9]/gi, '-').toLowerCase()
+		const courtName = (court?.name || 'court').replace(/[^a-z0-9]/gi, '-').toLowerCase()
+		link.download = `booking-${venueName}-${courtName}-${formattedDate}.png`
 		document.body.appendChild(link)
 		link.click()
 		document.body.removeChild(link)
@@ -137,22 +145,6 @@ export class BookingConfirmation extends $LitElement() {
 					margin: 0 auto;
 				}
 
-				.qr-download-btn {
-					position: absolute;
-					bottom: -8px;
-					right: -8px;
-					border-radius: 50%;
-					width: 36px;
-					height: 36px;
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					background-color: var(--schmancy-surface-high);
-					box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-					cursor: pointer;
-					transition: all 0.2s ease;
-				}
-
 				.qr-download-btn:hover {
 					background-color: var(--schmancy-primary-container);
 				}
@@ -187,15 +179,19 @@ export class BookingConfirmation extends $LitElement() {
 											height="150"
 											class="mx-auto mb-3"
 										/>
-										<div class="qr-download-btn" @click=${() => this.downloadQRCode()} title="Download QR Code">
-											<schmancy-icon size="small">download</schmancy-icon>
+										<div
+											class="absolute bottom-0 right-2"
+											@click=${() => this.downloadQRCode()}
+											title="Download QR Code"
+										>
+											<schmancy-icon-button class="animate-bounce" variant="filled">download</schmancy-icon-button>
 										</div>
 									</div>
 							  `
 							: ''}
-						<schmancy-typography type="label" token="sm" class="text-surface-on-variant mt-3">
+						<!-- <schmancy-typography type="label" token="sm" class="text-surface-on-variant mt-3">
 							Booking Reference: #${this.booking.id?.substring(0, 8).toUpperCase() || 'N/A'}
-						</schmancy-typography>
+						</schmancy-typography> -->
 					</div>
 
 					<!-- Primary Details -->
@@ -243,7 +239,13 @@ export class BookingConfirmation extends $LitElement() {
 						<schmancy-icon>share</schmancy-icon>
 						Share
 					</schmancy-button>
-					<schmancy-button variant="filled tonal" @click=${() => this.onNewBooking?.()}>
+					<schmancy-button
+						variant="filled tonal"
+						@click=${() => {
+							bookingContext.clear()
+							this.onNewBooking?.()
+						}}
+					>
 						<schmancy-icon>add</schmancy-icon>
 						Book Again
 					</schmancy-button>
