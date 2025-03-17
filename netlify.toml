@@ -22,7 +22,6 @@
   status = 200
   force = true
 
-
 [[redirects]]
   from = "/.well-known/apple-developer-merchantid-domain-association"
   to = "/.well-known/apple-developer-merchantid-domain-association"

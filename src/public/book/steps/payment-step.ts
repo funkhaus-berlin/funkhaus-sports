@@ -559,7 +559,7 @@ export class CheckoutForm extends $LitElement() {
 					</schmancy-surface>
 
 					<!-- Terms & Submit Button -->
-					<schmancy-grid class="fixed bottom-0 shadow-2 z-10 py-3 bg-surface-lowest" gap="sm" justify="end">
+					<schmancy-grid class="fixed bottom-0 shadow-2 z-10 py-3 bg-surface-lowest px-2" gap="sm" justify="end">
 						<schmancy-typography type="label" class="col-span-1" align="left">
 							<span>
 								By clicking Pay you agree to
