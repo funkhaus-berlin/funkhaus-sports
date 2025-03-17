@@ -14,11 +14,11 @@ import { CourtForm } from './court-form'
 // --- Court Management Component ---
 @customElement('funkhaus-venue-courts')
 export class VenueCourts extends $LitElement() {
-	@state()
+	@select(courtsContext)
 	courts!: Map<string, Court>
 
-	@select(venuesContext, (venues: Map<string, Venue>) => Array.from(venues.values()))
-	venues: Venue[] = []
+	@select(venuesContext)
+	venues!: Map<string, Venue>
 
 	@property({ type: String }) venueId: string = ''
 	@state() loading: boolean = true
@@ -39,7 +39,7 @@ export class VenueCourts extends $LitElement() {
 			name: 'Venue',
 			align: 'left',
 			render: (court: Court) => {
-				const venue = this.venues.find(v => v.id === court.venueId)
+				const venue = Array.from(this.venues.values()).find(v => v.id === court.venueId)
 				return venue ? venue.name : 'Unknown Venue'
 			},
 		},
