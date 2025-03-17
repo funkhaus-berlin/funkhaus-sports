@@ -179,14 +179,10 @@ export class BookingConfirmation extends $LitElement() {
 
 				<!-- Add to Calendar and Share Section -->
 				<div class="flex flex-wrap gap-4 justify-center mb-6">
-					<a
-						href=${calendarUrl}
-						download="tennis-court-booking.ics"
-						class="inline-flex items-center gap-2 bg-primary-container text-primary-on px-4 py-2 rounded-full"
-					>
+					<schmancy-button variant="filled" href=${calendarUrl} download="tennis-court-booking.ics">
 						<schmancy-icon>calendar_month</schmancy-icon>
 						Add to Calendar
-					</a>
+					</schmancy-button>
 
 					<schmancy-button variant="filled tonal" @click=${() => this.shareBooking()}>
 						<schmancy-icon>share</schmancy-icon>
@@ -222,7 +218,7 @@ export class BookingConfirmation extends $LitElement() {
 					: ''}
 
 				<!-- What's Next Section -->
-				<div class="bg-primary-container text-primary-on p-4 rounded-lg mb-6">
+				<div class="bg-surface-default text-primary-on p-4 rounded-lg mb-6">
 					<schmancy-typography type="title" token="sm" class="mb-2">What's Next?</schmancy-typography>
 					<ul class="list-disc ml-6 space-y-2">
 						<li>Please arrive 10-15 minutes before your booking time</li>

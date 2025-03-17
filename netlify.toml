@@ -11,16 +11,18 @@
   force = true
 
 [[redirects]]
-  from = "/api/stripe-webhook-handler"
-  to = "/.netlify/functions/stripe-webhook-handler"
-  status = 200
-  force = true
-
-[[redirects]]
   from = "/api/payment-status"
   to = "/.netlify/functions/payment-status"
   status = 200
   force = true
+
+
+[[redirects]]
+  from = "/api/schedule-availability"
+  to = "/.netlify/functions/schedule-availability"
+  status = 200
+  force = true
+
 
 [[redirects]]
   from = "/.well-known/apple-developer-merchantid-domain-association"

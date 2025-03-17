@@ -530,7 +530,9 @@ export class CourtBookingSystem extends $LitElement() {
 					.value=${this.booking?.startTime
 						? dayjs(this.booking.startTime).hour() * 60 + dayjs(this.booking.startTime).minute()
 						: undefined}
-					@change=${(e: CustomEvent<TimeSlot>) => this.handleTimeSlotSelect(e.detail)}
+					@change=${(e: CustomEvent<TimeSlot>) => {
+						this.handleTimeSlotSelect(e.detail)
+					}}
 				></time-selection-step>
 
 				<court-preferences-step

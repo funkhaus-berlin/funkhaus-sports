@@ -1,24 +1,11 @@
 // src/public/book/booking-confirmation-route.ts
-import { $notify, area, fullHeight } from '@mhmo91/schmancy'
+import { $notify, area, fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { html, PropertyValues } from 'lit'
+import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
-import {
-	BehaviorSubject,
-	catchError,
-	filter,
-	finalize,
-	from,
-	map,
-	Observable,
-	of,
-	switchMap,
-	take,
-	takeUntil,
-	timer,
-} from 'rxjs'
+import { filter, map, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
-import { BookingService } from 'src/bookingServices/booking.service'
+import { BookingsDB } from 'src/db/bookings.collection'
 import { Court } from 'src/db/courts.collection'
 import { VenueLandingPage } from '../venues/venues'
 
@@ -34,11 +21,9 @@ export class BookingConfirmationRoute extends $LitElement() {
 	@state() error: string | null = null
 	@state() booking: any = null
 	@state() retryCount: number = 0
-	@state() selectedCourt?: Court = undefined
+	@select(courtsContext) courts!: Map<string, Court>
 
-	private bookingService = new BookingService()
 	private maxRetries = 5
-	private destroyed$ = new BehaviorSubject<boolean>(false)
 
 	connectedCallback() {
 		super.connectedCallback()
@@ -56,107 +41,41 @@ export class BookingConfirmationRoute extends $LitElement() {
 		}
 
 		if (this.bookingId) {
-			this.loadBookingWithRetry()
+			BookingsDB.subscribeToCollection([
+				{
+					key: 'id',
+					operator: '==',
+					value: this.bookingId,
+				},
+			])
+				.pipe(
+					filter(bookings => bookings.size > 0),
+					map(bookings => bookings.values().next().value),
+					takeUntil(this.disconnecting),
+				)
+				.subscribe({
+					next: booking => {
+						console.log('Booking loaded:', booking)
+						if (booking) {
+							this.booking = booking
+							// Check payment status if needed
+							if (booking.paymentStatus !== 'paid') {
+								this.checkPaymentStatus()
+							}
+							this.loading = false
+						} else {
+							this.error = `Unable to load booking details after ${this.maxRetries} attempts. Please contact support.`
+						}
+					},
+					error: err => {
+						console.error('Final error loading booking:', err)
+						this.error = 'An error occurred while loading your booking details. Please try refreshing the page.'
+					},
+				})
 		} else {
 			this.error = 'No booking ID provided. Unable to load confirmation details.'
 			this.loading = false
 		}
-	}
-
-	disconnectedCallback() {
-		super.disconnectedCallback()
-		this.destroyed$.next(true)
-	}
-
-	protected firstUpdated(_changedProperties: PropertyValues): void {
-		// Handle courts context to find the selected court
-		courtsContext.$.pipe(
-			filter(courts => courts.size > 0),
-			map(courts => {
-				if (this.booking?.courtId) {
-					return courts.get(this.booking.courtId)
-				}
-				return undefined
-			}),
-			takeUntil(this.destroyed$),
-		).subscribe(court => {
-			if (court) {
-				this.selectedCourt = court
-			}
-		})
-	}
-
-	/**
-	 * Load booking with retry logic for reliability
-	 * Uses exponential backoff for retries
-	 */
-	private loadBookingWithRetry(): void {
-		this.loading = true
-		this.error = null
-
-		const getBooking$ = (attempt: number): Observable<any> => {
-			return this.bookingService.getBooking(this.bookingId).pipe(
-				catchError(error => {
-					console.error(`Error loading booking (attempt ${attempt}):`, error)
-
-					if (attempt < this.maxRetries) {
-						// Exponential backoff: 1s, 2s, 4s, 8s, 16s
-						const delay = Math.pow(2, attempt) * 1000
-						console.log(`Retrying in ${delay}ms...`)
-						this.retryCount = attempt + 1
-
-						return timer(delay).pipe(switchMap(() => getBooking$(attempt + 1)))
-					}
-
-					return of(null)
-				}),
-			)
-		}
-
-		// Start the retry chain
-		getBooking$(0)
-			.pipe(
-				finalize(() => (this.loading = false)),
-				takeUntil(this.destroyed$),
-			)
-			.subscribe({
-				next: booking => {
-					if (booking) {
-						this.booking = booking
-						this.findSelectedCourt()
-
-						// Check payment status if needed
-						if (booking.paymentStatus !== 'paid') {
-							this.checkPaymentStatus()
-						}
-					} else {
-						this.error = `Unable to load booking details after ${this.maxRetries} attempts. Please contact support.`
-					}
-				},
-				error: err => {
-					console.error('Final error loading booking:', err)
-					this.error = 'An error occurred while loading your booking details. Please try refreshing the page.'
-				},
-			})
-	}
-
-	/**
-	 * Find the court associated with this booking
-	 */
-	private findSelectedCourt(): void {
-		if (!this.booking?.courtId) return
-
-		from(courtsContext.$)
-			.pipe(
-				take(1),
-				map(courts => courts.get(this.booking.courtId)),
-				takeUntil(this.destroyed$),
-			)
-			.subscribe(court => {
-				if (court) {
-					this.selectedCourt = court
-				}
-			})
 	}
 
 	/**
@@ -266,7 +185,7 @@ export class BookingConfirmationRoute extends $LitElement() {
 				<div class="max-w-lg mx-auto pt-4 pb-8 px-4">
 					<booking-confirmation
 						.booking=${this.booking}
-						.selectedCourt=${this.selectedCourt}
+						.selectedCourt=${courtsContext.value.get(this.booking.courtId)}
 						.customerEmail=${this.booking.customerEmail || ''}
 						.customerName=${this.booking.userName || ''}
 						.bookingId=${this.booking.id || ''}

@@ -1,9 +1,8 @@
 // netlify/functions/payment-status.ts
-import { Handler } from '@netlify/functions'
 import admin from 'firebase-admin'
-import { Booking } from './types/booking.types'
 import { corsHeaders } from './_shared/cors'
 import stripe from './_shared/stripe'
+import { Booking } from './types/booking.types'
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
@@ -18,65 +17,49 @@ if (!admin.apps.length) {
 
 const db = admin.firestore()
 
-/**
- * Payment status endpoint
- *
- * This endpoint allows checking the status of a payment and its associated booking.
- * It provides a mechanism for recovery in case the client disconnects during payment completion.
- */
-const handler: Handler = async (event, context) => {
+async function handler(request: Request): Promise<Response> {
 	// Handle preflight request for CORS
-	if (event.httpMethod === 'OPTIONS') {
-		return {
-			statusCode: 200,
-			headers: corsHeaders,
-			body: '',
-		}
+	if (request.method === 'OPTIONS') {
+		return new Response('', { status: 200, headers: corsHeaders })
 	}
 
 	// Only allow GET requests
-	if (event.httpMethod !== 'GET') {
-		return {
-			statusCode: 405,
-			headers: corsHeaders,
-			body: JSON.stringify({ error: 'Method Not Allowed' }),
-		}
+	if (request.method !== 'GET') {
+		return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405, headers: corsHeaders })
 	}
 
 	try {
-		const params = event.queryStringParameters || {}
-		let paymentIntentId = params.paymentIntentId
-		const bookingId = params.bookingId
+		const url = new URL(request.url)
+		let paymentIntentId = url.searchParams.get('paymentIntentId')
+		const bookingId = url.searchParams.get('bookingId')
 
 		// Check for required parameters
 		if (!paymentIntentId && !bookingId) {
-			return {
-				statusCode: 400,
+			return new Response(JSON.stringify({ error: 'Either paymentIntentId or bookingId must be provided' }), {
+				status: 400,
 				headers: corsHeaders,
-				body: JSON.stringify({ error: 'Either paymentIntentId or bookingId must be provided' }),
-			}
+			})
 		}
 
 		let paymentStatus: any = null
 		let bookingData: Booking | null = null
 		let attempts = 0
 
-		// If bookingId is provided, get booking data
+		// If bookingId is provided, retrieve booking data from Firestore
 		if (bookingId) {
 			try {
 				const bookingRef = db.collection('bookings').doc(bookingId)
 				const bookingDoc = await bookingRef.get()
-
 				if (bookingDoc.exists) {
 					bookingData = bookingDoc.data() as Booking
-					// If booking has payment intent, use it for checking status
+					// Use booking's payment intent if available and not already provided
 					if (bookingData.paymentIntentId && !paymentIntentId) {
 						paymentIntentId = bookingData.paymentIntentId
 					}
 				}
 			} catch (error) {
 				console.error('Error retrieving booking:', error)
-				// Continue to check payment if paymentIntentId was provided
+				// Continue processing if booking retrieval fails
 			}
 		}
 
@@ -94,57 +77,54 @@ const handler: Handler = async (event, context) => {
 					metadata: paymentIntent.metadata,
 				}
 
-				// If booking doesn't exist but payment is successful, create a booking recovery record
+				// If payment succeeded and there is no valid booking, trigger recovery
 				if (paymentIntent.status === 'succeeded' && (!bookingData || bookingData.paymentStatus !== 'paid')) {
-					const recoveryId = await handlePaymentBookingRecovery(paymentIntent, bookingId)
+					const recoveryId = await handlePaymentBookingRecovery(paymentIntent, bookingId || undefined)
 					if (recoveryId) {
-						attempts = 1 // Signal that recovery was attempted
+						attempts = 1 // Indicate that recovery was attempted
 					}
 				}
 			} catch (error) {
 				console.error('Error retrieving payment intent:', error)
-				// Don't fail the request, just note that payment status couldn't be retrieved
+				// Do not fail the request—note that payment status couldn't be retrieved
 				paymentStatus = { error: 'Unable to retrieve payment status' }
 			}
 		}
 
-		return {
-			statusCode: 200,
-			headers: corsHeaders,
-			body: JSON.stringify({
+		return new Response(
+			JSON.stringify({
 				booking: bookingData || null,
 				payment: paymentStatus || null,
 				recoveryAttempted: attempts > 0,
 			}),
-		}
-	} catch (error) {
+			{ status: 200, headers: corsHeaders },
+		)
+	} catch (error: any) {
 		console.error('Error in payment status endpoint:', error)
-
-		return {
-			statusCode: 500,
+		return new Response(JSON.stringify({ error: 'Internal server error checking payment status' }), {
+			status: 500,
 			headers: corsHeaders,
-			body: JSON.stringify({ error: 'Internal server error checking payment status' }),
-		}
+		})
 	}
 }
 
 /**
- * Handle recovery for successful payments with missing or incomplete bookings
+ * Handle recovery for successful payments with missing or incomplete bookings.
+ * This function attempts to update an existing booking to "paid" or creates a new booking record.
  */
 async function handlePaymentBookingRecovery(paymentIntent: any, existingBookingId?: string): Promise<string | null> {
 	try {
-		// Extract booking information from payment intent metadata
+		// Extract booking info from payment metadata
 		const { bookingId, courtId, date, userId } = paymentIntent.metadata || {}
-
-		// Use existing booking ID, metadata booking ID, or generate a new one
+		// Determine target booking ID: use the existing one, metadata's value, or generate a new one
 		const targetBookingId = existingBookingId || bookingId || `recovery-${Date.now()}`
 
-		// Check if booking exists
+		// Check if booking exists in Firestore
 		const bookingRef = db.collection('bookings').doc(targetBookingId)
 		const bookingDoc = await bookingRef.get()
 
 		if (bookingDoc.exists) {
-			// Update existing booking to paid if not already
+			// Update the existing booking if its payment status is not "paid"
 			const bookingData = bookingDoc.data() as Booking
 			if (bookingData.paymentStatus !== 'paid') {
 				await bookingRef.update({
@@ -153,21 +133,17 @@ async function handlePaymentBookingRecovery(paymentIntent: any, existingBookingI
 					paymentIntentId: paymentIntent.id,
 					updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 				})
-
 				console.log(`Recovery update: Updated existing booking ${targetBookingId} to confirmed status`)
 			}
 		} else {
-			// Create a new booking record from payment data
+			// Create a new booking record using payment data
 			const customerEmail = paymentIntent.receipt_email || paymentIntent.customer_details?.email
 			const customerName = paymentIntent.shipping?.name || paymentIntent.customer_details?.name || 'Recovered User'
-
-			// Extract time information from metadata or use defaults
 			const startTime = paymentIntent.metadata?.startTime || new Date().toISOString()
 			const endTime =
-				paymentIntent.metadata?.endTime || new Date(new Date(startTime).getTime() + 60 * 60 * 1000).toISOString() // Default to 1 hour
-			const amount = paymentIntent.amount / 100 // Convert from cents
+				paymentIntent.metadata?.endTime || new Date(new Date(startTime).getTime() + 60 * 60 * 1000).toISOString() // Default duration: 1 hour
+			const amount = paymentIntent.amount / 100
 
-			// Create recovery booking record
 			const recoveryBooking = {
 				id: targetBookingId,
 				courtId: courtId || 'unknown',
@@ -185,14 +161,13 @@ async function handlePaymentBookingRecovery(paymentIntent: any, existingBookingI
 				paymentIntentId: paymentIntent.id,
 				createdAt: admin.firestore.FieldValue.serverTimestamp(),
 				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-				recoveredFromPayment: true, // Flag to indicate this was created from payment data
+				recoveredFromPayment: true, // Flag indicating recovery creation
 			}
 
 			await bookingRef.set(recoveryBooking)
-
 			console.log(`Recovery creation: Created booking record for ${targetBookingId}`)
 
-			// Log this recovery for auditing
+			// Log the recovery event for auditing purposes
 			await db.collection('bookingRecoveries').add({
 				bookingId: targetBookingId,
 				paymentIntentId: paymentIntent.id,
@@ -202,9 +177,8 @@ async function handlePaymentBookingRecovery(paymentIntent: any, existingBookingI
 		}
 
 		return targetBookingId
-	} catch (error) {
+	} catch (error: any) {
 		console.error('Error in payment booking recovery:', error)
-
 		// Log the error for manual intervention
 		await db.collection('recoveryErrors').add({
 			paymentIntentId: paymentIntent.id,
@@ -212,7 +186,6 @@ async function handlePaymentBookingRecovery(paymentIntent: any, existingBookingI
 			stack: error.stack,
 			timestamp: admin.firestore.FieldValue.serverTimestamp(),
 		})
-
 		return null
 	}
 }

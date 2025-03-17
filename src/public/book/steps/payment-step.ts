@@ -450,7 +450,7 @@ export class CheckoutForm extends $LitElement() {
 				${when(
 					this.error,
 					() => html`
-						<div class="bg-error-container text-error-on rounded-lg p-4 mb-4">
+						<div class="bg-error-container text-error-onContainer rounded-lg p-4 mb-4">
 							<schmancy-flex align="center" gap="sm">
 								<schmancy-icon>error</schmancy-icon>
 								<schmancy-typography>${this.error}</schmancy-typography>
@@ -558,7 +558,7 @@ export class CheckoutForm extends $LitElement() {
 					</schmancy-surface>
 
 					<!-- Terms & Submit Button -->
-					<schmancy-grid class="pr-4 sticky bottom-0" gap="sm" justify="end">
+					<schmancy-grid class="pr-4" gap="sm" justify="end">
 						<schmancy-grid cols="1fr" justify="end">
 							<schmancy-typography type="label" class="col-span-1" align="left">
 								<span>

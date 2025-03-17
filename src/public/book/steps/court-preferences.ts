@@ -116,7 +116,9 @@ export class CourtPreferencesStep extends $LitElement(css`
 		// Handle transition when active state changes
 		if (changedProperties.has('active') && this.previousActive !== this.active) {
 			this.previousActive = this.active
-
+			requestAnimationFrame(() => {
+				this._measureHeights()
+			})
 			// If heights are measured, animate the transition
 			if (this._activeHeight > 0 && this._compactHeight > 0 && !this.animating) {
 				this._animateTransition()
@@ -421,11 +423,6 @@ export class CourtPreferencesStep extends $LitElement(css`
 										Outdoor
 									</span>
 								</div>
-
-								<!-- "No preference" indicator -->
-								${!this.localPreferences.preferIndoor && !this.localPreferences.preferOutdoor
-									? html`<div class="text-surface-on-variant text-sm flex items-center">No preference</div>`
-									: ''}
 							</div>
 						</div>
 					</div>
