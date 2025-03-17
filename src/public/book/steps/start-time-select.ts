@@ -685,18 +685,6 @@ export class TimeSelectionStep extends $LitElement() {
 						: html`
 								<!-- Time slots timeline -->
 								${this._renderTimeline()}
-
-								<!-- Time range indicator - only when active -->
-								${when(
-									this.active && this.timeSlots.length > 0,
-									() => html`
-										<schmancy-divider></schmancy-divider>
-										<div class="flex justify-between text-xs text-gray-500 px-2 mt-2">
-											<span>From ${this._formatTimeDisplay(this.timeSlots[0].value)}</span>
-											<span>To ${this._formatTimeDisplay(this.timeSlots[this.timeSlots.length - 1].value)}</span>
-										</div>
-									`,
-								)}
 						  `,
 				)}
 			</div>

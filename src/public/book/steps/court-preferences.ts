@@ -123,6 +123,7 @@ export class CourtPreferencesStep extends $LitElement() {
 
 		// Container classes based on active state
 		const containerClasses = {
+			'grid gap-3 px-2': true,
 			'w-full': true,
 			'max-w-full': true,
 			'bg-surface-low': true,
@@ -190,8 +191,10 @@ export class CourtPreferencesStep extends $LitElement() {
 			<div class=${this.classMap(containerClasses)}>
 				<!-- Title and explanation -->
 				<sch-flex>
-					<schmancy-typography type="title" token="md" class="mb-2">Court Preferences</schmancy-typography>
-					<schmancy-typography> We will try to match your preferences based on availability </schmancy-typography>
+					<schmancy-typography type="title" token="md">Court Preferences</schmancy-typography>
+					<schmancy-typography type="label">
+						We will try to match your preferences based on availability
+					</schmancy-typography>
 				</sch-flex>
 				<!-- Court type preference -->
 				<schmancy-surface type="containerLow" rounded="all" class="mb-4">
