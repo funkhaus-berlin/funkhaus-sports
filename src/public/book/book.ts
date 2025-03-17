@@ -24,13 +24,24 @@ import bookingSummery from './steps/booking-summery'
 import { Duration, TimeSlot } from './types'
 
 /**
+ * Steps in the booking process
+ */
+enum BookingStep {
+	Date = 1,
+	Time = 2,
+	Preferences = 3,
+	Duration = 4,
+	Payment = 5,
+}
+
+/**
  * Court booking system component
  * Handles the complete booking flow from date selection to payment
  */
 @customElement('court-booking-system')
 export class CourtBookingSystem extends $LitElement() {
 	// State
-	@state() step: number = 1 // 1: Date, 2: Time, 3: Court Preferences, 4: Duration, 5: Payment
+	@state() step: BookingStep = BookingStep.Date
 	@state() selectedCourt?: Court = undefined
 	@state() bookingInProgress: boolean = false
 	@state() loadingCourts: boolean = false
@@ -73,6 +84,9 @@ export class CourtBookingSystem extends $LitElement() {
 		slot.slot = 'stripe-element'
 		this.append(slot)
 
+		// Add history state management
+		window.addEventListener('popstate', this.handleHistoryNavigation.bind(this))
+
 		// Initialize Stripe when payment amount is set
 		$stripe.pipe(distinctUntilChanged(), take(1)).subscribe(async amount => {
 			try {
@@ -113,6 +127,81 @@ export class CourtBookingSystem extends $LitElement() {
 		})
 	}
 
+	disconnectedCallback() {
+		super.disconnectedCallback()
+		window.removeEventListener('popstate', this.handleHistoryNavigation.bind(this))
+	}
+
+	/**
+	 * Handle navigation through browser history API
+	 */
+	private handleHistoryNavigation(event: PopStateEvent) {
+		// Get step from history state
+		const historyStep = event.state?.step || BookingStep.Date
+
+		// Don't rely on event.state as it might be null when browser goes back to initial state
+		// Instead, check URL parameters and booking context state to determine appropriate step
+		if (historyStep && typeof historyStep === 'number') {
+			// Update the step if a valid history state is available
+			this.navigateToStep(historyStep, false)
+		} else {
+			// Fallback: Determine step based on booking data
+			this.determineCurrentStep(false)
+		}
+	}
+
+	/**
+	 * Determine the appropriate step based on booking data
+	 * @param updateHistory Whether to update browser history
+	 */
+	private determineCurrentStep(updateHistory: boolean = true) {
+		let newStep: BookingStep
+
+		// Logic to determine the appropriate step based on the booking context
+		if (!this.booking.date) {
+			newStep = BookingStep.Date
+		} else if (!this.booking.startTime) {
+			newStep = BookingStep.Time
+		} else if (Object.keys(this.courtPreferences).length === 0) {
+			newStep = BookingStep.Preferences
+		} else if (!this.booking.endTime) {
+			newStep = BookingStep.Duration
+		} else {
+			newStep = BookingStep.Payment
+		}
+
+		this.navigateToStep(newStep, updateHistory)
+	}
+
+	/**
+	 * Navigate to a specific step and update browser history
+	 * @param newStep The step to navigate to
+	 * @param updateHistory Whether to update browser history
+	 */
+	private navigateToStep(newStep: BookingStep, updateHistory: boolean = true) {
+		// Don't navigate to a higher step if booking data isn't ready
+		if (newStep > BookingStep.Date && !this.booking.date) {
+			newStep = BookingStep.Date
+		} else if (newStep > BookingStep.Time && !this.booking.startTime) {
+			newStep = BookingStep.Time
+		} else if (newStep > BookingStep.Preferences && Object.keys(this.courtPreferences).length === 0) {
+			newStep = BookingStep.Preferences
+		} else if (newStep > BookingStep.Duration && !this.booking.endTime) {
+			newStep = BookingStep.Duration
+		}
+
+		// Update the current step
+		this.step = newStep
+
+		// Update browser history if requested
+		if (updateHistory) {
+			const url = new URL(window.location.href)
+			url.searchParams.set('step', newStep.toString())
+
+			window.history.pushState({ step: newStep }, '', url.toString())
+		}
+	}
+
 	protected firstUpdated(_changedProperties: PropertyValues): void {
 		// Check for returning payment status
 		this.paymentStatusHandler.checkUrlForPaymentStatus().subscribe(result => {
@@ -131,21 +220,15 @@ export class CourtBookingSystem extends $LitElement() {
 			}
 		})
 
-		// Set initial step based on context
-		if (this.booking.date) this.step = 2
-		if (this.booking.date && this.booking.startTime) this.step = 3
-		if (this.booking.date && this.booking.startTime && Object.keys(this.courtPreferences).length > 0) this.step = 4
-		if (this.booking.date && this.booking.startTime && this.booking.endTime) this.step = 5
-
-		// Set initial price
-		$stripe.next(this.booking.price || 30)
-
-		// Restore booking from URL if needed
+		// Set initial step based on URL and context
 		const urlParams = new URLSearchParams(window.location.search)
+		const stepParam = urlParams.get('step')
+		const stepFromUrl = stepParam ? parseInt(stepParam, 10) : null
+
 		const bookingIdInUrl = urlParams.get('booking')
 
 		if (bookingIdInUrl && (!this.booking.date || !this.booking.startTime)) {
-			// Set default values for missing booking data
+			// Set default values for missing booking data when returning from payment
 			bookingContext.set(
 				{
 					date: dayjs().format('YYYY-MM-DD'),
@@ -155,6 +238,22 @@ export class CourtBookingSystem extends $LitElement() {
 				},
 				true,
 			)
+		}
+
+		// Determine initial state
+		if (stepFromUrl && stepFromUrl >= BookingStep.Date && stepFromUrl <= BookingStep.Payment) {
+			this.navigateToStep(stepFromUrl, false)
+		} else {
+			// No valid step parameter, determine from booking context
+			this.determineCurrentStep(false)
+		}
+
+		// Set initial price for stripe
+		$stripe.next(this.booking.price || 30)
+
+		// Initialize history state if needed
+		if (!window.history.state) {
+			window.history.replaceState({ step: this.step }, '', `${window.location.pathname}?step=${this.step}`)
 		}
 	}
 
@@ -169,9 +268,16 @@ export class CourtBookingSystem extends $LitElement() {
 		bookingContext.set({
 			date: dayjs(date).format('YYYY-MM-DD'),
 			startTime: '',
+			endTime: '',
+			price: 0,
+			courtId: '',
 		})
 
-		this.step = 2
+		// Clear any dependent data
+		this.courtPreferences = {}
+		this.selectedCourt = undefined
+
+		this.navigateToStep(BookingStep.Time)
 	}
 
 	/**
@@ -194,12 +300,18 @@ export class CourtBookingSystem extends $LitElement() {
 		bookingContext.set(
 			{
 				startTime: newStartTime.toISOString(),
+				endTime: '',
+				price: 0,
+				courtId: '',
 			},
 			true,
 		)
 
-		this.step = 3
+		// Clear any dependent data
+		this.courtPreferences = {}
 		this.selectedCourt = undefined
+
+		this.navigateToStep(BookingStep.Preferences)
 	}
 
 	/**
@@ -207,7 +319,7 @@ export class CourtBookingSystem extends $LitElement() {
 	 */
 	private handleCourtPreferencesChange(preferences: CourtPreferences): void {
 		this.courtPreferences = preferences
-		this.step = 4
+		this.navigateToStep(BookingStep.Duration)
 	}
 
 	/**
@@ -262,7 +374,7 @@ export class CourtBookingSystem extends $LitElement() {
 				this.error =
 					message || 'No available courts found for the selected time and duration. Please choose another time.'
 				$notify.error(this.error)
-				this.step = 2 // Go back to time selection
+				this.navigateToStep(BookingStep.Time)
 				return
 			}
 
@@ -274,14 +386,23 @@ export class CourtBookingSystem extends $LitElement() {
 
 			$notify.success(`Court ${selectedCourt.name} assigned for your booking`)
 
-			this.step = 5 // Proceed to payment
+			this.navigateToStep(BookingStep.Payment)
 		} catch (error) {
 			console.error('Error assigning court:', error)
 			this.error = 'Error assigning court. Please try again.'
 			$notify.error(this.error)
-			this.step = 2
+			this.navigateToStep(BookingStep.Time)
 		} finally {
 			this.bookingInProgress = false
+		}
+	}
+
+	/**
+	 * Handle steps navigation from progress bar
+	 */
+	private handleStepClick(newStep: BookingStep): void {
+		if (newStep <= this.step) {
+			this.navigateToStep(newStep)
 		}
 	}
 
@@ -305,6 +426,13 @@ export class CourtBookingSystem extends $LitElement() {
 				bookingContext.set({ courtId: this.selectedCourt.id }, true)
 			}
 		}
+
+		// Update URL to show we're at the confirmation stage
+		const url = new URL(window.location.href)
+		url.searchParams.delete('step')
+		url.searchParams.set('confirmation', 'true')
+
+		window.history.pushState({ step: 'confirmation' }, '', url.toString())
 	}
 
 	// Helper methods
@@ -314,7 +442,6 @@ export class CourtBookingSystem extends $LitElement() {
 	 */
 	private resetBooking(): void {
 		this.bookingComplete = false
-		this.step = 1
 		this.error = null
 		this.selectedCourt = undefined
 		this.courtPreferences = {}
@@ -337,6 +464,9 @@ export class CourtBookingSystem extends $LitElement() {
 				country: '',
 			},
 		})
+
+		// Navigate to first step
+		this.navigateToStep(BookingStep.Date)
 	}
 
 	/**
@@ -358,42 +488,7 @@ export class CourtBookingSystem extends $LitElement() {
 				.steps=${this.bookingSteps}
 				.currentStep=${this.step}
 				?clickable=${true}
-				@step-click=${(e: CustomEvent) => {
-					const newStep = e.detail.step
-
-					// Handle backwards navigation
-					if (newStep < this.step) {
-						this.step = newStep
-
-						if (newStep <= 4) {
-							// Reset payment info
-							bookingContext.set({ id: '' })
-						}
-
-						if (newStep <= 3) {
-							// Reset duration and court selection
-							bookingContext.set({
-								endTime: '',
-								price: 0,
-								courtId: '',
-							})
-						}
-
-						if (newStep <= 2) {
-							// Reset preferences
-							this.courtPreferences = {}
-						}
-
-						if (newStep <= 1) {
-							// Reset date and time
-							bookingContext.set({
-								date: '',
-								startTime: '',
-								courtId: '',
-							})
-						}
-					}
-				}}
+				@step-click=${(e: CustomEvent) => this.handleStepClick(e.detail.step)}
 			></funkhaus-booking-steps>
 		`
 	}
@@ -420,18 +515,18 @@ export class CourtBookingSystem extends $LitElement() {
 	 */
 	private renderCurrentStep() {
 		return html`${when(
-			this.step <= 4,
+			this.step <= BookingStep.Duration,
 			() => html`
 				<date-selection-step
-					.active=${this.step === 1}
+					.active=${this.step === BookingStep.Date}
 					class="max-w-full sticky top-0 z-30"
-					.value=${this.booking.startTime}
+					.value=${this.booking.date}
 					@change=${(e: CustomEvent<string>) => this.handleDateSelect(e.detail)}
 				></date-selection-step>
 
 				<time-selection-step
-					.hidden=${this.step < 2}
-					.active=${this.step === 2}
+					.hidden=${this.step < BookingStep.Time}
+					.active=${this.step === BookingStep.Time}
 					class="max-w-full"
 					.value=${this.booking?.startTime
 						? dayjs(this.booking.startTime).hour() * 60 + dayjs(this.booking.startTime).minute()
@@ -440,14 +535,14 @@ export class CourtBookingSystem extends $LitElement() {
 				></time-selection-step>
 
 				<court-preferences-step
-					.hidden=${this.step < 3}
-					.active=${this.step === 3}
+					.hidden=${this.step < BookingStep.Preferences}
+					.active=${this.step === BookingStep.Preferences}
 					.preferences=${this.courtPreferences}
 					@change=${(e: CustomEvent<CourtPreferences>) => this.handleCourtPreferencesChange(e.detail)}
 				></court-preferences-step>
 
 				<duration-selection-step
-					.hidden=${this.step !== 4}
+					.hidden=${this.step !== BookingStep.Duration}
 					class="max-w-full p-4"
 					.selectedDuration=${this.duration}
 					@change=${(e: CustomEvent<Duration>) => this.handleDurationSelect(e.detail)}

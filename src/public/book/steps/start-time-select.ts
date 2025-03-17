@@ -1,5 +1,3 @@
-// src/public/book/steps/start-time-select.ts
-
 import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
@@ -11,7 +9,7 @@ import { venuesContext } from 'src/admin/venues/venue-context'
 import { Court } from 'src/db/courts.collection'
 import { OperatingHours, Venue } from 'src/db/venue-collection'
 import { AvailabilityService } from '../../../bookingServices/availability'
-import { bookingContext } from '../context'
+import { Booking, bookingContext } from '../context'
 import { TimeSlot } from '../types'
 
 @customElement('time-selection-step')
@@ -48,6 +46,7 @@ export class TimeSelectionStep extends $LitElement() {
 	// Connect to contexts
 	@select(venuesContext) venues!: Map<string, Venue>
 	@select(courtsContext) courts!: Map<string, Court>
+	@select(bookingContext) booking!: Booking
 
 	// Current selected venue and date information
 	@state() selectedVenue?: Venue = undefined
@@ -63,7 +62,7 @@ export class TimeSelectionStep extends $LitElement() {
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
-		// Subscribe to date changes
+		// Subscribe to date changes in booking context
 		bookingContext.$.pipe(
 			map(booking => booking.date),
 			distinctUntilChanged(),
@@ -110,6 +109,15 @@ export class TimeSelectionStep extends $LitElement() {
 				this.error = null
 				this.loading = false
 
+				// If booking has startTime, update selected time
+				if (this.booking.startTime) {
+					const startTime = dayjs(this.booking.startTime)
+					const minutes = startTime.hour() * 60 + startTime.minute()
+					if (this.value !== minutes) {
+						this.value = minutes
+					}
+				}
+
 				if (this.value !== undefined) {
 					setTimeout(() => this._scrollToSelectedTime(), 100)
 				}
@@ -122,8 +130,10 @@ export class TimeSelectionStep extends $LitElement() {
 			},
 		})
 
-		if (this.value !== undefined) {
-			setTimeout(() => this._scrollToSelectedTime(), 100)
+		// Initialize from booking context if it has a startTime
+		if (this.booking.startTime) {
+			const startTime = dayjs(this.booking.startTime)
+			this.value = startTime.hour() * 60 + startTime.minute()
 		}
 	}
 
@@ -132,6 +142,20 @@ export class TimeSelectionStep extends $LitElement() {
 
 		if (changedProperties.has('active') && this.value !== undefined) {
 			setTimeout(() => this._scrollToSelectedTime(), 0)
+		}
+
+		// If booking.startTime changes, update the value
+		if (
+			changedProperties.has('booking') &&
+			this.booking.startTime &&
+			(!changedProperties.get('booking') ||
+				(changedProperties.get('booking') as Booking).startTime !== this.booking.startTime)
+		) {
+			const startTime = dayjs(this.booking.startTime)
+			const minutes = startTime.hour() * 60 + startTime.minute()
+			if (this.value !== minutes) {
+				this.value = minutes
+			}
 		}
 	}
 
@@ -150,7 +174,6 @@ export class TimeSelectionStep extends $LitElement() {
 		const allTimeSlots = new Set<string>()
 
 		Object.values(courtsAvailability).forEach(courtSlots => {
-			console.log('Court slots:', courtSlots)
 			Object.keys(courtSlots).forEach(timeKey => {
 				allTimeSlots.add(timeKey)
 			})
@@ -178,9 +201,6 @@ export class TimeSelectionStep extends $LitElement() {
 			}
 
 			if (withinOperatingHours) {
-				console.log('Time:', timeKey, 'Value:', value)
-				console.log('Within operating hours:', withinOperatingHours)
-				console.log('Courts availability:', courtsAvailability)
 				// A time slot is available if ANY court has it available
 				const isAvailable = Object.values(courtsAvailability).some(courtSlots => courtSlots[timeKey]?.isAvailable)
 
@@ -191,7 +211,6 @@ export class TimeSelectionStep extends $LitElement() {
 				})
 			}
 		})
-		console.log('Time slots:', slots)
 
 		// Sort by time
 		slots.sort((a, b) => a.value - b.value)
@@ -250,10 +269,6 @@ export class TimeSelectionStep extends $LitElement() {
 		}
 
 		this.timeSlots = defaultSlots
-
-		if (this.value !== undefined) {
-			setTimeout(() => this._scrollToSelectedTime(), 100)
-		}
 	}
 
 	/**
@@ -263,6 +278,20 @@ export class TimeSelectionStep extends $LitElement() {
 		if (!slot.available) return
 
 		this.value = slot.value
+
+		// Update booking context with the new time
+		const selectedDate = dayjs(this.booking.date)
+		const hour = Math.floor(slot.value / 60)
+		const minute = slot.value % 60
+		const newStartTime = selectedDate.hour(hour).minute(minute)
+
+		bookingContext.set(
+			{
+				startTime: newStartTime.toISOString(),
+			},
+			true,
+		)
+
 		this.dispatchEvent(new CustomEvent('change', { detail: slot }))
 
 		if (this.onTimeSelected) {
@@ -496,5 +525,11 @@ export class TimeSelectionStep extends $LitElement() {
 				</div>
 			</schmancy-scroll>
 		`
+	}
+}
+
+declare global {
+	interface HTMLElementTagNameMap {
+		'time-selection-step': TimeSelectionStep
 	}
 }

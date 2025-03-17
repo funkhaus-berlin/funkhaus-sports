@@ -1,6 +1,9 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { html } from 'lit'
+import { select } from '@mhmo91/schmancy'
+import dayjs from 'dayjs'
+import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
+import { Booking, bookingContext } from '../context'
 import { Duration } from '../types'
 
 @customElement('duration-selection-step')
@@ -8,6 +11,10 @@ export class DurationSelectionStep extends $LitElement() {
 	@property({ type: Number }) selectedDuration!: number
 	@property({ type: Boolean }) active = true
 	@property({ type: Boolean }) hidden = false
+
+	// Data binding to booking context
+	@select(bookingContext) booking!: Booking
+
 	@state() recommendedDuration: number = 60 // Default to 1 hour as recommended
 
 	// Common durations for booking
@@ -16,7 +23,65 @@ export class DurationSelectionStep extends $LitElement() {
 		{ label: '1 hour', value: 60, price: 30 },
 		{ label: '1.5 hours', value: 90, price: 45 },
 		{ label: '2 hours', value: 120, price: 60 },
+		{ label: '2.5 hours', value: 150, price: 75 },
+		{ label: '3 hours', value: 180, price: 90 },
 	]
+
+	protected firstUpdated(_changedProperties: PropertyValues): void {
+		super.firstUpdated(_changedProperties)
+
+		// Calculate current duration if booking has start and end times
+		this.calculateDurationFromBooking()
+	}
+
+	protected updated(changedProperties: PropertyValues): void {
+		super.updated(changedProperties)
+
+		// If booking changes, recalculate duration
+		if (changedProperties.has('booking')) {
+			this.calculateDurationFromBooking()
+		}
+	}
+
+	/**
+	 * Calculate duration from booking start and end times
+	 */
+	private calculateDurationFromBooking(): void {
+		if (this.booking.startTime && this.booking.endTime) {
+			const start = dayjs(this.booking.startTime)
+			const end = dayjs(this.booking.endTime)
+			const duration = end.diff(start, 'minute')
+
+			if (this.selectedDuration !== duration) {
+				this.selectedDuration = duration
+			}
+		}
+	}
+
+	/**
+	 * Handle duration selection
+	 */
+	private handleDurationSelect(duration: Duration): void {
+		// Update selected duration
+		this.selectedDuration = duration.value
+
+		// Update booking context
+		if (this.booking.startTime) {
+			const startTime = dayjs(this.booking.startTime)
+			const endTime = startTime.add(duration.value, 'minute').toISOString()
+
+			bookingContext.set(
+				{
+					endTime,
+					price: duration.price,
+				},
+				true,
+			)
+		}
+
+		// Dispatch change event for parent component
+		this.dispatchEvent(new CustomEvent('change', { detail: duration }))
+	}
 
 	render() {
 		if (this.hidden) return html``
@@ -48,7 +113,7 @@ export class DurationSelectionStep extends $LitElement() {
                       ${isSelected
 											? 'bg-primary-default text-primary-on'
 											: 'bg-surface-container text-surface-on hover:bg-surface-container-high'}"
-										@click=${() => this.dispatchEvent(new CustomEvent('change', { detail: duration }))}
+										@click=${() => this.handleDurationSelect(duration)}
 									>
 										${duration.label}
 										${isSelected ? html`<schmancy-icon class="ml-1" size="16px">check</schmancy-icon>` : ''}
@@ -92,7 +157,7 @@ export class DurationSelectionStep extends $LitElement() {
 							'justify-center': true,
 							'py-3': true, // Golden ratio based padding
 							'px-2': true,
-							'h-20': true, // Base height (80px)
+							'h-30': true, // Base height (80px)
 							'rounded-xl': true,
 							'transition-all': true,
 							'duration-200': true,
@@ -120,10 +185,7 @@ export class DurationSelectionStep extends $LitElement() {
 						}
 
 						return html`
-							<div
-								@click=${() => this.dispatchEvent(new CustomEvent('change', { detail: duration }))}
-								class=${this.classMap(cardClasses)}
-							>
+							<div @click=${() => this.handleDurationSelect(duration)} class=${this.classMap(cardClasses)}>
 								<!-- State layer for hover effects -->
 								<div class=${this.classMap(stateLayerClasses)}></div>
 
@@ -165,6 +227,12 @@ export class DurationSelectionStep extends $LitElement() {
 				</div>
 			</div>
 		`
+	}
+
+	// Helper method to get current duration from booking
+	get duration(): number {
+		if (!this.booking.startTime || !this.booking.endTime) return 0
+		return dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute')
 	}
 }
 

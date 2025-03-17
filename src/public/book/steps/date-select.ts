@@ -425,3 +425,9 @@ export class DateSelectionStep extends $LitElement() {
 		`
 	}
 }
+
+declare global {
+	interface HTMLElementTagNameMap {
+		'date-selection-step': DateSelectionStep
+	}
+}

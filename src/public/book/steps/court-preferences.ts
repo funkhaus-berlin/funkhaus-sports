@@ -1,7 +1,12 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { html } from 'lit'
-import { customElement, property } from 'lit/decorators.js'
+import { select } from '@mhmo91/schmancy'
+import { html, PropertyValues } from 'lit'
+import { customElement, property, state } from 'lit/decorators.js'
 import { CourtPreferences } from 'src/bookingServices/court-assignment.service'
+import { Booking, bookingContext } from '../context'
+
+// Context key for storing court preferences
+const PREFERENCES_KEY = 'courtPreferences'
 
 /**
  * Court preferences selection step
@@ -13,13 +18,98 @@ export class CourtPreferencesStep extends $LitElement() {
 	@property({ type: Boolean }) active: boolean = false
 	@property({ type: Boolean }) hidden: boolean = false
 
+	// Data binding to booking context
+	@select(bookingContext) booking!: Booking
+
+	// Local state for preferences
+	@state() private localPreferences: CourtPreferences = {}
+
+	connectedCallback() {
+		super.connectedCallback()
+
+		// Initialize local preferences from provided preferences or get from sessionStorage
+		if (Object.keys(this.preferences).length > 0) {
+			this.localPreferences = { ...this.preferences }
+		} else {
+			this.loadPreferencesFromStorage()
+		}
+	}
+
+	protected firstUpdated(_changedProperties: PropertyValues) {
+		super.firstUpdated(_changedProperties)
+
+		// If we have preferences from the property, save them to storage
+		if (Object.keys(this.preferences).length > 0) {
+			this.savePreferencesToStorage(this.preferences)
+		}
+	}
+
+	protected updated(changedProperties: PropertyValues) {
+		super.updated(changedProperties)
+
+		// If preferences property changes, update local state and storage
+		if (
+			changedProperties.has('preferences') &&
+			JSON.stringify(this.preferences) !== JSON.stringify(changedProperties.get('preferences'))
+		) {
+			this.localPreferences = { ...this.preferences }
+			this.savePreferencesToStorage(this.localPreferences)
+		}
+	}
+
+	/**
+	 * Load court preferences from session storage
+	 */
+	private loadPreferencesFromStorage() {
+		try {
+			const stored = sessionStorage.getItem(PREFERENCES_KEY)
+			if (stored) {
+				this.localPreferences = JSON.parse(stored)
+
+				// Update the property if we loaded from storage
+				if (
+					Object.keys(this.localPreferences).length > 0 &&
+					JSON.stringify(this.localPreferences) !== JSON.stringify(this.preferences)
+				) {
+					// We need to notify the parent component to sync the property
+					this.dispatchEvent(
+						new CustomEvent('change', {
+							detail: this.localPreferences,
+							bubbles: true,
+						}),
+					)
+				}
+			}
+		} catch (error) {
+			console.error('Error loading court preferences from storage:', error)
+		}
+	}
+
+	/**
+	 * Save court preferences to session storage
+	 */
+	private savePreferencesToStorage(preferences: CourtPreferences) {
+		try {
+			sessionStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences))
+		} catch (error) {
+			console.error('Error saving court preferences to storage:', error)
+		}
+	}
+
 	// Event to notify parent when preferences change
 	private updatePreferences(updates: Partial<CourtPreferences>) {
 		const newPreferences = {
-			...this.preferences,
+			...this.localPreferences,
 			...updates,
 		}
 
+		// Update local state
+		this.localPreferences = newPreferences
+
+		// Save to storage
+		this.savePreferencesToStorage(newPreferences)
+
+		// Notify parent component
 		this.dispatchEvent(
 			new CustomEvent('change', {
 				detail: newPreferences,
@@ -52,12 +142,12 @@ export class CourtPreferencesStep extends $LitElement() {
 							<!-- Indoor option -->
 							<div
 								class="px-3 py-1 rounded-full cursor-pointer text-sm transition-colors
-                  ${this.preferences.preferIndoor
+                  ${this.localPreferences.preferIndoor
 									? 'bg-primary-default text-primary-on'
 									: 'bg-surface-container text-surface-on hover:bg-surface-container-high'}"
 								@click=${() =>
 									this.updatePreferences({
-										preferIndoor: !this.preferences.preferIndoor,
+										preferIndoor: !this.localPreferences.preferIndoor,
 										preferOutdoor: false,
 									})}
 							>
@@ -70,12 +160,12 @@ export class CourtPreferencesStep extends $LitElement() {
 							<!-- Outdoor option -->
 							<div
 								class="px-3 py-1 rounded-full cursor-pointer text-sm transition-colors
-                  ${this.preferences.preferOutdoor
+                  ${this.localPreferences.preferOutdoor
 									? 'bg-primary-default text-primary-on'
 									: 'bg-surface-container text-surface-on hover:bg-surface-container-high'}"
 								@click=${() =>
 									this.updatePreferences({
-										preferOutdoor: !this.preferences.preferOutdoor,
+										preferOutdoor: !this.localPreferences.preferOutdoor,
 										preferIndoor: false,
 									})}
 							>
@@ -85,7 +175,7 @@ export class CourtPreferencesStep extends $LitElement() {
 								</span>
 							</div>
 
-							${!this.preferences.preferIndoor && !this.preferences.preferOutdoor
+							${!this.localPreferences.preferIndoor && !this.localPreferences.preferOutdoor
 								? html`<div class="text-surface-on-variant text-sm flex items-center">No preference</div>`
 								: ''}
 						</div>
@@ -115,12 +205,12 @@ export class CourtPreferencesStep extends $LitElement() {
 						<!-- Indoor option with icon - using golden ratio for proportions -->
 						<div
 							class="flex items-center justify-center cursor-pointer h-16 rounded-xl transition-all
-                ${this.preferences.preferIndoor
+                ${this.localPreferences.preferIndoor
 								? 'bg-primary-default text-primary-on shadow-sm'
 								: 'bg-surface-container hover:bg-surface-container-high'}"
 							@click=${() =>
 								this.updatePreferences({
-									preferIndoor: !this.preferences.preferIndoor,
+									preferIndoor: !this.localPreferences.preferIndoor,
 									preferOutdoor: false,
 								})}
 						>
@@ -131,12 +221,12 @@ export class CourtPreferencesStep extends $LitElement() {
 						<!-- Outdoor option with icon - matching height and using golden ratio -->
 						<div
 							class="flex items-center justify-center cursor-pointer h-16 rounded-xl transition-all
-                ${this.preferences.preferOutdoor
+                ${this.localPreferences.preferOutdoor
 								? 'bg-primary-default text-primary-on shadow-sm'
 								: 'bg-surface-container hover:bg-surface-container-high'}"
 							@click=${() =>
 								this.updatePreferences({
-									preferOutdoor: !this.preferences.preferOutdoor,
+									preferOutdoor: !this.localPreferences.preferOutdoor,
 									preferIndoor: false,
 								})}
 						>
@@ -150,7 +240,7 @@ export class CourtPreferencesStep extends $LitElement() {
 				<div class="flex justify-end mt-6">
 					<schmancy-button
 						variant="filled"
-						@click=${() => this.dispatchEvent(new CustomEvent('change', { detail: this.preferences }))}
+						@click=${() => this.dispatchEvent(new CustomEvent('change', { detail: this.localPreferences }))}
 					>
 						Continue
 					</schmancy-button>
