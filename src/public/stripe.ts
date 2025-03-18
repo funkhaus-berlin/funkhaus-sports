@@ -3,7 +3,7 @@ import { Appearance, Stripe, StripeElements, loadStripe } from '@stripe/stripe-j
 import { BehaviorSubject, from, map, switchMap } from 'rxjs'
 export const PUBLISHABLE_KEY = import.meta.env.DEV
 	? 'pk_test_51R2BaDDCyjpKeQTnOtoBfOdXM8ZoXzo6Ou8r9SyJLvEZUkWqiJLz50PXkfhhvzPfxFVcysLd0RNJz5CMJV3Jf4uU00JAAIVSYk'
-	: 'pk_live_51Om1siKOjLfImK4i9mR0y7bBT9o0dWqGOLjNpSJgkewp0Jz4Hfgpiyv4f2IlcZlLky1dKH3YkYub6FSEkpgAATUD00FsCFDsmV'
+	: 'pk_live_51R16ZWDQXLBYFaMOA0DRbauF9ioFKYRave0553RRa4ZkJvhAYGOQ1i6ifgdIylfcqkLaiQTRQbcQTpr5dTlKGnrZ00s8j3s8VG'
 
 // Export the promise directly.
 export const stripePromise: Promise<Stripe | null> = loadStripe(PUBLISHABLE_KEY, { locale: 'auto' })
