@@ -112,127 +112,129 @@ export class BookingConfirmation extends $LitElement() {
 
 		return html`
 			<schmancy-surface ${fullHeight()} type="container" rounded="all">
-				<schmancy-grid gap="md" justify="center" class="h-full max-w-md">
-					<!-- Header/Logo Section -->
-					<div class="pt-4 md:pt-8 lg:pt-12 xl:pt-16 flex items-center justify-center gap-3">
-						<schmancy-icon size="48px" class="text-primary-default">check_circle</schmancy-icon>
-						<schmancy-typography type="headline" token="lg">Booking Confirmed!</schmancy-typography>
-					</div>
+				<section class="mx-auto max-w-md">
+					<schmancy-grid gap="sm" justify="center" class="h-full mx-auto max-w-md">
+						<!-- Header/Logo Section -->
+						<div class="pt-4 md:pt-8 lg:pt-12 xl:pt-16 flex items-center justify-center gap-3">
+							<schmancy-icon size="48px" class="text-primary-default">check_circle</schmancy-icon>
+							<schmancy-typography type="headline" token="lg">Booking Confirmed!</schmancy-typography>
+						</div>
 
-					<schmancy-grid gap="md" justify="stretch" class="px-6 py-6 max-w-4xl mx-auto w-full">
-						<!-- Left Column: Booking Info & QR Code -->
-						<div class="grid md:grid-cols-1 gap-4">
-							<div class="space-y-2">
-								<!-- Booking Information Text -->
-								<schmancy-typography align="center" type="body" token="md">
-									A confirmation has been sent to
-								</schmancy-typography>
-								<schmancy-typography align="center" type="title" token="md">
-									${this.customerEmail}
-								</schmancy-typography>
-								<!-- QR Code Section -->
-								<div class="flex flex-col items-center py-4">
-									<img
-										src=${this.utilities.generateQRCodeDataUrl(this.booking, this.selectedCourt)}
-										alt="Booking QR Code"
-										width="160"
-										height="160"
-										class="mb-3"
-									/>
-									<schmancy-button
-										variant="outlined"
-										@click=${() => this.downloadQRCode()}
-										.disabled=${this.downloading}
-									>
-										<schmancy-icon>download</schmancy-icon>
-										${this.downloading ? 'Downloading...' : 'Download QR Code'}
-									</schmancy-button>
+						<schmancy-grid gap="md" justify="stretch" class="px-6 py-2  md:py-6 max-w-4xl mx-auto w-full">
+							<!-- Left Column: Booking Info & QR Code -->
+							<div class="grid md:grid-cols-1 gap-2">
+								<div class="space-y-1">
+									<!-- Booking Information Text -->
+									<schmancy-typography align="center" type="label" token="md">
+										A confirmation has been sent to
+									</schmancy-typography>
+									<schmancy-typography align="center" type="title" token="md">
+										${this.customerEmail}
+									</schmancy-typography>
+									<!-- QR Code Section -->
+									<div class="flex flex-col items-center py-4">
+										<img
+											src=${this.utilities.generateQRCodeDataUrl(this.booking, this.selectedCourt)}
+											alt="Booking QR Code"
+											width="160"
+											height="160"
+											class="mb-3"
+										/>
+										<schmancy-button
+											variant="outlined"
+											@click=${() => this.downloadQRCode()}
+											.disabled=${this.downloading}
+										>
+											<schmancy-icon>download</schmancy-icon>
+											${this.downloading ? 'Downloading...' : 'Download QR Code'}
+										</schmancy-button>
+									</div>
+								</div>
+
+								<div class="bg-surface-container rounded-xl px-2 space-y-1">
+									<!-- Details Grid -->
+									<div class="grid grid-cols-2 gap-2">
+										<!-- Venue -->
+										<schmancy-grid>
+											<schmancy-typography type="label" token="sm" class="text-surface-on-variant"
+												>Venue:</schmancy-typography
+											>
+											<schmancy-typography type="body" weight="medium">${venueName}</schmancy-typography>
+										</schmancy-grid>
+
+										<!-- Court -->
+										<schmancy-grid>
+											<schmancy-typography type="label" token="sm" class="text-surface-on-variant"
+												>Court:</schmancy-typography
+											>
+											<schmancy-typography type="body" weight="medium">${courtName}</schmancy-typography>
+										</schmancy-grid>
+
+										<!-- Date -->
+
+										<schmancy-grid>
+											<schmancy-typography type="label" token="sm" class="text-surface-on-variant"
+												>Date:</schmancy-typography
+											>
+											<schmancy-typography type="body" weight="medium">${dateFormatted}</schmancy-typography>
+										</schmancy-grid>
+
+										<!-- Time -->
+
+										<schmancy-grid>
+											<schmancy-typography type="label" token="sm" class="text-surface-on-variant"
+												>Time:</schmancy-typography
+											>
+											<schmancy-typography type="body" weight="medium">${timeFormatted}</schmancy-typography>
+										</schmancy-grid>
+
+										<!-- Duration -->
+										<schmancy-grid>
+											<schmancy-typography type="label" token="sm" class="text-surface-on-variant"
+												>Duration:</schmancy-typography
+											>
+											<schmancy-typography type="body" weight="medium">
+												${this.utilities.formatDuration(this.booking.startTime, this.booking.endTime)}
+											</schmancy-typography>
+										</schmancy-grid>
+
+										<!-- Price -->
+										<schmancy-grid>
+											<schmancy-typography type="label" token="sm" class="text-surface-on-variant"
+												>Total:</schmancy-typography
+											>
+											<schmancy-typography type="body" weight="medium">
+												€${this.booking.price.toFixed(2)}
+											</schmancy-typography>
+										</schmancy-grid>
+									</div>
 								</div>
 							</div>
+						</schmancy-grid>
 
-							<!-- Right Column: Booking Details Card -->
-							<div class="bg-surface-container rounded-xl p-6 space-y-6">
-								<!-- Details Grid -->
-								<div class="grid grid-cols-2 gap-4">
-									<!-- Venue -->
-									<schmancy-grid>
-										<schmancy-typography type="label" token="sm" class="text-surface-on-variant"
-											>Venue:</schmancy-typography
-										>
-										<schmancy-typography type="body" weight="medium">${venueName}</schmancy-typography>
-									</schmancy-grid>
+						<!-- Action Buttons -->
+						<div class="flex flex-nowrap flex-col items-center justify-center gap-4 pb-4">
+							<sch-flex gap="2">
+								<schmancy-button variant="filled" href=${calendarUrl}>
+									<schmancy-icon>calendar_month</schmancy-icon>
+									Add to Calendar
+								</schmancy-button>
 
-									<!-- Court -->
-									<schmancy-grid>
-										<schmancy-typography type="label" token="sm" class="text-surface-on-variant"
-											>Court:</schmancy-typography
-										>
-										<schmancy-typography type="body" weight="medium">${courtName}</schmancy-typography>
-									</schmancy-grid>
-
-									<!-- Date -->
-
-									<schmancy-grid>
-										<schmancy-typography type="label" token="sm" class="text-surface-on-variant"
-											>Date:</schmancy-typography
-										>
-										<schmancy-typography type="body" weight="medium">${dateFormatted}</schmancy-typography>
-									</schmancy-grid>
-
-									<!-- Time -->
-
-									<schmancy-grid>
-										<schmancy-typography type="label" token="sm" class="text-surface-on-variant"
-											>Time:</schmancy-typography
-										>
-										<schmancy-typography type="body" weight="medium">${timeFormatted}</schmancy-typography>
-									</schmancy-grid>
-
-									<!-- Duration -->
-									<schmancy-grid>
-										<schmancy-typography type="label" token="sm" class="text-surface-on-variant"
-											>Duration:</schmancy-typography
-										>
-										<schmancy-typography type="body" weight="medium">
-											${this.utilities.formatDuration(this.booking.startTime, this.booking.endTime)}
-										</schmancy-typography>
-									</schmancy-grid>
-
-									<!-- Price -->
-									<schmancy-grid>
-										<schmancy-typography type="label" token="sm" class="text-surface-on-variant"
-											>Total:</schmancy-typography
-										>
-										<schmancy-typography type="body" weight="medium">
-											€${this.booking.price.toFixed(2)}
-										</schmancy-typography>
-									</schmancy-grid>
-								</div>
-							</div>
+								<schmancy-button
+									variant="filled"
+									@click=${() => this.utilities.shareBooking(this.booking, this.selectedCourt?.name)}
+								>
+									<schmancy-icon>share</schmancy-icon>
+									Share
+								</schmancy-button>
+							</sch-flex>
+							<schmancy-button variant="outlined" @click=${() => this.returnToHome()}>
+								<schmancy-icon>add</schmancy-icon>
+								Book Again
+							</schmancy-button>
 						</div>
 					</schmancy-grid>
-
-					<!-- Action Buttons -->
-					<div class="flex flex-col sm:flex-row items-center justify-center gap-4 pb-8">
-						<schmancy-button variant="filled tonal" href=${calendarUrl}>
-							<schmancy-icon>calendar_month</schmancy-icon>
-							Add to Calendar
-						</schmancy-button>
-
-						<schmancy-button
-							variant="outlined"
-							@click=${() => this.utilities.shareBooking(this.booking, this.selectedCourt?.name)}
-						>
-							<schmancy-icon>share</schmancy-icon>
-							Share
-						</schmancy-button>
-
-						<schmancy-button variant="filled" @click=${() => this.returnToHome()}>
-							<schmancy-icon>add</schmancy-icon>
-							Book Again
-						</schmancy-button>
-					</div>
-				</schmancy-grid>
+				</section>
 			</schmancy-surface>
 		`
 	}

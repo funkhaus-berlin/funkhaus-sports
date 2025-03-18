@@ -64,7 +64,7 @@ export class PaymentService {
 	 */
 	preparePaymentData(booking: Booking) {
 		return {
-			amount: Math.round(booking.price), // Convert to cents
+			amount: Math.round(booking.price * 100), // Convert to cents
 			currency: 'eur',
 			email: booking.customerEmail || '',
 			name: booking.userName || '',
@@ -107,6 +107,7 @@ export class PaymentService {
 		// Finalize booking data
 		const bookingData = this.prepareBookingForPayment(booking)
 
+		console.log('Booking data:', bookingData)
 		// Payment data for Stripe
 		const paymentData = this.preparePaymentData(bookingData)
 

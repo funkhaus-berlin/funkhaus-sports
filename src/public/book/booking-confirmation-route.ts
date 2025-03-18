@@ -162,18 +162,14 @@ export class BookingConfirmationRoute extends $LitElement() {
 
 		// Successful booking confirmation
 		return html`
-			<schmancy-surface ${fullHeight()} type="containerLow" rounded="all" elevation="1">
-				<div class="max-w-lg mx-auto pt-4 pb-8 px-4">
-					<booking-confirmation
-						.booking=${this.booking}
-						.selectedCourt=${courtsContext.value.get(this.booking.courtId)}
-						.customerEmail=${this.booking.customerEmail || ''}
-						.customerName=${this.booking.userName || ''}
-						.bookingId=${this.booking.id || ''}
-						.onNewBooking=${() => this.handleNewBooking()}
-					></booking-confirmation>
-				</div>
-			</schmancy-surface>
+			<booking-confirmation
+				.booking=${this.booking}
+				.selectedCourt=${courtsContext.value.get(this.booking.courtId)}
+				.customerEmail=${this.booking.customerEmail || ''}
+				.customerName=${this.booking.userName || ''}
+				.bookingId=${this.booking.id || ''}
+				.onNewBooking=${() => this.handleNewBooking()}
+			></booking-confirmation>
 		`
 	}
 }

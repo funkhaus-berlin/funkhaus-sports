@@ -5,7 +5,7 @@ import dayjs from 'dayjs'
 import { html, PropertyValues } from 'lit'
 import { customElement, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { distinctUntilChanged, take } from 'rxjs'
+import { distinctUntilChanged, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { AvailabilityService } from 'src/bookingServices/availability'
@@ -107,7 +107,7 @@ export class CourtBookingSystem extends $LitElement() {
 	}
 
 	private initializeStripe(): void {
-		$stripe.pipe(distinctUntilChanged(), take(1)).subscribe(async amount => {
+		$stripe.pipe(distinctUntilChanged(), takeUntil(this.disconnecting)).subscribe(async amount => {
 			try {
 				const stripe = await stripePromise
 				if (!stripe) return
@@ -123,7 +123,7 @@ export class CourtBookingSystem extends $LitElement() {
 					mode: 'payment',
 					appearance: appearance(),
 					currency: 'eur',
-					amount: amount,
+					amount: amount * 100,
 				})
 
 				// Create payment element
@@ -304,6 +304,8 @@ export class CourtBookingSystem extends $LitElement() {
 								price: result.price,
 							})
 
+							$stripe.next(result.price!)
+
 							// Navigate to payment step
 							this.navigateToStep(BookingStep.Payment)
 						} else {
@@ -473,13 +475,14 @@ export class CourtBookingSystem extends $LitElement() {
 					.preferences=${this.courtPreferences}
 					@change=${(e: CustomEvent<CourtPreferences>) => this.handleCourtPreferencesChange(e.detail)}
 				></court-preferences-step>
-
-				<duration-selection-step
-					.hidden=${this.step !== BookingStep.Duration}
-					class="max-w-full mt-2 block"
-					.selectedDuration=${this.duration}
-					@change=${(e: CustomEvent<Duration>) => this.handleDurationSelect(e.detail)}
-				></duration-selection-step>
+				${when(
+					this.step === BookingStep.Duration,
+					() => html`<duration-selection-step
+						class="max-w-full mt-2 block"
+						.selectedDuration=${this.duration}
+						@change=${(e: CustomEvent<Duration>) => this.handleDurationSelect(e.detail)}
+					></duration-selection-step>`,
+				)}
 			`,
 			() => html`
 				<booking-summery .booking=${this.booking} .selectedCourt=${this.selectedCourt}> </booking-summery>
