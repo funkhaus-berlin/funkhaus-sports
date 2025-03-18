@@ -474,7 +474,6 @@ export class DurationSelectionStep extends $LitElement(css`
 						<div class="flex gap-2 snap-x w-full pb-2">
 							${this.durations.map(duration => {
 								const isSelected = this.selectedDuration === duration.value
-								const isPopular = this.recommendedDuration === duration.value
 
 								return html`
 									<div
@@ -486,14 +485,6 @@ export class DurationSelectionStep extends $LitElement(css`
 											: 'bg-surface-high text-surface-on hover:shadow-sm'}"
 									>
 										<!-- Popular badge if applicable -->
-										${isPopular
-											? html`<div
-													class="absolute -top-1 -right-1 bg-secondary-default text-secondary-on text-xs 
-                                         font-bold px-1 rounded-full"
-											  >
-													Best
-											  </div>`
-											: ''}
 
 										<!-- Duration label -->
 										<div class="font-medium">${this.getFullLabel(duration)}</div>
@@ -550,7 +541,6 @@ export class DurationSelectionStep extends $LitElement(css`
 				<div class="grid grid-cols-2 md:grid-cols-3 gap-3">
 					${this.durations.map(duration => {
 						const isSelected = this.selectedDuration === duration.value
-						const isPopular = this.recommendedDuration === duration.value
 
 						return html`
 							<div
@@ -562,16 +552,6 @@ export class DurationSelectionStep extends $LitElement(css`
 									? 'bg-primary-default text-primary-on shadow-sm'
 									: 'bg-surface-high text-surface-on'}"
 							>
-								<!-- Popular badge if applicable -->
-								${isPopular
-									? html`<div
-											class="absolute top-0 right-0 bg-secondary-default text-secondary-on text-xs 
-                                    font-bold py-0.5 px-1.5 rounded-bl-lg rounded-tr-xl"
-									  >
-											POPULAR
-									  </div>`
-									: ''}
-
 								<!-- Duration label -->
 								<schmancy-typography type="title" token="md" weight=${isSelected ? 'bold' : 'normal'} class="mb-1">
 									${this.getFullLabel(duration)}

@@ -281,6 +281,7 @@ export class CourtBookingSystem extends $LitElement() {
 
 			// Assign court based on preferences and availability
 			// In your booking component
+
 			this.courtAssignmentHandler
 				.assignCourt(
 					this.booking,
