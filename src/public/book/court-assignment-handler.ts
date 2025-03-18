@@ -1,6 +1,6 @@
 import dayjs from 'dayjs'
-import { defer, Observable, of, delay as rxjsDelay, throwError } from 'rxjs'
-import { catchError, concatMap, retry, timeout } from 'rxjs/operators'
+import { BehaviorSubject, defer, Observable, of, delay as rxjsDelay, throwError, timer } from 'rxjs'
+import { catchError, concatMap, finalize, retry, switchMap, timeout } from 'rxjs/operators'
 
 import { AvailabilityService } from 'src/bookingServices/availability'
 import {
@@ -31,10 +31,13 @@ export interface CourtAssignmentResult {
  */
 export class CourtAssignmentHandler {
 	// Time to wait for availability check before timing out (ms)
-	private readonly AVAILABILITY_CHECK_TIMEOUT = 10000
+	private readonly AVAILABILITY_CHECK_TIMEOUT = 8000
 
 	// Maximum retries for transient errors
 	private readonly MAX_RETRIES = 2
+
+	// Track ongoing assignment operations
+	private assignmentInProgress$ = new BehaviorSubject<boolean>(false)
 
 	private errorHandler = new BookingErrorHandler()
 	private availabilityService: AvailabilityService
@@ -61,14 +64,27 @@ export class CourtAssignmentHandler {
 		preferences: CourtPreferences,
 		tentativeCourt?: Court | null,
 	): Observable<CourtAssignmentResult> {
+		// Prevent multiple concurrent assignment operations
+		if (this.assignmentInProgress$.getValue()) {
+			return of({
+				success: false,
+				error: 'Court assignment already in progress',
+			})
+		}
+
+		// Set assignment in progress flag
+		this.assignmentInProgress$.next(true)
+
 		// Validate required booking data
 		if (!booking.date || !booking.startTime) {
+			this.assignmentInProgress$.next(false)
 			return throwError(() => new Error('Booking date and start time are required'))
 		}
 
 		// Validate courts array
-		const courtsArray = Array.from(availableCourts)
+		const courtsArray = Array.from(availableCourts).filter(court => court.status === 'active')
 		if (courtsArray.length === 0) {
+			this.assignmentInProgress$.next(false)
 			return throwError(() => new Error('No courts available to book'))
 		}
 
@@ -77,47 +93,48 @@ export class CourtAssignmentHandler {
 		const startMinutes = startTime.hour() * 60 + startTime.minute()
 		const endTime = startTime.add(duration, 'minute').toISOString()
 
-		// Create the assignment pipeline
+		// Create the assignment pipeline with improved error handling
 		return defer(() => {
-			// Step 1: Try to use the tentative court if available
-			if (tentativeCourt) {
-				console.log('Checking if tentative court is still available:', tentativeCourt.name)
+			console.log('Starting court assignment process...')
 
-				// Check if the tentatively assigned court is still available
-				return this.availabilityService
-					.isCourtAvailableForTimeRange(booking.date, tentativeCourt.id, startTime.toISOString(), endTime)
-					.pipe(
-						// Add timeout to prevent hanging
-						timeout(this.AVAILABILITY_CHECK_TIMEOUT),
+			// Add a short delay to prevent UI freezing
+			return timer(50).pipe(
+				switchMap(() => {
+					// Step 1: Try to use the tentative court if available
+					if (tentativeCourt) {
+						console.log('Checking if tentative court is still available:', tentativeCourt.name)
 
-						// Handle the availability check result
-						concatMap(isAvailable => {
-							if (isAvailable) {
-								console.log('Tentative court is still available:', tentativeCourt.name)
-								// Court is available, use it
-								return of({
-									selectedCourt: tentativeCourt,
-									alternativeCourts: [],
-									message: 'Tentative court confirmed',
-								})
-							}
+						// Check if the tentatively assigned court is still available
+						return this.checkCourtAvailability(booking.date, tentativeCourt.id, startTime.toISOString(), endTime).pipe(
+							concatMap(isAvailable => {
+								if (isAvailable) {
+									console.log('Tentative court is still available:', tentativeCourt.name)
+									// Court is available, use it
+									return of({
+										selectedCourt: tentativeCourt,
+										alternativeCourts: [],
+										message: 'Tentative court confirmed',
+									})
+								}
 
-							console.log('Tentative court no longer available, finding alternative')
-							// Court is no longer available, fall back to normal assignment
-							return this.findAlternativeCourt(booking.date, startMinutes, duration, courtsArray, preferences)
-						}),
+								console.log('Tentative court no longer available, finding alternative')
+								// Court is no longer available, fall back to normal assignment
+								return this.findAlternativeCourt(booking.date, startMinutes, duration, courtsArray, preferences)
+							}),
 
-						// Handle errors in availability check
-						catchError(error => {
-							console.warn('Error checking tentative court availability:', error)
-							// Fall back to normal court assignment on error
-							return this.findAlternativeCourt(booking.date, startMinutes, duration, courtsArray, preferences)
-						}),
-					)
-			}
+							// Handle errors in availability check
+							catchError(error => {
+								console.warn('Error checking tentative court availability:', error)
+								// Fall back to normal court assignment on error
+								return this.findAlternativeCourt(booking.date, startMinutes, duration, courtsArray, preferences)
+							}),
+						)
+					}
 
-			// No tentative court, use normal court assignment
-			return this.findAlternativeCourt(booking.date, startMinutes, duration, courtsArray, preferences)
+					// No tentative court, use normal court assignment
+					return this.findAlternativeCourt(booking.date, startMinutes, duration, courtsArray, preferences)
+				}),
+			)
 		}).pipe(
 			// Post-process the court assignment result
 			concatMap(result => {
@@ -168,18 +185,36 @@ export class CourtAssignmentHandler {
 					error: errorMsg,
 				})
 			}),
+
+			// Always reset the in-progress flag when done
+			finalize(() => {
+				this.assignmentInProgress$.next(false)
+				console.log('Court assignment process completed')
+			}),
+		)
+	}
+
+	/**
+	 * Check if a court is available for a specific time range
+	 * Adds timeout to prevent hanging
+	 */
+	private checkCourtAvailability(
+		date: string,
+		courtId: string,
+		startTime: string,
+		endTime: string,
+	): Observable<boolean> {
+		return this.availabilityService.isCourtAvailableForTimeRange(date, courtId, startTime, endTime).pipe(
+			timeout(this.AVAILABILITY_CHECK_TIMEOUT),
+			catchError(error => {
+				console.warn('Error checking court availability:', error)
+				return of(false) // Assume not available on error
+			}),
 		)
 	}
 
 	/**
 	 * Find an alternative court when tentative court is not available
-	 *
-	 * @param date Booking date (YYYY-MM-DD)
-	 * @param startMinutes Start time in minutes from midnight
-	 * @param duration Duration in minutes
-	 * @param courts Array of available courts
-	 * @param preferences User preferences
-	 * @returns Observable of court assignment result
 	 */
 	private findAlternativeCourt(
 		date: string,
@@ -188,6 +223,7 @@ export class CourtAssignmentHandler {
 		courts: Court[],
 		preferences: CourtPreferences,
 	): Observable<any> {
+		console.log('Finding alternative court...')
 		return this.courtAssignmentService
 			.checkAndAssignCourt(date, startMinutes, duration, courts, CourtAssignmentStrategy.PREFERENCE_BASED, preferences)
 			.pipe(
@@ -197,6 +233,25 @@ export class CourtAssignmentHandler {
 				// Handle errors
 				catchError(error => {
 					console.error('Error finding alternative court:', error)
+
+					// If there are courts available, try with a simpler strategy as fallback
+					if (courts.length > 0) {
+						console.log('Falling back to FIRST_AVAILABLE strategy')
+						return this.courtAssignmentService
+							.checkAndAssignCourt(date, startMinutes, duration, courts, CourtAssignmentStrategy.FIRST_AVAILABLE, {})
+							.pipe(
+								timeout(this.AVAILABILITY_CHECK_TIMEOUT),
+								catchError(fallbackError => {
+									console.error('Even fallback strategy failed:', fallbackError)
+									return of({
+										selectedCourt: null,
+										alternativeCourts: [],
+										message: 'No courts available for the selected time',
+									})
+								}),
+							)
+					}
+
 					return of({
 						selectedCourt: null,
 						alternativeCourts: [],

@@ -338,7 +338,9 @@ export class CheckoutForm extends $LitElement() {
 					</schmancy-grid>
 
 					<!-- Payment Details -->
-					<slot name="stripe-element"></slot>
+					<section class="px-2">
+						<slot name="stripe-element"></slot>
+					</section>
 
 					<!-- Terms & Submit Button -->
 					<schmancy-grid class="pr-4" gap="sm" justify="end">

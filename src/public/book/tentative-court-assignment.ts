@@ -1,6 +1,5 @@
 // src/public/book/tentative-court-assignment.ts
-
-import { catchError, firstValueFrom, of } from 'rxjs'
+import { catchError, firstValueFrom, Observable, of, timeout } from 'rxjs'
 import {
 	CourtAssignmentService,
 	CourtAssignmentStrategy,
@@ -13,6 +12,9 @@ import { Court } from 'src/db/courts.collection'
  * This allows showing accurate pricing specific to the court that will be assigned
  */
 export class TentativeCourtAssignment {
+	// Timeout for court assignment operations (5 seconds)
+	private readonly ASSIGNMENT_TIMEOUT = 5000
+
 	constructor(private courtAssignmentService: CourtAssignmentService) {}
 
 	/**
@@ -30,41 +32,36 @@ export class TentativeCourtAssignment {
 		availableCourts: Court[],
 		preferences: CourtPreferences,
 	): Promise<Court | null> {
+		// Validate inputs first to catch issues early
+		if (!date || !availableCourts || availableCourts.length === 0) {
+			console.log('Invalid inputs for tentative court assignment')
+			return null
+		}
+
 		try {
 			// Use a small duration (30 minutes) just to check availability
 			// The actual pricing will be calculated per duration
 			const tentativeDuration = 30
 
-			// Convert courts array if needed
-			const courtsArray = availableCourts
+			// Convert and filter courts array
+			const courtsArray = availableCourts.filter(court => court.status === 'active')
 
 			if (courtsArray.length === 0) {
-				console.log('No courts available for tentative assignment')
+				console.log('No active courts available for tentative assignment')
 				return null
 			}
 
-			// Check for available courts with minimal duration
-			const result = await firstValueFrom(
-				this.courtAssignmentService
-					.checkAndAssignCourt(
-						date,
-						startTimeMinutes,
-						tentativeDuration,
-						courtsArray,
-						CourtAssignmentStrategy.PREFERENCE_BASED,
-						preferences,
-					)
-					.pipe(
-						catchError(error => {
-							console.error('Error finding best matching court:', error)
-							return of({
-								selectedCourt: null,
-								alternativeCourts: [],
-								message: 'Error finding available courts: ' + error.message,
-							})
-						}),
-					),
+			// Create an observable for the court assignment
+			const assignmentObservable = this.createCourtAssignmentObservable(
+				date,
+				startTimeMinutes,
+				tentativeDuration,
+				courtsArray,
+				preferences,
 			)
+
+			// Use firstValueFrom to await the result with a timeout
+			const result = await firstValueFrom(assignmentObservable)
 
 			if (result.selectedCourt) {
 				console.log('Tentative court assigned:', result.selectedCourt.name)
@@ -82,10 +79,48 @@ export class TentativeCourtAssignment {
 				return anyActiveCourt
 			}
 
+			console.log('No suitable court found for tentative assignment')
 			return null
 		} catch (error) {
 			console.error('Error in tentative court assignment:', error)
+			// Don't rethrow - return null to allow graceful fallback
 			return null
 		}
+	}
+
+	/**
+	 * Create an observable that handles the court assignment with proper error handling and timeout
+	 */
+	private createCourtAssignmentObservable(
+		date: string,
+		startTimeMinutes: number,
+		duration: number,
+		courts: Court[],
+		preferences: CourtPreferences,
+	): Observable<any> {
+		return this.courtAssignmentService
+			.checkAndAssignCourt(
+				date,
+				startTimeMinutes,
+				duration,
+				courts,
+				CourtAssignmentStrategy.PREFERENCE_BASED,
+				preferences,
+			)
+			.pipe(
+				// Add timeout to prevent hanging
+				timeout(this.ASSIGNMENT_TIMEOUT),
+
+				// Properly handle errors without crashing
+				catchError(error => {
+					console.warn('Court assignment error:', error)
+					// Return a structured error result that won't crash the component
+					return of({
+						selectedCourt: null,
+						alternativeCourts: [],
+						message: error.message || 'Error finding available court',
+					})
+				}),
+			)
 	}
 }

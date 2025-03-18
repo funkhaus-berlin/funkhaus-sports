@@ -4,7 +4,20 @@ import dayjs from 'dayjs'
 import { css, html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { debounceTime, fromEvent, takeUntil } from 'rxjs'
+import {
+	BehaviorSubject,
+	catchError,
+	debounceTime,
+	filter,
+	finalize,
+	fromEvent,
+	Observable,
+	of,
+	Subscription,
+	switchMap,
+	takeUntil,
+	timeout,
+} from 'rxjs'
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { AvailabilityService } from 'src/bookingServices/availability'
 import { CourtAssignmentService } from 'src/bookingServices/court-assignment.service'
@@ -13,6 +26,7 @@ import { OperatingHours, Venue } from 'src/db/venue-collection'
 import { courtsContext } from '../../../admin/venues/courts/context'
 import { Court } from '../../../db/courts.collection'
 import { Booking, bookingContext } from '../context'
+import { PreferencesHelper } from '../preferences-helper'
 import { TentativeCourtAssignment } from '../tentative-court-assignment'
 import { Duration } from '../types'
 
@@ -49,16 +63,21 @@ export class DurationSelectionStep extends $LitElement(css`
 	@state() tentativeAssignmentFailed: boolean = false
 	@state() showingEstimatedPrices: boolean = false
 	@state() retryCount: number = 0
-	@state() private isGettingCourtAssignment = false
 
-	// Maximum number of retries
+	// Maximum number of retries and timeout values
 	private readonly MAX_RETRIES = 2
-
-	// Retry delay in ms
 	private readonly RETRY_DELAY = 500
+	private readonly COURT_ASSIGNMENT_TIMEOUT = 5000
 
-	// Flag to track component mounting state
-	private isMounted = false
+	// Court assignment request state
+	private courtAssignment$ = new BehaviorSubject<{ active: boolean; timestamp: number }>({
+		active: false,
+		timestamp: 0,
+	})
+
+	// Subscriptions for cleanup
+	private resizeSubscription?: Subscription
+	private courtAssignmentSubscription?: Subscription
 
 	// Services
 	private availabilityService = new AvailabilityService()
@@ -68,22 +87,80 @@ export class DurationSelectionStep extends $LitElement(css`
 	connectedCallback() {
 		super.connectedCallback()
 
-		// Set up window resize listener for responsive design
-		window.addEventListener('resize', this.handleResize)
+		// Set up responsive design handling
+		this.resizeSubscription = fromEvent(window, 'resize')
+			.pipe(debounceTime(100), takeUntil(this.disconnecting))
+			.subscribe(() => this.handleResize())
 
-		fromEvent(window, 'resize')
-			.pipe(takeUntil(this.disconnecting), debounceTime(100))
+		// Set up court assignment state handling
+		this.courtAssignmentSubscription = this.courtAssignment$
+			.pipe(
+				takeUntil(this.disconnecting),
+				debounceTime(50), // Debounce to prevent multiple rapid changes
+				filter(state => state.active), // Only process when active
+				switchMap(state => {
+					// Check if we're already in a loading state for too long
+					const now = Date.now()
+					if (now - state.timestamp > 10000) {
+						console.warn('Court assignment has been active for too long, forcing reset')
+						return of({
+							success: false,
+							court: null,
+							error: 'Timeout occurred while finding an available court',
+						})
+					}
+
+					// Set loading state
+					this.loading = true
+					this.error = null
+
+					// Get tentative court assignment
+					return this.getTentativeCourtAssignment().pipe(
+						timeout(this.COURT_ASSIGNMENT_TIMEOUT),
+						catchError(error => {
+							console.error('Error in court assignment observable:', error)
+							return of({
+								success: false,
+								court: null,
+								error: 'Failed to find an available court',
+							})
+						}),
+						finalize(() => {
+							// Always reset the court assignment state when finished
+							this.courtAssignment$.next({ active: false, timestamp: 0 })
+						}),
+					)
+				}),
+			)
 			.subscribe({
-				next: () => this.handleResize(),
+				next: result => {
+					// Process result and update state
+					this.handleCourtAssignmentResult(result)
+					this.loading = false
+				},
+				error: err => {
+					console.error('Unexpected error in court assignment subscription:', err)
+					this.loading = false
+					this.tentativeAssignmentFailed = true
+					this.showingEstimatedPrices = true
+					this.fallbackToEstimatedPrices()
+				},
 			})
 
-		this.isMounted = true
+		// Set estimated prices initially as fallback
+		this.setEstimatedPrices()
 	}
 
 	disconnectedCallback() {
 		super.disconnectedCallback()
-		window.removeEventListener('resize', this.handleResize)
-		this.isMounted = false
+
+		// Clean up all subscriptions
+		if (this.resizeSubscription) {
+			this.resizeSubscription.unsubscribe()
+		}
+		if (this.courtAssignmentSubscription) {
+			this.courtAssignmentSubscription.unsubscribe()
+		}
 	}
 
 	firstUpdated(_changedProperties: PropertyValues): void {
@@ -95,10 +172,12 @@ export class DurationSelectionStep extends $LitElement(css`
 		// Set loading immediately if step is active
 		if (this.active && !this.tentativeAssignmentActive) {
 			this.loading = true
-		}
 
-		// Set default fallback durations with estimated prices
-		this.setEstimatedPrices()
+			// Trigger court assignment after a short delay
+			setTimeout(() => {
+				this.startCourtAssignment()
+			}, 100)
+		}
 
 		// Update durations based on booking data and selected court
 		this.updateDurations()
@@ -111,30 +190,117 @@ export class DurationSelectionStep extends $LitElement(css`
 		if (changedProperties.has('booking') || changedProperties.has('courts')) {
 			this.calculateDurationFromBooking()
 			this.updateDurations()
-			requestAnimationFrame(() => {
-				this.getTentativeCourtAssignment()
-			})
 		}
 
 		// When this step becomes active, try to get a tentative court assignment
-		if (changedProperties.has('active') && this.active && !this.tentativeAssignmentActive) {
-			// Immediate loading state
+		if (
+			changedProperties.has('active') &&
+			this.active &&
+			!this.tentativeAssignmentActive &&
+			!this.courtAssignment$.getValue().active
+		) {
+			// Set loading state immediately for better UX
 			this.loading = true
 
-			// Short delay to allow UI to render the loading state
-			requestAnimationFrame(() => {
-				this.getTentativeCourtAssignment()
-			})
+			// Start court assignment with a short delay to allow UI updates
+			setTimeout(() => {
+				this.startCourtAssignment()
+			}, 100)
 		}
 	}
 
 	/**
+	 * Start the court assignment process with proper state tracking
+	 */
+	private startCourtAssignment(): void {
+		// Only start if we have necessary booking data
+		if (!this.booking.date || !this.booking.startTime) {
+			console.log('Cannot start court assignment without date and time')
+			this.loading = false
+			return
+		}
+
+		// Trigger the court assignment
+		this.courtAssignment$.next({
+			active: true,
+			timestamp: Date.now(),
+		})
+	}
+
+	/**
+	 * Process the result of a court assignment attempt
+	 */
+	private handleCourtAssignmentResult(result: { success: boolean; court: Court | null; error?: string }): void {
+		if (result.success && result.court) {
+			this.selectedCourt = result.court
+			this.updateDurationPrices(result.court)
+			this.showingEstimatedPrices = false
+			this.retryCount = 0
+			this.tentativeAssignmentActive = true
+			this.tentativeAssignmentFailed = false
+		} else {
+			// Handle failure with potential retry
+			this.tentativeAssignmentFailed = true
+
+			// If we haven't reached max retries, try again after delay
+			if (this.retryCount < this.MAX_RETRIES) {
+				this.retryCount++
+				console.log(`Retrying court assignment (${this.retryCount}/${this.MAX_RETRIES})...`)
+
+				// Use exponential backoff for retries
+				const delay = this.RETRY_DELAY * Math.pow(2, this.retryCount - 1)
+
+				setTimeout(() => {
+					if (this.active) {
+						this.startCourtAssignment()
+					}
+				}, delay)
+
+				// Keep loading state active during retry
+				this.loading = true
+			} else {
+				// All retries failed, use fallback approach
+				this.fallbackToAlternativeCourt()
+			}
+		}
+	}
+
+	/**
+	 * Try to find any active court as a fallback
+	 */
+	private fallbackToAlternativeCourt(): void {
+		const availableCourts = Array.from(this.courts.values()).filter(c => c.status === 'active')
+
+		if (availableCourts.length > 0) {
+			// Use the first active court for pricing
+			const anyCourt = availableCourts[0]
+			this.selectedCourt = anyCourt
+			this.updateDurationPrices(anyCourt)
+			this.showingEstimatedPrices = false
+			console.log('Using fallback court for pricing:', anyCourt.name)
+			this.tentativeAssignmentActive = true
+		} else {
+			// No active courts at all, use estimated prices
+			this.fallbackToEstimatedPrices()
+		}
+	}
+
+	/**
+	 * Fallback to estimated prices when no court can be found
+	 */
+	private fallbackToEstimatedPrices(): void {
+		this.showingEstimatedPrices = true
+		this.tentativeAssignmentActive = true
+		this.loading = false
+		console.log('Using estimated prices as fallback')
+		this.setEstimatedPrices()
+	}
+
+	/**
 	 * Set estimated prices based on standard court rates
-	 * This provides better fallback pricing than the previous fixed values
 	 */
 	private setEstimatedPrices(): void {
 		// Get a baseline hourly rate
-		// Try to find from available courts or use a reasonable default
 		let baseHourlyRate = 30 // Default hourly rate in EUR
 
 		// Try to get average rate from available courts
@@ -165,106 +331,68 @@ export class DurationSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Tentatively assign a court based on preferences to get accurate pricing
-	 * with improved retry mechanism and better error handling
+	 * Get tentative court assignment as an Observable
 	 */
-	private async getTentativeCourtAssignment() {
-		if (this.isGettingCourtAssignment) return
-
-		// Only run if we have necessary booking data and component is mounted
-		if (!this.isMounted || !this.booking.date || !this.booking.startTime) {
-			this.loading = false
-			return
-		}
-
-		this.loading = true
-		this.tentativeAssignmentActive = true
-		this.tentativeAssignmentFailed = false
-
-		try {
+	private getTentativeCourtAssignment(): Observable<{
+		success: boolean
+		court: Court | null
+		error?: string
+	}> {
+		return new Observable(observer => {
 			// Get time in minutes since midnight
 			const startTime = dayjs(this.booking.startTime)
 			const startMinutes = startTime.hour() * 60 + startTime.minute()
 
 			// Get available courts
-			const availableCourts = Array.from(this.courts.values())
+			const availableCourts = Array.from(this.courts.values()).filter(c => c.status === 'active')
 
 			if (availableCourts.length === 0) {
-				throw new Error('No courts available')
-			}
-
-			// Get the PreferencesHelper (already preloaded)
-			const { PreferencesHelper } = await import('../preferences-helper')
-
-			// Get stored preferences
-			const preferences = PreferencesHelper.getPreferences()
-
-			console.log('Getting tentative court assignment with preferences:', preferences)
-
-			this.isGettingCourtAssignment = true
-			// Get tentative court assignment
-			const tentativeCourt = await this.tentativeCourtAssignment.findBestMatchingCourt(
-				this.booking.date,
-				startMinutes,
-				availableCourts,
-				preferences,
-			)
-
-			if (tentativeCourt) {
-				this.selectedCourt = tentativeCourt
-				this.updateDurationPrices(tentativeCourt)
-				this.showingEstimatedPrices = false
-				this.retryCount = 0 // Reset retry count on success
-			} else {
-				// If no court was found but we have available courts, use the first active one
-				this.tentativeAssignmentFailed = true
-				const anyActiveCourt = availableCourts.find(court => court.status === 'active')
-				if (anyActiveCourt) {
-					this.selectedCourt = anyActiveCourt
-					this.updateDurationPrices(anyActiveCourt)
-					this.showingEstimatedPrices = false // Still using a real court's pricing
-				} else {
-					// If no active courts, keep showing estimated prices
-					this.showingEstimatedPrices = true
-				}
-			}
-		} catch (error) {
-			console.error('Error getting tentative court assignment:', error)
-			this.tentativeAssignmentFailed = true
-
-			// Retry logic with exponential backoff
-			if (this.retryCount < this.MAX_RETRIES && this.isMounted) {
-				this.retryCount++
-				console.log(`Retrying tentative court assignment (${this.retryCount}/${this.MAX_RETRIES})...`)
-
-				// Use exponential backoff for retries
-				const delay = this.RETRY_DELAY * Math.pow(2, this.retryCount - 1)
-
-				setTimeout(() => {
-					if (this.isMounted && this.active) {
-						this.getTentativeCourtAssignment()
-					}
-				}, delay)
-
-				// Keep loading state active during retry
+				observer.next({
+					success: false,
+					court: null,
+					error: 'No active courts available',
+				})
+				observer.complete()
 				return
 			}
 
-			// Fall back to estimated prices after all retries
-			this.showingEstimatedPrices = true
-		} finally {
-			// Only turn off loading if mounted and not in retry mode
-			if (this.isMounted && (this.retryCount === 0 || this.retryCount >= this.MAX_RETRIES)) {
-				this.loading = false
-			}
-		}
+			// Get user preferences
+			const preferences = PreferencesHelper.getPreferences()
+
+			// Async operation to find court
+			this.tentativeCourtAssignment
+				.findBestMatchingCourt(this.booking.date, startMinutes, availableCourts, preferences)
+				.then(court => {
+					if (court) {
+						observer.next({
+							success: true,
+							court,
+						})
+					} else {
+						observer.next({
+							success: false,
+							court: null,
+							error: 'No court available for tentative assignment',
+						})
+					}
+					observer.complete()
+				})
+				.catch(error => {
+					observer.next({
+						success: false,
+						court: null,
+						error: error.message || 'Error finding available court',
+					})
+					observer.complete()
+				})
+
+			// Return unsubscribe function - nothing to clean up here
+			return { unsubscribe: () => {} }
+		})
 	}
 
 	/**
-	 * Update prices based on the tentatively assigned court
-	 */
-	/**
-	 * Update durations based on venue operating hours
+	 * Update prices based on the assigned court
 	 */
 	private updateDurationPrices(court: Court) {
 		if (!court || !this.booking.startTime) return
@@ -318,22 +446,20 @@ export class DurationSelectionStep extends $LitElement(css`
 			standardDurations = [minDuration]
 		}
 
-		// Update durations
-		this.durations = standardDurations
-		this.requestUpdate()
+		// Update durations only if we have some
+		if (standardDurations.length > 0) {
+			this.durations = standardDurations
+			this.requestUpdate()
+		} else {
+			// If we couldn't determine any valid durations, fall back to estimated prices
+			this.setEstimatedPrices()
+		}
 	}
 
 	/**
 	 * Handle window resize events
 	 */
 	private handleResize = () => {
-		this.checkMobileView()
-	}
-
-	/**
-	 * Check if we're on a mobile view
-	 */
-	private checkMobileView() {
 		const wasMobile = this.isMobile
 		this.isMobile = window.innerWidth < 640
 
@@ -362,11 +488,11 @@ export class DurationSelectionStep extends $LitElement(css`
 	 */
 	private updateDurations(): void {
 		// If we already have a courtId in the booking, use that court
-		if (this.booking.courtId && this.courts) {
+		if (this.booking.courtId && this.courts && this.courts.get(this.booking.courtId)) {
 			const courtFromId = this.courts.get(this.booking.courtId)
 			if (courtFromId) {
 				this.selectedCourt = courtFromId
-				this.tentativeAssignmentActive = true // Prevent tentative assignment
+				this.tentativeAssignmentActive = true
 				this.showingEstimatedPrices = false
 			}
 		}
@@ -379,17 +505,6 @@ export class DurationSelectionStep extends $LitElement(css`
 				this.booking.userId,
 			)
 			this.showingEstimatedPrices = false
-		} else if (!this.durations.length) {
-			// Fall back to estimated prices if no durations are set
-			this.setEstimatedPrices()
-		}
-
-		// If step is active, try to get a tentative court assignment
-		if (this.active && !this.tentativeAssignmentActive && this.booking.date && this.booking.startTime) {
-			this.loading = true
-			requestAnimationFrame(() => {
-				this.getTentativeCourtAssignment()
-			})
 		}
 	}
 
@@ -417,6 +532,9 @@ export class DurationSelectionStep extends $LitElement(css`
 
 		// Dispatch change event for parent component
 		this.dispatchEvent(new CustomEvent('change', { detail: duration }))
+		setTimeout(() => {
+			this.loading = false
+		}, 3000)
 	}
 
 	/**
@@ -434,6 +552,18 @@ export class DurationSelectionStep extends $LitElement(css`
 
 		return map[duration.value] || `${duration.value} min`
 	}
+
+	// Error handling property
+	private get error(): string | null {
+		return this._error
+	}
+
+	private set error(value: string | null) {
+		this._error = value
+		this.requestUpdate()
+	}
+
+	private _error: string | null = null
 
 	render() {
 		if (this.hidden) return html``
@@ -457,7 +587,7 @@ export class DurationSelectionStep extends $LitElement(css`
 					this.loading,
 					() => html`
 						<div
-							class="fixed inset-0 z-50  bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
+							class="fixed inset-0 z-50 bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
 						>
 							<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
 						</div>
@@ -469,6 +599,15 @@ export class DurationSelectionStep extends $LitElement(css`
 						<schmancy-typography type="title" token="md">Select Duration</schmancy-typography>
 					</div>
 
+					${when(
+						this.error,
+						() => html`
+							<div class="mb-3 p-2 bg-error-container text-error-onContainer rounded">
+								<schmancy-typography type="body" token="sm">${this.error}</schmancy-typography>
+							</div>
+						`,
+					)}
+
 					<!-- Horizontal scrollable duration options -->
 					<div class="overflow-x-auto scrollbar-hide pb-2 -mx-2 px-2">
 						<div class="flex gap-2 snap-x w-full pb-2">
@@ -479,13 +618,11 @@ export class DurationSelectionStep extends $LitElement(css`
 									<div
 										@click=${() => this.handleDurationSelect(duration)}
 										class="flex-none snap-center flex flex-col items-center justify-center 
-                           p-3 rounded-xl cursor-pointer transition-all min-w-20
-                           ${isSelected
+                       p-3 rounded-xl cursor-pointer transition-all min-w-20
+                       ${isSelected
 											? 'bg-primary-default text-primary-on shadow-sm'
 											: 'bg-surface-high text-surface-on hover:shadow-sm'}"
 									>
-										<!-- Popular badge if applicable -->
-
 										<!-- Duration label -->
 										<div class="font-medium">${this.getFullLabel(duration)}</div>
 
@@ -525,7 +662,7 @@ export class DurationSelectionStep extends $LitElement(css`
 				this.loading,
 				() => html`
 					<div
-						class="fixed inset-0 z-50  bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
+						class="fixed inset-0 z-50 bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
 					>
 						<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
 					</div>
@@ -537,6 +674,15 @@ export class DurationSelectionStep extends $LitElement(css`
 					<schmancy-typography type="title" token="md" class="mb-2">Select Duration</schmancy-typography>
 				</div>
 
+				${when(
+					this.error,
+					() => html`
+						<div class="mb-3 p-2 bg-error-container text-error-onContainer rounded">
+							<schmancy-typography type="body" token="sm">${this.error}</schmancy-typography>
+						</div>
+					`,
+				)}
+
 				<!-- Duration options - Grid layout for desktop -->
 				<div class="grid grid-cols-2 md:grid-cols-3 gap-3">
 					${this.durations.map(duration => {
@@ -546,11 +692,9 @@ export class DurationSelectionStep extends $LitElement(css`
 							<div
 								@click=${() => this.handleDurationSelect(duration)}
 								class="relative overflow-hidden flex flex-col items-center justify-center 
-                       py-3 px-2 h-24 rounded-xl cursor-pointer transition-all 
-                       hover:shadow-md hover:-translate-y-1 group
-                       ${isSelected
-									? 'bg-primary-default text-primary-on shadow-sm'
-									: 'bg-surface-high text-surface-on'}"
+                   py-3 px-2 h-24 rounded-xl cursor-pointer transition-all 
+                   hover:shadow-md hover:-translate-y-1 group
+                   ${isSelected ? 'bg-primary-default text-primary-on shadow-sm' : 'bg-surface-high text-surface-on'}"
 							>
 								<!-- Duration label -->
 								<schmancy-typography type="title" token="md" weight=${isSelected ? 'bold' : 'normal'} class="mb-1">
