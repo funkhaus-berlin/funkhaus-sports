@@ -64,7 +64,7 @@ export class PaymentService {
 	 */
 	preparePaymentData(booking: Booking) {
 		return {
-			amount: Math.round(booking.price * 100), // Convert to cents
+			amount: Math.round(booking.price), // Convert to cents
 			currency: 'eur',
 			email: booking.customerEmail || '',
 			name: booking.userName || '',

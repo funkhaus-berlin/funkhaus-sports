@@ -123,7 +123,7 @@ export class CourtBookingSystem extends $LitElement() {
 					mode: 'payment',
 					appearance: appearance(),
 					currency: 'eur',
-					amount: amount * 100,
+					amount: amount,
 				})
 
 				// Create payment element
