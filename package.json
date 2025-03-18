@@ -1,11 +1,11 @@
 {
 	"name": "funkhaus-sports",
 	"private": true,
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"type": "module",
-	"packageManager": "yarn@4.6.0",
+	"packageManager": "npm@11.2.0",
 	"engines": {
-		"yarn": "^4.6.0"
+		"node": ">=20.10.0"
 	},
 	"scripts": {
 		"dev": "vite",
@@ -29,7 +29,6 @@
 		"npm-check-updates": "^17.1.15",
 		"promise-polyfill": "^8.3.0",
 		"qrcode-generator": "^1.4.4",
-		"redux-persist": "^6.0.0",
 		"rxjs": "^7.8.2",
 		"stripe": "^17.7.0",
 		"ts-lit-plugin": "^2.0.2",
