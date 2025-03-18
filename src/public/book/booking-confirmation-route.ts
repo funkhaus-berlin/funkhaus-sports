@@ -60,9 +60,10 @@ export class BookingConfirmationRoute extends $LitElement() {
 							this.booking = booking
 							// Check payment status if needed
 							if (booking.paymentStatus !== 'paid') {
-								this.checkPaymentStatus()
+								// this.checkPaymentStatus()
+							} else {
+								this.loading = false
 							}
-							this.loading = false
 						} else {
 							this.error = `Unable to load booking details after ${this.maxRetries} attempts. Please contact support.`
 						}
@@ -88,26 +89,6 @@ export class BookingConfirmationRoute extends $LitElement() {
 		// This would typically call a serverless function to check the status
 		// For now, we'll just show a notification
 		$notify.info('Verifying payment status...')
-
-		// In a real implementation, this would call a secure endpoint:
-		/*
-    from(fetch(`/api/check-payment-status?paymentIntentId=${this.booking.paymentIntentId}`))
-      .pipe(
-        switchMap(res => res.json()),
-        takeUntil(this.destroyed$)
-      )
-      .subscribe(result => {
-        if (result.status === 'succeeded') {
-          // Update local booking status
-          this.booking = { ...this.booking, paymentStatus: 'paid' }
-          
-          // Update in database via service
-          this.bookingService.updateBookingPaymentStatus(this.booking.id, 'paid')
-            .pipe(take(1))
-            .subscribe()
-        }
-      })
-    */
 	}
 
 	/**
