@@ -75,7 +75,6 @@ export class PaymentService {
 			country: booking.customerAddress?.country || '',
 			courtId: booking.courtId,
 			venueId: booking.venueId, // Add venueId to payment metadata
-			eventID: 'court-booking',
 			uid: booking.userId,
 			bookingId: booking.id,
 			date: booking.date,

@@ -45,7 +45,6 @@ const handler: Handler = async (event, context) => {
 			city,
 			country,
 			courtId,
-			eventID,
 			uid,
 			bookingId,
 			date,
@@ -53,6 +52,7 @@ const handler: Handler = async (event, context) => {
 			endTime,
 		} = data
 
+		console.log('Received data:', data)
 		// Validate required fields
 		if (!amount || typeof amount !== 'number' || amount <= 0) {
 			return {
@@ -73,8 +73,7 @@ const handler: Handler = async (event, context) => {
 		// Prepare metadata for the booking - include all relevant fields
 		const metadata: Record<string, string> = {
 			userId: uid || 'anonymous',
-			email: email || 'guest@example.com',
-			product: eventID || 'court-booking',
+			email: email!,
 		}
 
 		// Add booking details to metadata if available
@@ -96,7 +95,6 @@ const handler: Handler = async (event, context) => {
 				currency: currency,
 				automatic_payment_methods: { enabled: true },
 				metadata: metadata,
-				receipt_email: email,
 				description: description,
 				// Store customer info for the payment record
 				shipping: {

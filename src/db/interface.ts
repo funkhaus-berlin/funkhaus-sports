@@ -50,7 +50,6 @@ export interface PaymentIntentRequest {
 	items: {
 		[key: string]: number
 	}
-	eventID: string
 	uid: string
 }
 

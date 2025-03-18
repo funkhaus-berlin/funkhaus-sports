@@ -10,6 +10,5 @@ export type StripeIntent = {
 	tickets: {
 		[key: string]: number
 	}
-	eventID: string
 	uid: string
 }
