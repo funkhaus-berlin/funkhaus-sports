@@ -1,4 +1,4 @@
-// netlify/functions/stripe-webhook-handler.ts
+// netlify/functions/stripe-webhook.ts
 import { Handler } from '@netlify/functions'
 import admin from 'firebase-admin'
 import Stripe from 'stripe'
@@ -20,12 +20,6 @@ const db = admin.firestore()
 
 /**
  * Enhanced webhook handler with improved reliability and error recovery
- *
- * This improved handler is designed to:
- * 1. Process Stripe webhook events more reliably
- * 2. Implement idempotency to prevent double-processing
- * 3. Log all events for auditing and recovery
- * 4. Implement retry logic for failed operations
  */
 const handler: Handler = async (event, context) => {
 	// Handle preflight request for CORS
@@ -57,12 +51,36 @@ const handler: Handler = async (event, context) => {
 			}
 		}
 
+		// Check if webhook secret is configured
+		const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+		if (!webhookSecret) {
+			// Log the error but don't expose in response
+			console.error('STRIPE_WEBHOOK_SECRET is not configured in environment variables')
+			await logWebhookError({
+				message: 'Missing webhook secret configuration',
+				stack: 'STRIPE_WEBHOOK_SECRET environment variable is not set',
+			})
+
+			return {
+				statusCode: 500,
+				headers: corsHeaders,
+				body: JSON.stringify({ error: 'Internal server configuration error' }),
+			}
+		}
+
 		// Verify and construct the event
-		const stripeEvent = stripe.webhooks.constructEvent(
-			event.body as string,
-			signature,
-			process.env.STRIPE_WEBHOOK_SECRET as string,
-		)
+		let stripeEvent: Stripe.Event
+
+		try {
+			stripeEvent = stripe.webhooks.constructEvent(event.body || '', signature, webhookSecret)
+		} catch (err) {
+			console.error('Webhook signature verification failed:', err.message)
+			return {
+				statusCode: 400,
+				headers: corsHeaders,
+				body: JSON.stringify({ error: `Webhook signature verification failed: ${err.message}` }),
+			}
+		}
 
 		// Log the event to Firestore for auditing and recovery purposes
 		await logWebhookEvent(stripeEvent)
@@ -93,7 +111,9 @@ const handler: Handler = async (event, context) => {
 			case 'payment_intent.canceled':
 				result = await handlePaymentIntentCanceled(stripeEvent.data.object as Stripe.PaymentIntent)
 				break
-			// Add more event handlers as needed
+			default:
+				result = `Unhandled event type: ${stripeEvent.type}`
+				console.log(result)
 		}
 
 		// Mark event as processed in Firestore
@@ -117,7 +137,7 @@ const handler: Handler = async (event, context) => {
 		return {
 			statusCode: 400,
 			headers: corsHeaders,
-			body: JSON.stringify({ error: error.message }),
+			body: JSON.stringify({ error: error.message || 'Unknown webhook processing error' }),
 		}
 	}
 }
@@ -150,8 +170,8 @@ async function logWebhookEvent(event: Stripe.Event): Promise<void> {
 async function logWebhookError(error: any): Promise<void> {
 	try {
 		await db.collection('webhookErrors').add({
-			error: error.message,
-			stack: error.stack,
+			error: error.message || 'Unknown error',
+			stack: error.stack || 'No stack trace available',
 			timestamp: admin.firestore.FieldValue.serverTimestamp(),
 		})
 	} catch (logError) {
@@ -224,7 +244,6 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 			console.log(`Updated existing booking ${bookingId} to confirmed status`)
 			return { success: true, action: 'updated_booking' }
 		} else {
-			console.log(paymentIntent)
 			// Booking doesn't exist yet - create it from payment metadata
 			// This handles cases where the client disconnected before creating the booking
 			const customerEmail = paymentIntent.receipt_email
