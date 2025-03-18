@@ -103,7 +103,7 @@ export class CheckoutForm extends $LitElement() {
 			})
 		} catch (error) {
 			console.error('Error initializing Stripe:', error)
-			this.error = 'Payment system initialization failed'
+			// this.error = 'Payment system initialization failed'
 		}
 	}
 

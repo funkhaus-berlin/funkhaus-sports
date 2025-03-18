@@ -6,7 +6,7 @@ import { customElement, state } from 'lit/decorators.js'
 import { filter, from, fromEvent, map, takeUntil, tap } from 'rxjs'
 import { auth } from 'src/firebase/firebase'
 import { User, userContext } from 'src/user.context'
-
+import '@mhmo91/schmancy'
 import FunkhausSportsSignin from './signin'
 import { VenueManagement } from './venues/venues'
 

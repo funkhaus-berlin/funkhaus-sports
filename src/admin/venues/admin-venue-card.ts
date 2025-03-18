@@ -33,7 +33,6 @@ const ICON_MAP: Record<string, string> = {
 @customElement('admin-venue-card')
 export class AdminVenueCard extends $LitElement() {
 	@property({ type: Object }) venue!: Venue
-	@property({ type: Number }) courtCount: number = 0
 
 	// Get operating hours for today
 	private getTodayHours(): string {
@@ -86,7 +85,7 @@ export class AdminVenueCard extends $LitElement() {
 					</div>
 
 					<!-- Main Content Grid -->
-					<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 						<!-- Location -->
 						<div class="flex items-center gap-2">
 							<schmancy-icon class="text-primary-default">location_on</schmancy-icon>
@@ -108,19 +107,6 @@ export class AdminVenueCard extends $LitElement() {
 									Today's Hours
 								</schmancy-typography>
 								<schmancy-typography type="body" token="sm" class="font-medium"> ${todayHours} </schmancy-typography>
-							</div>
-						</div>
-
-						<!-- Courts -->
-						<div class="flex items-center gap-2">
-							<schmancy-icon class="text-primary-default">sports_tennis</schmancy-icon>
-							<div>
-								<schmancy-typography type="label" token="sm" class="text-surface-on-variant mb-0.5">
-									Courts
-								</schmancy-typography>
-								<schmancy-typography type="body" token="md" class="font-medium">
-									${this.courtCount} ${this.courtCount === 1 ? 'court' : 'courts'}
-								</schmancy-typography>
 							</div>
 						</div>
 					</div>

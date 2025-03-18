@@ -5,6 +5,7 @@ import { customElement, property, state } from 'lit/decorators.js'
 import { filter, map, startWith, takeUntil } from 'rxjs'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
+import { VenuBookingsList } from './bookings/bookings'
 import './components'
 import { VenueAnalytics, VenueCourtsPreview } from './components'
 import { courtsContext, selectMyCourts } from './courts/context'
@@ -105,6 +106,21 @@ export class VenueDetailView extends $LitElement(css`
 								</schmancy-flex>
 							</schmancy-list-item>
 
+							<schmancy-list-item
+								.selected=${this.activeTab === 'venue-bookings'}
+								@click=${() =>
+									area.push({
+										component: VenuBookingsList,
+										area: 'venue',
+									})}
+								rounded
+								variant="container"
+							>
+								<schmancy-flex gap="md">
+									<schmancy-icon>calendar_month</schmancy-icon>
+									Bookings
+								</schmancy-flex>
+							</schmancy-list-item>
 							<!-- Analytics Item -->
 							<schmancy-list-item
 								.selected=${this.activeTab === VenueCourtsPreview.name.toLowerCase()}

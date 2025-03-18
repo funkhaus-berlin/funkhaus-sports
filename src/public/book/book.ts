@@ -141,7 +141,6 @@ export class CourtBookingSystem extends $LitElement() {
 				})
 			} catch (error) {
 				console.error('Failed to initialize Stripe:', error)
-				$notify.error('Payment system initialization failed. Please try again later.')
 			}
 		})
 	}

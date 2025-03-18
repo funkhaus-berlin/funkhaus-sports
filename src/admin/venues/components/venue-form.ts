@@ -1,24 +1,20 @@
 import {
 	$notify,
+	fullHeight,
 	schmancyCheckBoxChangeEvent,
 	SchmancyInputChangeEvent,
 	SchmancySelectChangeEvent,
+	select,
 	sheet,
 } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { takeUntil } from 'rxjs'
-import {
-	defaultOperatingHours,
-	FacilityEnum,
-	OperatingHours,
-	Venue,
-	VenuesDB,
-	VenueTypeEnum,
-} from 'src/db/venue-collection'
+import { FacilityEnum, OperatingHours, Venue, VenuesDB, VenueTypeEnum } from 'src/db/venue-collection'
 import { auth } from 'src/firebase/firebase'
 import { confirm } from 'src/schmancy'
+import { venueContext } from '../venue-context'
 
 // Format enum values to display labels
 export const formatEnum = (value: string): string =>
@@ -31,28 +27,8 @@ export const formatEnum = (value: string): string =>
 
 @customElement('venue-form')
 export class VenueForm extends $LitElement() {
-	@state() venue: Partial<Venue> = {
-		name: '',
-		venueType: 'sportsFacility',
-		address: {
-			street: '',
-			city: '',
-			postalCode: '',
-			country: '',
-		},
-		facilities: [],
-		operatingHours: { ...defaultOperatingHours },
-		status: 'active',
-		theme: {
-			primary: '#5e808e',
-			text: '#ffffff',
-			logo: 'light',
-		},
-	}
-
-	// Clone of venue for preview - this ensures the component updates when properties change
-	@state() previewVenue: Partial<Venue> = { ...this.venue }
-
+	@select(venueContext, undefined, {})
+	venue!: Venue
 	@state() busy = false
 
 	constructor(private editingVenue?: Venue) {
@@ -68,14 +44,13 @@ export class VenueForm extends $LitElement() {
 				}
 			}
 		}
-		// Initialize preview venue with current venue data
-		this.previewVenue = { ...this.venue }
+
 		this.dispatchEvent(new CustomEvent('fullscreen', { bubbles: true, composed: true, detail: true }))
 	}
 
 	render() {
 		return html`
-			<div class="grid grid-cols-2 lg:grid-cols-2 gap-6 h-full">
+			<div ${fullHeight()} class="grid grid-cols-2 lg:grid-cols-2 gap-6 h-full relative inset-0">
 				<!-- Form Column -->
 				<div class="overflow-y-auto p-4">
 					<schmancy-form @submit=${this.onSave} class="py-3 px-3 grid gap-6">
@@ -126,7 +101,7 @@ export class VenueForm extends $LitElement() {
 								<!-- Primary Color -->
 								<schmancy-input
 									type="color"
-									label="Primary Theme Color"
+									label="Theme"
 									.value="${this.venue.theme?.primary || '#5e808e'}"
 									@change=${(e: SchmancyInputChangeEvent) => this.updateTheme('primary', e.detail.value)}
 								></schmancy-input>
@@ -172,7 +147,6 @@ export class VenueForm extends $LitElement() {
 											street: value,
 										},
 									} as Venue
-									this.previewVenue = { ...this.venue }
 								}}
 							></schmancy-input>
 
@@ -189,7 +163,6 @@ export class VenueForm extends $LitElement() {
 											city: value,
 										},
 									} as Venue
-									this.previewVenue = { ...this.venue }
 								}}
 							></schmancy-input>
 
@@ -206,7 +179,6 @@ export class VenueForm extends $LitElement() {
 											postalCode: value,
 										},
 									} as Venue
-									this.previewVenue = { ...this.venue }
 								}}
 							></schmancy-input>
 
@@ -223,7 +195,6 @@ export class VenueForm extends $LitElement() {
 											country: value,
 										},
 									} as Venue
-									this.previewVenue = { ...this.venue }
 								}}
 							></schmancy-input>
 						</div>
@@ -330,15 +301,14 @@ export class VenueForm extends $LitElement() {
 				</div>
 
 				<!-- Preview Column -->
-				<div class="bg-surface-container-low p-6 rounded-lg flex flex-col items-center">
+				<div class="bg-surface-container-low p-6 rounded-lg flex flex-col items-center sticky top-6">
 					<schmancy-typography type="title" class="mb-6">Venue Preview</schmancy-typography>
 
 					<!-- Venue Card Preview -->
 					<div class="preview-container flex flex-col items-center justify-start w-full">
 						<funkhaus-venue-card
-							.venue=${this.previewVenue as Venue}
-							.theme=${this.previewVenue.theme || { primary: '#5e808e', text: '#ffffff', logo: 'light' }}
-							featured
+							.venue=${this.venue as Venue}
+							.theme=${this.venue.theme!}
 							class="mb-8 transform scale-110"
 						></funkhaus-venue-card>
 					</div>
@@ -401,7 +371,6 @@ export class VenueForm extends $LitElement() {
 	updateProps(prop: keyof Venue, val: string | number | string[]) {
 		this.venue = { ...this.venue, [prop]: val }
 		// Update preview venue as well to trigger re-render
-		this.previewVenue = { ...this.venue }
 	}
 
 	updateTheme(prop: 'primary' | 'text' | 'logo', val: string | 'light' | 'dark') {
@@ -420,9 +389,7 @@ export class VenueForm extends $LitElement() {
 				[prop]: val,
 			},
 		}
-
-		// Update preview venue as well to trigger re-render
-		this.previewVenue = { ...this.venue }
+		this.requestUpdate()
 	}
 
 	toggleDayOperation(day: keyof OperatingHours, isOpen: boolean) {
@@ -435,8 +402,6 @@ export class VenueForm extends $LitElement() {
 		}
 
 		this.venue = { ...this.venue, operatingHours } as Venue
-		// Update preview venue as well to trigger re-render
-		this.previewVenue = { ...this.venue }
 	}
 
 	updateOperatingHours(day: keyof OperatingHours, field: 'open' | 'close', value: string) {
@@ -446,8 +411,6 @@ export class VenueForm extends $LitElement() {
 		operatingHours[day] = { ...dayHours, [field]: value }
 
 		this.venue = { ...this.venue, operatingHours } as Venue
-		// Update preview venue as well to trigger re-render
-		this.previewVenue = { ...this.venue }
 	}
 
 	onSave = (e: Event) => {

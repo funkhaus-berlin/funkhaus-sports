@@ -17,7 +17,6 @@ const GOLDEN_RATIO = 1.618
 export default class FunkhausVenueCard extends $LitElement() {
 	@query('section') card!: HTMLElement
 	@property({ type: Object }) venue!: Venue
-	@property({ type: Boolean }) featured: boolean = false
 	@property({ type: Object }) theme: { logo?: string; primary?: string; text?: string } = {}
 
 	// Track hover state for animations
@@ -101,7 +100,6 @@ export default class FunkhausVenueCard extends $LitElement() {
 		// Card styles
 		const cardClasses = {
 			'mx-auto': true,
-			'bg-primary-default': true,
 			group: true,
 			relative: true,
 			'overflow-hidden': true,
@@ -116,6 +114,11 @@ export default class FunkhausVenueCard extends $LitElement() {
 			'hover:shadow-xl': true,
 		}
 
+		const cardStyles = {
+			backgroundColor: primaryColor,
+			color: textColor,
+		}
+
 		// Text overlay to ensure good contrast
 		const overlayStyle = {
 			position: 'absolute',
@@ -124,9 +127,10 @@ export default class FunkhausVenueCard extends $LitElement() {
 			zIndex: '5',
 			pointerEvents: 'none',
 		}
+		console.log('Rendering venue card:', primaryColor)
 
 		return html`
-			<schmancy-theme color="${primaryColor}">
+			<schmancy-theme .color="${primaryColor}">
 				<section
 					@click=${() => {
 						area.push({
@@ -138,6 +142,7 @@ export default class FunkhausVenueCard extends $LitElement() {
 					@mouseleave=${() => (this.isHovered = false)}
 					hidden
 					class=${classMap(cardClasses)}
+					style=${styleMap(cardStyles)}
 				>
 					<!-- Subtle overlay for better text contrast -->
 					<div style=${styleMap(overlayStyle)}></div>
