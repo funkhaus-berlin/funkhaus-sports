@@ -117,7 +117,7 @@ export class BookingConfirmation extends $LitElement() {
 						<!-- Header/Logo Section -->
 						<div class="pt-4 md:pt-8 lg:pt-12 xl:pt-16 flex items-center justify-center gap-3">
 							<schmancy-icon size="48px" class="text-primary-default">check_circle</schmancy-icon>
-							<schmancy-typography type="headline" token="lg">Booking Confirmed!</schmancy-typography>
+							<schmancy-typography type="headline" token="lg">Super!</schmancy-typography>
 						</div>
 
 						<schmancy-grid gap="md" justify="stretch" class="px-6 py-2  md:py-6 max-w-4xl mx-auto w-full">
