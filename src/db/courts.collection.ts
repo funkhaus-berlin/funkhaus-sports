@@ -10,15 +10,8 @@ export enum CourtTypeEnum {
 }
 
 export enum SportTypeEnum {
-	tennis = 'tennis',
-	basketball = 'basketball',
 	volleyball = 'volleyball',
-	badminton = 'badminton',
 	pickleball = 'pickleball',
-	squash = 'squash',
-	tabletennis = 'tabletennis',
-	futsal = 'futsal',
-	handball = 'handball',
 	padel = 'padel',
 }
 
@@ -86,6 +79,12 @@ export interface Court {
 	images?: string[]
 	createdAt: string
 	updatedAt: string
+	layout?: {
+		type: 'rectangle' | 'circle' | 'custom'
+		dimensions: Dimensions // in meters
+		orientation?: 'landscape' | 'portrait'
+		customShape?: string // SVG path data or similar
+	}
 }
 
 // CourtsDB implementation would remain the same as your current code

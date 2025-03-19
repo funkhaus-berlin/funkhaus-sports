@@ -64,65 +64,44 @@ export interface Duration {
 	price: number
 }
 
-// utils.ts
-/**
- * Generate availability data for time slots
- * @param startMinutes Start time in minutes (e.g., 480 = 8:00 AM)
- * @param endMinutes End time in minutes (e.g., 1320 = 10:00 PM)
- * @param unavailableSlots Array of unavailable time slots in minutes
- * @returns Record of time slots with availability status
- */
-export function generateAvailability(
-	startMinutes: number,
-	endMinutes: number,
-	unavailableSlots: number[] = [],
-): Record<string, boolean> {
-	const availability: Record<string, boolean> = {}
+export enum BookingStep {
+	Date = 1,
+	Court = 2, // New step
+	Time = 3, // Shifted
+	Preferences = 4, // Shifted
+	Duration = 5, // Shifted
+	Payment = 6, // Shifted
+}
+export class BookingProgress {
+	currentStep: BookingStep = BookingStep.Date
+	steps: Array<{
+		step: BookingStep
+		label: string
+		icon: string
+	}>
 
-	// Generate time slots in 30-minute intervals
-	for (let time = startMinutes; time <= endMinutes; time += 30) {
-		availability[time.toString()] = !unavailableSlots.includes(time)
+	// private bookingSteps = [
+	// 	{ label: 'Date', icon: 'event' },
+	// 	{ label: 'Court', icon: 'sports_tennis' },
+	// 	{ label: 'Time', icon: 'schedule' },
+	// 	{ label: 'Duration', icon: 'timelapse' },
+	// 	{ label: 'Payment', icon: 'payment' },
+	// ]
+
+	constructor() {
+		this.currentStep = BookingStep.Date
+		this.steps = [
+			{ step: BookingStep.Date, label: 'Date', icon: 'event' },
+			{ step: BookingStep.Court, label: 'Court', icon: 'sports_tennis' }, // New step
+			{ step: BookingStep.Time, label: 'Time', icon: 'schedule' },
+			{ step: BookingStep.Preferences, label: 'Preferences', icon: 'settings' },
+			{ step: BookingStep.Duration, label: 'Duration', icon: 'timer' },
+			{ step: BookingStep.Payment, label: 'Payment', icon: 'payment' },
+		]
 	}
-
-	return availability
 }
-
-/**
- * Format minutes to HH:MM format
- * @param minutes Minutes since start of day
- * @returns Formatted time string
- */
-export function formatMinutesToTime(minutes: number): string {
-	const hours = Math.floor(minutes / 60)
-	const mins = minutes % 60
-	return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
-}
-
-/**
- * Parse time string to minutes
- * @param timeStr Time string in HH:MM format
- * @returns Minutes since start of day
- */
-export function parseTimeToMinutes(timeStr: string): number {
-	const [hours, minutes] = timeStr.split(':').map(Number)
-	return hours * 60 + minutes
-}
-
-/**
- * Calculate price based on duration and hourly rate
- * @param durationMinutes Duration in minutes
- * @param hourlyRate Hourly rate
- * @returns Total price
- */
-export function calculatePrice(durationMinutes: number, hourlyRate: number): number {
-	return Math.round((durationMinutes / 60) * hourlyRate)
-}
-
-/**
- * Format price for display
- * @param price Price as number
- * @returns Formatted price string with currency
- */
-export function formatPrice(price: number): string {
-	return `$${price.toFixed(2)}`
-}
+export const BookingProgressContext = createContext<BookingProgress>(
+	new BookingProgress(),
+	'session',
+	'bookingProgress',
+)

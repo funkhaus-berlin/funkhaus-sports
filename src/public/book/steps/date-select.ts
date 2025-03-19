@@ -6,7 +6,7 @@ import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { styleMap } from 'lit/directives/style-map.js'
 import { debounceTime, startWith } from 'rxjs'
-import { bookingContext } from '../context'
+import { bookingContext, BookingProgressContext, BookingStep } from '../context'
 
 // Define golden ratio constant
 const GOLDEN_RATIO = 1.618
@@ -431,6 +431,16 @@ export class DateSelectionStep extends $LitElement(css`
 				selectedEl.animate(this.animations.pulse.keyframes, this.animations.pulse.options)
 			}
 		}, 50)
+		bookingContext.set({
+			date: newValue,
+			courtId: '',
+			startTime: '',
+			endTime: '',
+		})
+
+		BookingProgressContext.set({
+			currentStep: BookingStep.Court,
+		})
 
 		this.dispatchEvent(new CustomEvent('change', { detail: newValue }))
 	}
@@ -477,6 +487,7 @@ export class DateSelectionStep extends $LitElement(css`
 
 		// Container classes with proper Tailwind utilities
 		const containerClasses = {
+			'px-1': true,
 			'w-full': true,
 			'max-w-full': true,
 			'bg-surface-low': true,

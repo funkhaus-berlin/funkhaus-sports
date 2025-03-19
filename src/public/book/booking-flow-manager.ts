@@ -2,19 +2,13 @@
 
 import dayjs from 'dayjs'
 import { BehaviorSubject, Observable } from 'rxjs'
-import { Booking } from './context'
+import { Booking, BookingStep } from './context'
 import { CourtPreferences } from 'src/bookingServices/court-assignment.service'
 
 /**
  * Steps in the booking process
  */
-export enum BookingStep {
-	Date = 1,
-	Time = 2,
-	Preferences = 3,
-	Duration = 4,
-	Payment = 5,
-}
+// Updated BookingStep enum in booking-flow-manager.ts
 
 /**
  * Manages the booking flow, step navigation and validation

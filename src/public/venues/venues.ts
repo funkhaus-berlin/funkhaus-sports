@@ -4,10 +4,11 @@ import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import { venuesContext } from 'src/admin/venues/venue-context'
+import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 import { Venue } from 'src/db/venue-collection'
 import { CourtBookingSystem } from 'src/public/book/book'
 import './venue.card'
+import { bookingContext } from '../book/context'
 
 @customElement('venue-landing-page')
 export class VenueLandingPage extends $LitElement() {
@@ -18,6 +19,10 @@ export class VenueLandingPage extends $LitElement() {
 
 	// Handle venue card click to navigate to booking
 	private handleVenueClick(venue: Venue) {
+		bookingContext.set({
+			venueId: venue.id,
+		})
+		venueContext.set(venue)
 		area.push({
 			component: CourtBookingSystem,
 			area: 'root',

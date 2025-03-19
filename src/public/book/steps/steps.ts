@@ -1,8 +1,9 @@
-import { SchmancyTheme, color } from '@mhmo91/schmancy'
+import { color, SchmancyTheme, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
+import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../context'
 
 /**
  * Step item interface
@@ -19,18 +20,6 @@ export interface Step {
 @customElement('funkhaus-booking-steps')
 export class FunkhausBookingSteps extends $LitElement() {
 	/**
-	 * Array of step items to display
-	 */
-	@property({ type: Array })
-	steps: Step[] = []
-
-	/**
-	 * Current active step (1-based index)
-	 */
-	@property({ type: Number })
-	currentStep: number = 1
-
-	/**
 	 * Previous step value for animations
 	 */
 	@state()
@@ -40,7 +29,7 @@ export class FunkhausBookingSteps extends $LitElement() {
 	 * Event fired when a step is clicked
 	 */
 	@property({ type: Boolean })
-	clickable: boolean = false
+	clickable: boolean = true
 
 	/**
 	 * Check if the step change animation is in progress
@@ -48,14 +37,29 @@ export class FunkhausBookingSteps extends $LitElement() {
 	@state()
 	private animating: boolean = false
 
+	@select(BookingProgressContext)
+	bookingProgress!: BookingProgress
+
+	@select(bookingContext)
+	booking!: Booking
+
 	/**
-	 * Lifecycle method to detect step changes and trigger animations
+	 * Current step getter for cleaner access
 	 */
-	updated(changedProperties: Map<string, any>) {
-		if (changedProperties.has('currentStep') && this.previousStep !== this.currentStep) {
-			this.animateStepChange(this.previousStep, this.currentStep)
-			this.previousStep = this.currentStep
-		}
+	private get currentStep(): number {
+		return this.bookingProgress?.currentStep || 1
+	}
+
+	connectedCallback() {
+		super.connectedCallback()
+
+		// Subscribe to step changes and trigger animations
+		BookingProgressContext.$.subscribe(progress => {
+			if (progress && this.previousStep !== progress.currentStep) {
+				this.animateStepChange(this.previousStep, progress.currentStep)
+				this.previousStep = progress.currentStep
+			}
+		})
 	}
 
 	/**
@@ -202,23 +206,61 @@ export class FunkhausBookingSteps extends $LitElement() {
 
 	/**
 	 * Handle step click events when clickable is true
+	 * Improved to reset the state of steps ahead when navigating backward
 	 */
 	private handleStepClick(stepNumber: number) {
 		// Only allow clicking on completed steps (and current step)
 		const isActive = this.currentStep >= stepNumber
 
 		if (this.clickable && !this.animating && isActive) {
-			// Update current step when clicked
-			this.currentStep = stepNumber
+			// Going backward in the flow
+			if (stepNumber < this.currentStep) {
+				// Reset booking data based on which step we're navigating to
+				const resetData: Partial<Booking> = {}
 
-			// Dispatch event to notify parent components
-			this.dispatchEvent(
-				new CustomEvent('step-click', {
-					detail: { step: stepNumber },
-					bubbles: true,
-					composed: true,
-				}),
-			)
+				// Clear data for steps ahead of the selected step
+				switch (stepNumber) {
+					case BookingStep.Date:
+						// Reset everything when going back to first step
+						resetData.date = ''
+						resetData.courtId = ''
+						resetData.startTime = ''
+						resetData.endTime = ''
+						resetData.price = 0
+						break
+
+					case BookingStep.Court:
+						// Keep date, but reset court selection and all following steps
+						resetData.courtId = ''
+						resetData.startTime = ''
+						resetData.endTime = ''
+						resetData.price = 0
+						break
+
+					case BookingStep.Time:
+						// Keep date and court, but reset time selection and following steps
+						resetData.startTime = ''
+						resetData.endTime = ''
+						resetData.price = 0
+						break
+
+					case BookingStep.Duration:
+						// Keep date, court and start time, but reset duration (end time)
+						resetData.endTime = ''
+						resetData.price = 0
+						break
+				}
+
+				// Update the booking context with reset data
+				if (Object.keys(resetData).length > 0) {
+					bookingContext.set(resetData, true)
+				}
+			}
+
+			// Update the current step in the progress context
+			BookingProgressContext.set({
+				currentStep: stepNumber,
+			})
 		}
 	}
 
@@ -230,9 +272,9 @@ export class FunkhausBookingSteps extends $LitElement() {
 				wrap="nowrap"
 				class="transition-all duration-500 w-full overflow-x-auto px-2"
 			>
-				${this.steps.map((step, index) => {
+				${this.bookingProgress.steps.map((step, index) => {
 					// For all but the last step, create a combined step+connector group
-					if (index < this.steps.length - 1) {
+					if (index < this.bookingProgress.steps.length - 1) {
 						return html`
 							<div class="flex items-center flex-shrink-0 min-w-max">${this.renderStep(step, index)}</div>
 							<div class="flex-grow min-w-2 max-w-24">${this.renderConnector(index + 2)}</div>

@@ -22,6 +22,9 @@ export class FormValidator {
 	 * @returns true if all fields are valid
 	 */
 	validateForm(booking: Booking): boolean {
+		// Log the booking object for debugging
+		console.log('Validating booking data:', JSON.stringify(booking, null, 2))
+
 		const requiredFields = [
 			{ key: 'userName', label: 'Name' },
 			{ key: 'customerEmail', label: 'Email' },
@@ -32,11 +35,19 @@ export class FormValidator {
 			{ key: 'customerAddress.country', label: 'Country' },
 		]
 
+		const bookingRequiredFields = [
+			{ key: 'date', label: 'Booking date' },
+			{ key: 'courtId', label: 'Court' },
+			{ key: 'startTime', label: 'Start time' },
+			{ key: 'endTime', label: 'End time' },
+			{ key: 'price', label: 'Price' },
+		]
+
 		let isValid = true
 		const newFormValidity: Record<string, boolean> = {}
 		const missingFields: string[] = []
 
-		// Check each required field
+		// Check each required user information field
 		for (const field of requiredFields) {
 			// Handle nested properties like customerAddress.street
 			let value
@@ -58,6 +69,31 @@ export class FormValidator {
 			if (!fieldValid) {
 				missingFields.push(field.label)
 				isValid = false
+			}
+		}
+
+		// Check booking-specific required fields
+		for (const field of bookingRequiredFields) {
+			const value = booking[field.key as keyof Booking]
+			const fieldValid =
+				field.key === 'price'
+					? typeof value === 'number' && value > 0
+					: !!value && (typeof value === 'string' ? value.trim() !== '' : true)
+
+			newFormValidity[field.key] = fieldValid
+
+			if (!fieldValid) {
+				// Only add to missing fields if it's a user input field
+				// For system fields, we'll handle differently
+				if (['date', 'courtId', 'startTime', 'endTime'].includes(field.key)) {
+					console.error(`Missing required booking field: ${field.key}`)
+					isValid = false
+
+					// Show a different error for system fields
+					this.errorHandler.setError(`Please complete your booking selection first (${field.label}).`)
+					this._formValidity = newFormValidity
+					return false
+				}
 			}
 		}
 

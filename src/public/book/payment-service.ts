@@ -1,13 +1,14 @@
-// src/public/book/PaymentService.ts
+// src/public/book/payment-service.ts
 
 import { Stripe, StripeElements } from '@stripe/stripe-js'
 import { BehaviorSubject, from, Observable, of } from 'rxjs'
-import { catchError, finalize, map, switchMap } from 'rxjs/operators'
+import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators'
 import { BookingService } from 'src/bookingServices/booking.service'
 import { auth } from 'src/firebase/firebase'
 import { createPaymentIntent } from '../stripe'
 import { Booking } from './context'
 import { BookingErrorHandler } from './error-handler'
+import dayjs from 'dayjs'
 
 /**
  * Handles payment processing and Stripe integration
@@ -50,12 +51,28 @@ export class PaymentService {
 		// Use existing user ID or generate guest ID
 		const userId = auth.currentUser?.uid || `guest-${this.generateUUID()}`
 
-		// Return updated booking object
+		// Format dates correctly - convert ISO strings to YYYY-MM-DD format
+		const formattedDate = booking.date ? dayjs(booking.date).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD')
+
+		// Ensure customer address has all required fields
+		const customerAddress = {
+			street: booking.customerAddress?.street || '',
+			city: booking.customerAddress?.city || '',
+			postalCode: booking.customerAddress?.postalCode || '',
+			country: booking.customerAddress?.country || 'DE', // Default to Germany
+		}
+
+		// Return updated booking object with all required fields
 		return {
 			...booking,
 			id: bookingId,
 			userId: userId || booking.userId,
+			userName: booking.userName || 'Guest User',
+			customerPhone: booking.customerPhone || '',
+			customerEmail: booking.customerEmail || '',
+			date: formattedDate,
 			paymentStatus: 'pending',
+			customerAddress,
 		}
 	}
 
@@ -103,15 +120,21 @@ export class PaymentService {
 		const lockFlag = {}
 		this._processingLock = lockFlag
 
-		// Finalize booking data
+		// Log incoming booking data for debugging
+		console.log('Processing payment for booking:', JSON.stringify(booking, null, 2))
+
+		// Finalize booking data with required fields and correct formats
 		const bookingData = this.prepareBookingForPayment(booking)
 
-		console.log('Booking data:', bookingData)
+		// Log prepared booking data for debugging
+		console.log('Prepared booking data:', JSON.stringify(bookingData, null, 2))
+
 		// Payment data for Stripe
 		const paymentData = this.preparePaymentData(bookingData)
 
 		// First create booking, then process payment
 		return from(this.bookingService.createBooking(bookingData)).pipe(
+			tap(createdBooking => console.log('Booking created successfully:', createdBooking)),
 			switchMap(createdBooking => {
 				// Skip further processing if component is unmounted
 				if (this._processingLock !== lockFlag) {
@@ -119,6 +142,7 @@ export class PaymentService {
 				}
 
 				return from(createPaymentIntent(paymentData)).pipe(
+					tap(response => console.log('Payment intent created:', response)),
 					switchMap(response => {
 						const clientSecret = response.clientSecret
 
@@ -148,6 +172,8 @@ export class PaymentService {
 					errorMessage = error.message || 'Your card was declined. Please try another payment method.'
 				} else if (error.type === 'validation_error') {
 					errorMessage = error.message || 'Please check your payment details and try again.'
+				} else if (error.message && error.message.includes('Missing required booking fields')) {
+					errorMessage = 'Please ensure all required booking information is filled out.'
 				} else {
 					errorMessage = this.errorHandler.getReadableErrorMessage(error)
 				}
