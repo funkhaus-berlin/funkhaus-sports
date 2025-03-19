@@ -1,12 +1,12 @@
 // netlify/functions/send-booking-email.ts
 import { Handler } from '@netlify/functions'
-import { corsHeaders } from './_shared/cors'
+import dayjs from 'dayjs'
 import admin from 'firebase-admin'
-import pug from 'pug'
 import { resolve } from 'path'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
-import dayjs from 'dayjs'
+import pug from 'pug'
 import QRCode from 'qrcode'
+import { corsHeaders } from './_shared/cors'
 import { emailConfig } from './_shared/email-config'
 import resend from './_shared/resend'
 
@@ -108,7 +108,7 @@ const handler: Handler = async (event, context) => {
 async function sendEmail(data: any, pdfBuffer: Buffer): Promise<boolean> {
 	try {
 		// Compile email template
-		const templatePath = resolve(__dirname, '../_shared/booking-confirmation.pug')
+		const templatePath = resolve(__dirname, '/_shared/booking-confirmation.pug')
 		const compileFunction = pug.compileFile(templatePath, {})
 
 		// Render HTML email content

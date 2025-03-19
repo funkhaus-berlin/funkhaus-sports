@@ -1,15 +1,16 @@
 // src/public/book/book.ts
-import { fullHeight, select } from '@mhmo91/schmancy'
+import { area, fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, PropertyValues } from 'lit'
 import { customElement, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { distinctUntilChanged, filter, takeUntil } from 'rxjs'
+import { distinctUntilChanged, filter, fromEvent, startWith, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
+import { VenueLandingPage } from '../venues/venues'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from './context'
 import { BookingErrorHandler } from './error-handler'
 import { PaymentStatusHandler } from './payment-status-handler'
@@ -49,9 +50,31 @@ export class CourtBookingSystem extends $LitElement() {
 		// Create payment slot
 		this.setupPaymentSlot()
 
-		// Add history state management
-		window.addEventListener('popstate', this.handleHistoryNavigation.bind(this))
+		bookingContext.$.pipe(
+			startWith(bookingContext.value),
+			filter(() => bookingContext.ready),
+			distinctUntilChanged((prev, curr) => prev.price === curr.price),
+			takeUntil(this.disconnecting),
+		).subscribe(booking => {
+			if (!booking.venueId) {
+				area.push({
+					area: 'root',
+					component: VenueLandingPage,
+					historyStrategy: 'replace',
+				})
+				return
+			}
+			if (booking.price) {
+				$stripe.next(booking.price)
+			}
+		})
 
+		// Add history state management
+		fromEvent<PopStateEvent>(window, 'popstate')
+			.pipe(takeUntil(this.disconnecting))
+			.subscribe((event: PopStateEvent) => {
+				this.handleHistoryNavigation(event)
+			})
 		// Initialize Stripe
 		this.initializeStripe()
 
@@ -66,11 +89,6 @@ export class CourtBookingSystem extends $LitElement() {
 			this.errorHandler.clearError()
 			this.error = null
 		})
-	}
-
-	disconnectedCallback() {
-		super.disconnectedCallback()
-		window.removeEventListener('popstate', this.handleHistoryNavigation.bind(this))
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
@@ -96,17 +114,6 @@ export class CourtBookingSystem extends $LitElement() {
 	}
 
 	private initializeStripe(): void {
-		// Subscribe to booking context changes to update stripe amount
-		bookingContext.$.pipe(
-			filter(() => !!this.booking),
-			distinctUntilChanged((prev, curr) => prev.price === curr.price),
-			takeUntil(this.disconnecting),
-		).subscribe(booking => {
-			if (booking.price) {
-				$stripe.next(booking.price)
-			}
-		})
-
 		// Initialize Stripe elements
 		$stripe.pipe(distinctUntilChanged(), takeUntil(this.disconnecting)).subscribe(async amount => {
 			try {

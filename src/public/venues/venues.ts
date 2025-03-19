@@ -29,6 +29,7 @@ export class VenueLandingPage extends $LitElement() {
 		area.push({
 			component: CourtBookingSystem,
 			area: 'root',
+			historyStrategy: 'push',
 		})
 	}
 
