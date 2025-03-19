@@ -9,7 +9,7 @@ import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { VenueLandingPage } from 'src/public/venues/venues'
 import { BookingUtilities } from '../booking-utilities'
-import { Booking, bookingContext } from '../context'
+import { Booking, bookingContext, BookingProgressContext } from '../context'
 
 @customElement('booking-confirmation')
 export class BookingConfirmation extends $LitElement() {
@@ -74,6 +74,7 @@ export class BookingConfirmation extends $LitElement() {
 	 */
 	private returnToHome() {
 		bookingContext.clear()
+		BookingProgressContext.clear()
 		if (this.onNewBooking) {
 			this.onNewBooking()
 		} else {

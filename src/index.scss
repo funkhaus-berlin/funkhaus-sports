@@ -28,7 +28,7 @@
 	font-weight: normal;
 	font-style: normal;
 }
-xx :root {
+:root {
 	font-family: 'GT-Eesti-Display-Regular';
 	--md-ref-typeface-brand: 'GT-Eesti-Display-Regular';
 	--md-ref-typeface-plain: 'GT-Eesti-Display-Regular';
@@ -60,6 +60,7 @@ body {
 	padding: 0;
 	--schmancy-font-family: 'GT-Eesti-Display-Regular';
 	overflow: hidden;
+	background: var(--schmancy-sys-color-surface-container);
 }
 @media (prefers-color-scheme: light) {
 	:root {

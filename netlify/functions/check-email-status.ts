@@ -1,8 +1,8 @@
 // netlify/functions/check-email-status.ts
 import { Handler } from '@netlify/functions'
 import admin from 'firebase-admin'
-import { Booking } from '../../src/public/book/context'
 import { corsHeaders } from './_shared/cors'
+import { Booking } from './types/booking.types'
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {

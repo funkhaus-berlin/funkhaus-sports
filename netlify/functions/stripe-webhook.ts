@@ -4,8 +4,6 @@ import admin from 'firebase-admin'
 import Stripe from 'stripe'
 import { corsHeaders } from './_shared/cors'
 import stripe from './_shared/stripe'
-import { Court } from '../../src/db/courts.collection'
-import { Venue } from '../../src/db/venue-collection'
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
@@ -252,19 +250,19 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 			// Only send email if it hasn't been sent already
 			if (!bookingData.emailSent) {
 				// Fetch related court and venue data needed for the email
-				let courtData: Court | null = null
-				let venueData: Venue | null = null
+				let courtData: any | null = null
+				let venueData: any | null = null
 
 				if (bookingData.courtId) {
 					const courtDoc = await db.collection('courts').doc(bookingData.courtId).get()
 					if (courtDoc.exists) {
-						courtData = courtDoc.data() as Court
+						courtData = courtDoc.data()
 
 						// If we have court data, also fetch venue data
 						if (courtData.venueId) {
 							const venueDoc = await db.collection('venues').doc(courtData.venueId).get()
 							if (venueDoc.exists) {
-								venueData = venueDoc.data() as Venue
+								venueData = venueDoc.data()
 							}
 						}
 					}

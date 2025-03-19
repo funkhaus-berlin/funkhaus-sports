@@ -1,13 +1,13 @@
 import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { css, html, PropertyValues } from 'lit'
+import { css, html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
-import { when } from 'lit/directives/when.js'
 import { classMap } from 'lit/directives/class-map.js'
+import { when } from 'lit/directives/when.js'
+import { debounceTime, fromEvent, Subscription, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { Court } from 'src/db/courts.collection'
 import { Booking, bookingContext } from '../context'
-import { fromEvent, Subscription, debounceTime, takeUntil } from 'rxjs'
 
 /**
  * Booking summary component that shows details about the current booking
@@ -210,7 +210,7 @@ export class BookingSummary extends $LitElement(css`
 		}
 
 		return html`
-			<div class="bg-surface-container p-4 rounded-lg mb-4 shadow-sm">
+			<div class="bg-surface-container p-4 rounded-lg shadow-sm">
 				<!-- Summary header with toggle -->
 				<div
 					class="flex justify-between items-center cursor-pointer"

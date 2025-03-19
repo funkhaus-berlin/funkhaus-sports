@@ -80,18 +80,6 @@ export class BookingConfirmationRoute extends $LitElement() {
 	}
 
 	/**
-	 * Check payment status directly with Stripe
-	 * Used as a fallback if webhook didn't update payment status
-	 */
-	private checkPaymentStatus(): void {
-		if (!this.booking?.paymentIntentId) return
-
-		// This would typically call a serverless function to check the status
-		// For now, we'll just show a notification
-		$notify.info('Verifying payment status...')
-	}
-
-	/**
 	 * Handle booking a new court
 	 */
 	private handleNewBooking(): void {

@@ -12,6 +12,7 @@ import { Booking, bookingContext, BookingProgress, BookingProgressContext, Booki
 
 // Import the sport-court-card component
 import './sport-court-card'
+import { when } from 'lit/directives/when.js'
 
 /**
  * Court selection component for the booking flow
@@ -233,7 +234,6 @@ export class CourtSelectStep extends $LitElement() {
 			'gap-2': compact,
 			'py-2': !compact,
 			'py-0': compact,
-			'px-2': true,
 			'transition-all': true,
 			'duration-300': true,
 		}
@@ -329,7 +329,7 @@ export class CourtSelectStep extends $LitElement() {
 
 		// Render main content
 		return html`
-			<div class="mt-3 bg-surface-container-low rounded-lg">
+			<div class="mt-3 bg-surface-container-low rounded-lg px-2">
 				${this.error
 					? html`
 							<div class="bg-error-container p-2 rounded-t-lg text-error-on-container text-sm text-center">
@@ -338,12 +338,14 @@ export class CourtSelectStep extends $LitElement() {
 							</div>
 					  `
 					: ''}
-				<div ?hidden=${this.isCompactView}>
-					<schmancy-typography type="title" token="md"> Select a court </schmancy-typography>
-					<schmancy-typography type="label" token="sm" class="text-surface-onVariant">
-						Tap a court below to continue
-					</schmancy-typography>
-				</div>
+				${when(
+					!this.isCompactView,
+					() => html`
+						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
+							Select Court
+						</schmancy-typography>
+					`,
+				)}
 				<div
 					class="flex gap-3 ${classMap(this.getContainerClasses())}"
 					role="listbox"

@@ -1,7 +1,6 @@
 [functions]
-  external_node_modules = ["react", "react/jsx-runtime", "react-dom/server"]
-  node_bundler = "esbuild"
-
+  external_node_modules = ["react", "react/jsx-runtime", "react-dom/server", "template"]
+  included_files = ["netlify/functions/_shared/ticket.pug"]
 
 [[redirects]]
   from = "/api/email-tickets"

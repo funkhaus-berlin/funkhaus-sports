@@ -652,36 +652,11 @@ export class TimeSelectionStep extends $LitElement(css`
 
 				<!-- Title section with animations aligned with court-select -->
 				${when(
-					this.active || this.booking.startTime,
+					this.active,
 					() => html`
-						<div class="flex justify-between items-center mb-3 transition-all duration-300">
-							<div class="transition-all duration-300 ${this.isCompact ? 'text-base' : 'text-lg font-medium'}">
-								Select Time
-								${this.isCompact && !this.booking.startTime
-									? html`<span class="text-primary-default ml-1">(No time selected)</span>`
-									: nothing}
-							</div>
-
-							${when(
-								this.booking.startTime,
-								() => html`
-									<div
-										class="text-primary-default transition-all duration-300 ${this.isCompact
-											? 'text-sm'
-											: 'text-base'} font-medium"
-									>
-										${this.formatTime(dayjs(this.booking.startTime).hour(), dayjs(this.booking.startTime).minute())}
-									</div>
-								`,
-							)}
-						</div>
-					`,
-					() => html`
-						<div class="text-center py-2 font-medium">
-							${this.booking.startTime
-								? this.formatTime(dayjs(this.booking.startTime).hour(), dayjs(this.booking.startTime).minute())
-								: 'Time'}
-						</div>
+						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
+							Select Time
+						</schmancy-typography>
 					`,
 				)}
 
@@ -817,10 +792,12 @@ export class TimeSelectionStep extends $LitElement(css`
 				${!slot.available
 					? html`<div
 							class="transition-all duration-300 ${this.isCompact
-								? 'text-2xs mt-0.5'
+								? 'text-2xs mt-0.25'
 								: 'text-xs mt-1'} text-error-default"
 					  >
-							${this.isCompact ? 'N/A' : 'Unavailable'}
+							<schmancy-typography type="label" token="sm">
+								${this.isCompact ? '' : 'Unavailable'}
+							</schmancy-typography>
 					  </div>`
 					: nothing}
 			</div>

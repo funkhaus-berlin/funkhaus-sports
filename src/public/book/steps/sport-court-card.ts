@@ -159,7 +159,7 @@ export class SportCourtCard extends $LitElement(css`
 					class="flex items-center justify-center flex-grow overflow-hidden relative bg-black  bg-primary-default/50"
 				>
 					<div
-						class="w-full h-full flex items-center justify-center transition-transform duration-200 bg-opacity-5"
+						class="w-full h-full  transition-transform duration-200 bg-opacity-5 block"
 						style="${this.getScaleStyle()}"
 					>
 						${unsafeHTML(this.getCourtSVG(this.type))}

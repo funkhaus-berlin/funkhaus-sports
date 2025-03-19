@@ -2,13 +2,12 @@
 import { Handler } from '@netlify/functions'
 import dayjs from 'dayjs'
 import admin from 'firebase-admin'
-import { resolve } from 'path'
+
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
-import pug from 'pug'
 import QRCode from 'qrcode'
 import { corsHeaders } from './_shared/cors'
 import { emailConfig } from './_shared/email-config'
-import resend from './_shared/resend'
+import resend, { emailHtml } from './_shared/resend'
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
@@ -107,12 +106,9 @@ const handler: Handler = async (event, context) => {
  */
 async function sendEmail(data: any, pdfBuffer: Buffer): Promise<boolean> {
 	try {
-		// Compile email template
-		const templatePath = resolve(__dirname, '/_shared/booking-confirmation.pug')
-		const compileFunction = pug.compileFile(templatePath, {})
-
-		// Render HTML email content
-		const htmlContent = compileFunction({
+		// Convert buffer to base64 for attachment
+		const pdfBase64 = pdfBuffer.toString('base64')
+		const html = await emailHtml({
 			booking: data.bookingDetails,
 			customer: {
 				name: data.customerName,
@@ -121,16 +117,12 @@ async function sendEmail(data: any, pdfBuffer: Buffer): Promise<boolean> {
 			},
 			venue: data.venueInfo,
 		})
-
-		// Convert buffer to base64 for attachment
-		const pdfBase64 = pdfBuffer.toString('base64')
-
 		// Send email with Resend
 		const response = await resend.emails.send({
 			from: `${emailConfig.fromName} <${emailConfig.from}>`,
 			to: data.customerEmail,
 			subject: `Your Court Booking Confirmation - ${data.bookingDetails.court}`,
-			html: htmlContent,
+			html: html!,
 			attachments: [
 				{
 					filename: `Booking-${data.bookingId}.pdf`,

@@ -1,16 +1,15 @@
-// src/public/book/book.ts
-import { area, fullHeight, select } from '@mhmo91/schmancy'
+// src/public/book/book.ts - updated version
+import { fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, PropertyValues } from 'lit'
 import { customElement, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { distinctUntilChanged, filter, fromEvent, startWith, takeUntil } from 'rxjs'
+import { distinctUntilChanged, filter, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
-import { VenueLandingPage } from '../venues/venues'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from './context'
 import { BookingErrorHandler } from './error-handler'
 import { PaymentStatusHandler } from './payment-status-handler'
@@ -27,7 +26,6 @@ export class CourtBookingSystem extends $LitElement() {
 	@state() bookingInProgress: boolean = false
 	@state() loadingCourts: boolean = false
 	@state() error: string | null = null
-	@state() bookingComplete: boolean = false
 
 	// Contexts
 	@select(courtsContext) availableCourts!: Map<string, Court>
@@ -50,31 +48,9 @@ export class CourtBookingSystem extends $LitElement() {
 		// Create payment slot
 		this.setupPaymentSlot()
 
-		bookingContext.$.pipe(
-			startWith(bookingContext.value),
-			filter(() => bookingContext.ready),
-			distinctUntilChanged((prev, curr) => prev.price === curr.price),
-			takeUntil(this.disconnecting),
-		).subscribe(booking => {
-			if (!booking.venueId) {
-				area.push({
-					area: 'root',
-					component: VenueLandingPage,
-					historyStrategy: 'replace',
-				})
-				return
-			}
-			if (booking.price) {
-				$stripe.next(booking.price)
-			}
-		})
-
 		// Add history state management
-		fromEvent<PopStateEvent>(window, 'popstate')
-			.pipe(takeUntil(this.disconnecting))
-			.subscribe((event: PopStateEvent) => {
-				this.handleHistoryNavigation(event)
-			})
+		window.addEventListener('popstate', this.handleHistoryNavigation.bind(this))
+
 		// Initialize Stripe
 		this.initializeStripe()
 
@@ -89,6 +65,11 @@ export class CourtBookingSystem extends $LitElement() {
 			this.errorHandler.clearError()
 			this.error = null
 		})
+	}
+
+	disconnectedCallback() {
+		super.disconnectedCallback()
+		window.removeEventListener('popstate', this.handleHistoryNavigation.bind(this))
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
@@ -114,6 +95,17 @@ export class CourtBookingSystem extends $LitElement() {
 	}
 
 	private initializeStripe(): void {
+		// Subscribe to booking context changes to update stripe amount
+		bookingContext.$.pipe(
+			filter(() => !!this.booking),
+			distinctUntilChanged((prev, curr) => prev.price === curr.price),
+			takeUntil(this.disconnecting),
+		).subscribe(booking => {
+			if (booking.price) {
+				$stripe.next(booking.price)
+			}
+		})
+
 		// Initialize Stripe elements
 		$stripe.pipe(distinctUntilChanged(), takeUntil(this.disconnecting)).subscribe(async amount => {
 			try {
@@ -156,8 +148,8 @@ export class CourtBookingSystem extends $LitElement() {
 	private checkPaymentStatus(): void {
 		this.paymentStatusHandler.checkUrlForPaymentStatus().subscribe(result => {
 			if (result.processed && result.success && result.bookingId) {
-				// Show confirmation for successful payment
-				this.bookingComplete = true
+				// Redirect to confirmation page instead of showing it inline
+				this.redirectToConfirmation(result.bookingId)
 			}
 		})
 	}
@@ -169,8 +161,11 @@ export class CourtBookingSystem extends $LitElement() {
 
 		// Handle confirmation view
 		if (confirmationParam === 'true') {
-			this.bookingComplete = true
-			return
+			const bookingId = urlParams.get('booking')
+			if (bookingId) {
+				this.redirectToConfirmation(bookingId)
+				return
+			}
 		}
 
 		// Parse step from URL
@@ -192,8 +187,11 @@ export class CourtBookingSystem extends $LitElement() {
 
 		// Handle confirmation state from history
 		if (event.state?.confirmation) {
-			this.bookingComplete = true
-			return
+			const bookingId = event.state?.bookingId
+			if (bookingId) {
+				this.redirectToConfirmation(bookingId)
+				return
+			}
 		}
 
 		// Update only if it's a valid step
@@ -228,17 +226,30 @@ export class CourtBookingSystem extends $LitElement() {
 		// Ensure selected court is set
 		this.ensureSelectedCourt()
 
-		// Update URL for confirmation
-		this.updateUrlForConfirmation()
+		// Get the booking ID - essential for redirecting
+		const bookingId = this.booking.id
 
-		// Show confirmation view after brief delay for smoother transition
+		// Redirect to the confirmation page after a short delay
 		requestAnimationFrame(() => {
 			setTimeout(() => {
-				this.bookingComplete = true
 				this.bookingInProgress = false
-				this.requestUpdate()
+				this.redirectToConfirmation(bookingId)
 			}, 100)
 		})
+	}
+
+	/**
+	 * Redirect to the confirmation route with the booking ID
+	 */
+	private redirectToConfirmation(bookingId: string): void {
+		if (!bookingId) return
+
+		// Create the confirmation URL
+		const baseUrl = window.location.origin
+		const confirmationUrl = `${baseUrl.replace(/\/$/, '')}/booking/confirmation?id=${bookingId}`
+
+		// Navigate to the confirmation page
+		window.location.href = confirmationUrl
 	}
 
 	private ensureSelectedCourt(): void {
@@ -252,33 +263,15 @@ export class CourtBookingSystem extends $LitElement() {
 		}
 	}
 
-	private updateUrlForConfirmation(): void {
-		const url = new URL(window.location.href)
-		url.searchParams.delete('step')
-		url.searchParams.set('confirmation', 'true')
-		if (this.booking.id) {
-			url.searchParams.set('booking', this.booking.id)
-		}
-		window.history.pushState({ confirmation: true, bookingId: this.booking.id }, '', url.toString())
-	}
-
 	// HELPER METHODS
 
-	private resetBooking(): void {
-		this.bookingComplete = false
-		this.error = null
-		this.selectedCourt = undefined
+	private getDuration(): number {
+		if (!this.booking.startTime || !this.booking.endTime) return 0
 
-		// Reset booking context to initial state
-		bookingContext.clear()
-
-		// Reset to the first step
-		BookingProgressContext.set({
-			currentStep: BookingStep.Date,
-		})
+		const startTime = new Date(this.booking.startTime).getTime()
+		const endTime = new Date(this.booking.endTime).getTime()
+		return (endTime - startTime) / (1000 * 60) // Convert to minutes
 	}
-
-	// RENDERING METHODS
 
 	private renderProgressSteps() {
 		return html` <funkhaus-booking-steps></funkhaus-booking-steps> `
@@ -347,43 +340,6 @@ export class CourtBookingSystem extends $LitElement() {
 		`
 	}
 
-	private getDuration(): number {
-		if (!this.booking.startTime || !this.booking.endTime) return 0
-
-		const startTime = new Date(this.booking.startTime).getTime()
-		const endTime = new Date(this.booking.endTime).getTime()
-		return (endTime - startTime) / (1000 * 60) // Convert to minutes
-	}
-
-	private renderBookingConfirmation() {
-		const hasRequiredData = this.booking && this.booking.date && this.booking.startTime
-
-		if (!hasRequiredData) {
-			return html`
-				<schmancy-surface type="containerLow" rounded="all" class="p-5">
-					<schmancy-flex flow="col" align="center" justify="center">
-						<schmancy-typography type="title">Booking Data Error</schmancy-typography>
-						<schmancy-typography>Sorry, we couldn't retrieve your booking details.</schmancy-typography>
-						<schmancy-button class="mt-4" variant="filled" @click=${() => this.resetBooking()}>
-							Start Over
-						</schmancy-button>
-					</schmancy-flex>
-				</schmancy-surface>
-			`
-		}
-
-		return html`
-			<booking-confirmation
-				.booking=${this.booking}
-				.selectedCourt=${this.selectedCourt}
-				.customerEmail=${this.booking.customerEmail || ''}
-				.customerName=${this.booking.userName || ''}
-				.bookingId=${this.booking.id || ''}
-				.onNewBooking=${() => this.resetBooking()}
-			></booking-confirmation>
-		`
-	}
-
 	private renderProcessingOverlay() {
 		return html`
 			<div
@@ -397,12 +353,6 @@ export class CourtBookingSystem extends $LitElement() {
 	}
 
 	render() {
-		// Show booking confirmation if complete
-		if (this.bookingComplete) {
-			return this.renderBookingConfirmation()
-		}
-
-		// Main booking flow
 		return html`
 			<schmancy-surface ${fullHeight()} type="containerLow" rounded="all" elevation="1">
 				<schmancy-grid rows="auto auto 1fr" ${fullHeight()} flow="row" class="max-w-lg mx-auto pt-2">
