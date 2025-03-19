@@ -4,6 +4,8 @@ import admin from 'firebase-admin'
 import Stripe from 'stripe'
 import { corsHeaders } from './_shared/cors'
 import stripe from './_shared/stripe'
+import { Court } from '../../src/db/courts.collection'
+import { Venue } from '../../src/db/venue-collection'
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
@@ -242,6 +244,67 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 			})
 
 			console.log(`Updated existing booking ${bookingId} to confirmed status`)
+
+			// Now fetch the complete booking data to prepare for email
+			const updatedBookingDoc = await bookingRef.get()
+			const bookingData = updatedBookingDoc.data() as any
+
+			// Only send email if it hasn't been sent already
+			if (!bookingData.emailSent) {
+				// Fetch related court and venue data needed for the email
+				let courtData: Court | null = null
+				let venueData: Venue | null = null
+
+				if (bookingData.courtId) {
+					const courtDoc = await db.collection('courts').doc(bookingData.courtId).get()
+					if (courtDoc.exists) {
+						courtData = courtDoc.data() as Court
+
+						// If we have court data, also fetch venue data
+						if (courtData.venueId) {
+							const venueDoc = await db.collection('venues').doc(courtData.venueId).get()
+							if (venueDoc.exists) {
+								venueData = venueDoc.data() as Venue
+							}
+						}
+					}
+				}
+
+				// Prepare email data
+				const emailData = prepareEmailData(bookingData, courtData, venueData, paymentIntent)
+
+				// Call the email sending function
+				try {
+					// Import the email sending function
+					const { handler: emailHandler } = require('./send-booking-email')
+
+					// Create a mock event to pass to the email sending function
+					const mockEvent = {
+						body: JSON.stringify(emailData),
+						httpMethod: 'POST',
+						headers: {},
+					}
+
+					// Send the email
+					const emailResponse = await emailHandler(mockEvent, {})
+					const emailResult = JSON.parse(emailResponse.body)
+
+					if (emailResult.success) {
+						console.log(`Sent confirmation email for booking ${bookingId}`)
+
+						// Mark email as sent in booking record
+						await bookingRef.update({
+							emailSent: true,
+							emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+						})
+					} else {
+						console.error(`Failed to send confirmation email for booking ${bookingId}:`, emailResult.error)
+					}
+				} catch (emailError) {
+					console.error(`Error sending confirmation email for booking ${bookingId}:`, emailError)
+				}
+			}
+
 			return { success: true, action: 'updated_booking' }
 		} else {
 			// Booking doesn't exist yet - create it from payment metadata
@@ -284,6 +347,58 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 				'Created emergency booking record as original was missing',
 			)
 
+			// We'll attempt to send an email even for emergency bookings
+			try {
+				// Prepare minimal email data
+				const emailData = {
+					bookingId: bookingId,
+					customerEmail: customerEmail,
+					customerName: customerName,
+					bookingDetails: {
+						date: date || new Date().toISOString().split('T')[0],
+						startTime: startTime ? new Date(startTime).toLocaleTimeString() : 'N/A',
+						endTime: endTime ? new Date(endTime).toLocaleTimeString() : 'N/A',
+						court: courtId || 'Unknown Court',
+						price: amount.toFixed(2),
+						vatInfo: {
+							netAmount: (amount / 1.07).toFixed(2),
+							vatAmount: (amount - amount / 1.07).toFixed(2),
+							vatRate: '7%',
+						},
+					},
+					paymentInfo: {
+						paymentStatus: 'paid',
+						paymentIntentId: paymentIntent.id,
+					},
+				}
+
+				// Import the email sending function
+				const { handler: emailHandler } = require('./send-booking-email')
+
+				// Create a mock event to pass to the email sending function
+				const mockEvent = {
+					body: JSON.stringify(emailData),
+					httpMethod: 'POST',
+					headers: {},
+				}
+
+				// Send the email
+				const emailResponse = await emailHandler(mockEvent, {})
+				const emailResult = JSON.parse(emailResponse.body)
+
+				if (emailResult.success) {
+					console.log(`Sent confirmation email for emergency booking ${bookingId}`)
+
+					// Mark email as sent in booking record
+					await bookingRef.update({
+						emailSent: true,
+						emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+					})
+				}
+			} catch (emailError) {
+				console.error(`Error sending confirmation email for emergency booking ${bookingId}:`, emailError)
+			}
+
 			return { success: true, action: 'created_emergency_booking' }
 		}
 	} catch (error) {
@@ -292,6 +407,72 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 
 		// Retry on next webhook or manual intervention
 		return { success: false, error: error.message }
+	}
+}
+/**
+ * Helper function to prepare email data
+ */
+function prepareEmailData(booking, court, venue, paymentIntent) {
+	// Calculate VAT amounts (assuming 7% VAT)
+	const vatRate = 0.07
+	const netAmount = booking.price / (1 + vatRate)
+	const vatAmount = booking.price - netAmount
+
+	// Format dates and times
+	const bookingDate = new Date(booking.date).toLocaleDateString('en-US', {
+		weekday: 'long',
+		year: 'numeric',
+		month: 'long',
+		day: 'numeric',
+	})
+
+	const startTime = booking.startTime
+		? new Date(booking.startTime).toLocaleTimeString([], {
+				hour: '2-digit',
+				minute: '2-digit',
+		  })
+		: 'N/A'
+
+	const endTime = booking.endTime
+		? new Date(booking.endTime).toLocaleTimeString([], {
+				hour: '2-digit',
+				minute: '2-digit',
+		  })
+		: 'N/A'
+
+	return {
+		bookingId: booking.id,
+		customerEmail: booking.customerEmail || paymentIntent.receipt_email,
+		customerName: booking.userName || paymentIntent.shipping?.name || 'Customer',
+		customerPhone: booking.customerPhone || '',
+		customerAddress: booking.customerAddress || paymentIntent.shipping?.address || {},
+		bookingDetails: {
+			date: bookingDate,
+			startTime,
+			endTime,
+			court: court?.name || 'Court',
+			courtType: court?.courtType || 'standard',
+			venue: venue?.name || 'Funkhaus Sports',
+			price: booking.price.toFixed(2),
+			vatInfo: {
+				netAmount: netAmount.toFixed(2),
+				vatAmount: vatAmount.toFixed(2),
+				vatRate: `${(vatRate * 100).toFixed(0)}%`,
+			},
+		},
+		venueInfo: venue
+			? {
+					name: venue.name,
+					address: venue.address,
+					contactEmail: venue.contactEmail,
+					contactPhone: venue.contactPhone,
+					website: venue.website,
+			  }
+			: null,
+		paymentInfo: {
+			paymentStatus: booking.paymentStatus || 'paid',
+			paymentIntentId: booking.paymentIntentId || paymentIntent.id,
+		},
 	}
 }
 

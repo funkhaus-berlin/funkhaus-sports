@@ -25,6 +25,8 @@ export interface Booking {
 	}
 	createdAt?: any
 	updatedAt?: any
+	emailSent?: boolean
+	emailSentAt?: any
 }
 
 // Create global context for booking information

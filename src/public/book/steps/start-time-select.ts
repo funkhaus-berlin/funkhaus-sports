@@ -757,7 +757,7 @@ export class TimeSelectionStep extends $LitElement(css`
 			'bg-primary-default': isSelected,
 			'text-primary-on': isSelected,
 			'border-primary-default': isSelected,
-			'bg-surface-high': !isSelected && slot.available,
+			'bg-success-container/10': !isSelected && slot.available,
 			'border-outlineVariant': !isSelected && slot.available,
 			'text-surface-on': !isSelected && slot.available,
 			'bg-error-container/10': !slot.available,

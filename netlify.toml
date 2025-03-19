@@ -1,3 +1,27 @@
+[functions]
+  external_node_modules = ["react", "react/jsx-runtime", "react-dom/server"]
+  node_bundler = "esbuild"
+
+
+[[redirects]]
+  from = "/api/email-tickets"
+  to = "/.netlify/functions/email-tickets-background"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/download-ticket"
+  to = "/.netlify/functions/download-ticket"
+  status = 200
+  force = true
+
+
+[[redirects]]
+  from = "/api/invoice"
+  to = "/.netlify/functions/invoice"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "/api/create-payment-intent"
   to = "/.netlify/functions/create-payment-intent"
