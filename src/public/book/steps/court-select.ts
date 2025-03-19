@@ -6,7 +6,7 @@ import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { distinctUntilChanged, filter, map, Observable, shareReplay, startWith, switchMap, takeUntil, tap } from 'rxjs'
 import { courtsContext, selectMyCourts } from 'src/admin/venues/courts/context'
-import { AvailabilityService, AvailabilityResponse } from 'src/bookingServices/availability'
+import { AvailabilityResponse, AvailabilityService } from 'src/bookingServices/availability'
 import { Court } from 'src/db/courts.collection'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../context'
 

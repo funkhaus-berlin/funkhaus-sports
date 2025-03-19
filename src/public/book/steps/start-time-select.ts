@@ -39,6 +39,7 @@ export class TimeSelectionStep extends $LitElement(css`
 	@state() loading = true
 	@state() error: string | null = null
 	@state() availabilityData: AvailabilityResponse | null = null
+	@state() autoScrollAttempted = false
 
 	// Track the last successful time slots data for better UX during errors
 	private lastSuccessfulData: { timeSlots: TimeSlot[]; availabilityData: AvailabilityResponse } | null = null
@@ -68,6 +69,13 @@ export class TimeSelectionStep extends $LitElement(css`
 		BookingProgressContext.$.pipe(takeUntil(this.disconnecting)).subscribe(progress => {
 			this.active = progress.currentStep === BookingStep.Time
 			this.requestUpdate()
+
+			// Reset auto-scroll flag when this step becomes active
+			if (progress.currentStep === BookingStep.Time) {
+				this.autoScrollAttempted = false
+				// Try to scroll to first available after a brief delay to ensure DOM is ready
+				setTimeout(() => this.scrollToFirstAvailableTime(), 100)
+			}
 		})
 
 		// Set up reactive subscription with the same pattern as court-select-step
@@ -83,6 +91,8 @@ export class TimeSelectionStep extends $LitElement(css`
 			})),
 			distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.courtId === curr.courtId),
 			tap(({ date, venueId }) => {
+				this.loading = true
+				this.autoScrollAttempted = false // Reset auto-scroll flag when data changes
 				this.loadTimeSlots(date, venueId)
 			}),
 		).subscribe({
@@ -123,12 +133,18 @@ export class TimeSelectionStep extends $LitElement(css`
 		this.error = null
 		this.requestUpdate()
 
-		// Scroll to selected time if needed
-		if (this.booking.startTime) {
-			setTimeout(() => this.scrollToTime(this.booking.startTime), 100)
-		} else {
-			this.scrollToFirstAvailableTime()
-		}
+		// After data is loaded, try to scroll to the appropriate position
+		this.updateComplete.then(() => {
+			// If there's a selected time, scroll to it
+			if (this.booking.startTime) {
+				setTimeout(() => this.scrollToTime(this.booking.startTime), 150)
+			}
+			// Otherwise, scroll to the first available time
+			else if (!this.autoScrollAttempted) {
+				this.autoScrollAttempted = true
+				setTimeout(() => this.scrollToFirstAvailableTime(), 150)
+			}
+		})
 
 		// Announce to screen readers
 		this.announceForScreenReader(`${data.timeSlots.length} time slots loaded`)
@@ -275,6 +291,7 @@ export class TimeSelectionStep extends $LitElement(css`
 
 	/**
 	 * Improved method to scroll to selected time
+	 * Only scrolls if the element is not already visible in the viewport
 	 */
 	private scrollToSelectedTime(): void {
 		if (!this.booking?.startTime) return
@@ -290,6 +307,32 @@ export class TimeSelectionStep extends $LitElement(css`
 			// Find the selected time element
 			const timeEl = this.shadowRoot?.querySelector(`[data-time-value="${timeValue}"]`) as HTMLElement
 			if (!timeEl) return
+
+			// Check if element is already in view
+			const containerRect = scrollContainer.getBoundingClientRect()
+			const elementRect = timeEl.getBoundingClientRect()
+
+			// Element is fully visible if its left and right edges are within the container's viewport
+			const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
+
+			// Element is partially visible if at least some part of it is in the viewport
+			const isPartiallyVisible = elementRect.left < containerRect.right && elementRect.right > containerRect.left
+
+			// If the element is already fully visible, don't scroll
+			if (isFullyVisible) {
+				return
+			}
+
+			// If partially visible but more than half is visible, don't scroll either
+			if (isPartiallyVisible) {
+				const visibleWidth =
+					Math.min(elementRect.right, containerRect.right) - Math.max(elementRect.left, containerRect.left)
+				const elementVisiblePercentage = visibleWidth / elementRect.width
+
+				if (elementVisiblePercentage > 0.5) {
+					return
+				}
+			}
 
 			// Calculate the center position
 			const containerWidth = scrollContainer.clientWidth
@@ -311,6 +354,7 @@ export class TimeSelectionStep extends $LitElement(css`
 
 	/**
 	 * Scroll to a specific time - updated for better centering
+	 * Only scrolls if the element is not already visible in the viewport
 	 */
 	private scrollToTime(timeString: string): void {
 		const time = dayjs(timeString)
@@ -324,6 +368,32 @@ export class TimeSelectionStep extends $LitElement(css`
 			// Find the time element
 			const timeEl = this.shadowRoot?.querySelector(`[data-time-value="${timeValue}"]`) as HTMLElement
 			if (!timeEl) return
+
+			// Check if element is already in view
+			const containerRect = scrollContainer.getBoundingClientRect()
+			const elementRect = timeEl.getBoundingClientRect()
+
+			// Element is fully visible if its left and right edges are within the container's viewport
+			const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
+
+			// Element is partially visible if at least some part of it is in the viewport
+			const isPartiallyVisible = elementRect.left < containerRect.right && elementRect.right > containerRect.left
+
+			// If the element is already fully visible, don't scroll
+			if (isFullyVisible) {
+				return
+			}
+
+			// If partially visible but more than half is visible, don't scroll either
+			if (isPartiallyVisible) {
+				const visibleWidth =
+					Math.min(elementRect.right, containerRect.right) - Math.max(elementRect.left, containerRect.left)
+				const elementVisiblePercentage = visibleWidth / elementRect.width
+
+				if (elementVisiblePercentage > 0.5) {
+					return
+				}
+			}
 
 			// Calculate the center position
 			const containerWidth = scrollContainer.clientWidth
@@ -345,10 +415,15 @@ export class TimeSelectionStep extends $LitElement(css`
 
 	/**
 	 * Scroll to first available time slot - improved for better centering
+	 * Only scrolls if the element is not already visible in the viewport
 	 */
 	private scrollToFirstAvailableTime(): void {
+		// Find the first available time slot
 		const firstAvailable = this.timeSlots.find(slot => slot.available)
-		if (!firstAvailable) return
+		if (!firstAvailable) {
+			console.log('No available time slots found')
+			return
+		}
 
 		try {
 			// Get the scrollable container
@@ -358,6 +433,36 @@ export class TimeSelectionStep extends $LitElement(css`
 			// Find the time element
 			const timeEl = this.shadowRoot?.querySelector(`[data-time-value="${firstAvailable.value}"]`) as HTMLElement
 			if (!timeEl) return
+
+			// Check if element is already in view
+			const containerRect = scrollContainer.getBoundingClientRect()
+			const elementRect = timeEl.getBoundingClientRect()
+
+			// Element is fully visible if its left and right edges are within the container's viewport
+			const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
+
+			// Element is partially visible if at least some part of it is in the viewport
+			const isPartiallyVisible = elementRect.left < containerRect.right && elementRect.right > containerRect.left
+
+			// If the element is already fully visible, don't scroll
+			if (isFullyVisible) {
+				// Just highlight the element
+				this.highlightTimeSlot(timeEl)
+				return
+			}
+
+			// If partially visible but more than half is visible, don't scroll either
+			if (isPartiallyVisible) {
+				const visibleWidth =
+					Math.min(elementRect.right, containerRect.right) - Math.max(elementRect.left, containerRect.left)
+				const elementVisiblePercentage = visibleWidth / elementRect.width
+
+				if (elementVisiblePercentage > 0.5) {
+					// Just highlight the element
+					this.highlightTimeSlot(timeEl)
+					return
+				}
+			}
 
 			// Calculate the center position
 			const containerWidth = scrollContainer.clientWidth
@@ -372,9 +477,22 @@ export class TimeSelectionStep extends $LitElement(css`
 				left: scrollPosition,
 				behavior: 'smooth',
 			})
+
+			// Highlight the element
+			this.highlightTimeSlot(timeEl)
 		} catch (error) {
 			console.error('Error scrolling to first available time:', error)
 		}
+	}
+
+	/**
+	 * Highlight a time slot with a subtle animation
+	 */
+	private highlightTimeSlot(element: HTMLElement): void {
+		element.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }], {
+			duration: 800,
+			easing: 'ease-in-out',
+		})
 	}
 
 	/**
@@ -511,11 +629,8 @@ export class TimeSelectionStep extends $LitElement(css`
 			'transition-all': true,
 			'duration-300': true,
 			'mt-3': true, // Match court select spacing
-			'gap-4': !this.isCompact,
-			'gap-2': this.isCompact,
-			'py-2': !this.isCompact,
-			'py-0': this.isCompact,
-			'px-2': true,
+			'p-4': !this.isCompact,
+			'p-3': this.isCompact,
 			transform: true,
 			'ease-in-out': true,
 			'scale-100': this.active,

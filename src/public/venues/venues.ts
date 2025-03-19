@@ -7,8 +7,8 @@ import { when } from 'lit/directives/when.js'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 import { Venue } from 'src/db/venue-collection'
 import { CourtBookingSystem } from 'src/public/book/book'
+import { bookingContext, BookingProgressContext, BookingStep } from '../book/context'
 import './venue.card'
-import { bookingContext } from '../book/context'
 
 @customElement('venue-landing-page')
 export class VenueLandingPage extends $LitElement() {
@@ -23,10 +23,12 @@ export class VenueLandingPage extends $LitElement() {
 			venueId: venue.id,
 		})
 		venueContext.set(venue)
+		BookingProgressContext.set({
+			currentStep: BookingStep.Date,
+		})
 		area.push({
 			component: CourtBookingSystem,
 			area: 'root',
-			state: { venueId: venue.id },
 		})
 	}
 
