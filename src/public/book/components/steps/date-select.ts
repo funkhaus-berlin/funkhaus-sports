@@ -442,8 +442,9 @@ export class DateSelectionStep extends $LitElement(css`
 			endTime: '',
 		})
 
+		// Change: Navigate to Time step instead of Court step
 		BookingProgressContext.set({
-			currentStep: BookingStep.Court,
+			currentStep: BookingStep.Time,
 		})
 
 		this.dispatchEvent(new CustomEvent('change', { detail: newValue }))

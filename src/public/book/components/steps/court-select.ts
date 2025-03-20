@@ -9,14 +9,18 @@ import { courtsContext, selectMyCourts } from 'src/admin/venues/courts/context'
 import { Court } from 'src/db/courts.collection'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 
-// Import the sport-court-card component
+// Import the enhanced availability coordinator
+import {
+	CourtAvailabilityStatus,
+	enhancedAvailabilityCoordinator,
+} from 'src/bookingServices/enhanced-availability-coordinator'
+
 import { when } from 'lit/directives/when.js'
-import { availabilityCoordinator } from 'src/bookingServices/availability-coordinator'
 import './sport-court-card'
 
 /**
- * Court selection component for the booking flow
- * Uses the enhanced availability service for efficient data handling
+ * Updated Court selection component for the booking flow
+ * Shows availability based on selected date, time, and duration
  */
 @customElement('court-select-step')
 export class CourtSelectStep extends $LitElement() {
@@ -29,6 +33,9 @@ export class CourtSelectStep extends $LitElement() {
 	@state() selectedVenueCourts: Court[] = []
 	@state() loading: boolean = true
 	@state() error: string | null = null
+
+	// New state to track court availability statuses
+	@state() courtAvailability: Map<string, CourtAvailabilityStatus> = new Map()
 
 	// Track the last successful court data fetch for better UX during errors
 	private lastSuccessfulData: { courts: Court[] } | null = null
@@ -47,7 +54,7 @@ export class CourtSelectStep extends $LitElement() {
 		super.connectedCallback()
 
 		// Subscribe to availability coordinator errors
-		availabilityCoordinator.error$
+		enhancedAvailabilityCoordinator.error$
 			.pipe(
 				takeUntil(this.disconnecting),
 				filter(error => !!error),
@@ -58,31 +65,84 @@ export class CourtSelectStep extends $LitElement() {
 			})
 
 		// Subscribe to availability coordinator loading state
-		availabilityCoordinator.loading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
+		enhancedAvailabilityCoordinator.loading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
 			this.loading = loading
 			this.requestUpdate()
 		})
 
 		// Set up the court data subscription with improved error handling
-		return bookingContext.$.pipe(
+		bookingContext.$.pipe(
 			startWith(bookingContext.value),
 			takeUntil(this.disconnecting),
-			filter(booking => !!booking.date && !!booking.venueId),
-			map(booking => ({ date: booking.date, venueId: booking.venueId })),
-			distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.venueId === curr.venueId),
-			tap(({ date, venueId }) => this.loadCourtsForDate(date, venueId)),
-		).subscribe({})
+			filter(booking => !!booking.date && !!booking.venueId && !!booking.startTime && !!booking.endTime),
+			map(booking => ({
+				date: booking.date,
+				venueId: booking.venueId,
+				startTime: booking.startTime,
+				endTime: booking.endTime,
+			})),
+			distinctUntilChanged(
+				(prev, curr) =>
+					prev.date === curr.date &&
+					prev.venueId === curr.venueId &&
+					prev.startTime === curr.startTime &&
+					prev.endTime === curr.endTime,
+			),
+			tap(booking => this.loadCourtsWithAvailability(booking)),
+		).subscribe({
+			error: err => {
+				console.error('Error in booking subscription:', err)
+				this.error = 'Failed to load court availability data'
+				this.loading = false
+				this.requestUpdate()
+			},
+		})
 	}
 
 	/**
-	 * Load court data for a specific date and venue
+	 * Load courts with availability information for selected date, time, and duration
 	 */
-	private loadCourtsForDate(date: string, venueId: string): void {
+	private loadCourtsWithAvailability(booking: {
+		date: string
+		venueId: string
+		startTime: string
+		endTime: string
+	}): void {
 		this.loading = true
-		this.loadCourtData(date, venueId).subscribe({
-			next: courts => this.handleCourtDataLoaded(courts),
-			error: err => this.handleCourtDataError(err),
-		})
+		this.error = null
+
+		try {
+			// Calculate duration in minutes from startTime and endTime
+			const startTime = new Date(booking.startTime)
+			const endTime = new Date(booking.endTime)
+			const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000)
+
+			// Get court availability statuses from the coordinator
+			const courtAvailabilities = enhancedAvailabilityCoordinator.getAllCourtsAvailability(
+				booking.startTime,
+				durationMinutes,
+			)
+
+			// Create map of court ID to availability status for efficient lookups
+			const availabilityMap = new Map<string, CourtAvailabilityStatus>()
+			courtAvailabilities.forEach(status => {
+				availabilityMap.set(status.courtId, status)
+			})
+
+			// Store the map in state
+			this.courtAvailability = availabilityMap
+
+			// Load the court data
+			this.loadCourtData(booking.date, booking.venueId).subscribe({
+				next: courts => this.handleCourtDataLoaded(courts),
+				error: err => this.handleCourtDataError(err),
+			})
+		} catch (error) {
+			console.error('Error loading court availability:', error)
+			this.error = 'Failed to check court availability. Please try again.'
+			this.loading = false
+			this.requestUpdate()
+		}
 	}
 
 	/**
@@ -148,26 +208,25 @@ export class CourtSelectStep extends $LitElement() {
 				return courts.filter(court => court.status === 'active' && court.venueId === venueId)
 			}),
 			map(courts => {
-				// Sort courts by availability using the coordinator
-				const availabilityData = availabilityCoordinator.availabilityData$.value
+				// Sort courts by availability using our availability map
+				return courts.sort((a, b) => {
+					// Get availability statuses from our map
+					const aStatus = this.courtAvailability.get(a.id)
+					const bStatus = this.courtAvailability.get(b.id)
 
-				// If we have availability data, use it for sorting
-				if (availabilityData) {
-					return courts.sort((a, b) => {
-						// Sort by availability (available first), then by name
-						const aAvailable = this.isCourtAvailable(a.id)
-						const bAvailable = this.isCourtAvailable(b.id)
+					// Sort fully available courts first
+					if (aStatus?.fullyAvailable !== bStatus?.fullyAvailable) {
+						return aStatus?.fullyAvailable ? -1 : 1
+					}
 
-						if (aAvailable !== bAvailable) {
-							return aAvailable ? -1 : 1
-						}
+					// Then sort by partial availability
+					if (aStatus?.available !== bStatus?.available) {
+						return aStatus?.available ? -1 : 1
+					}
 
-						return a.name.localeCompare(b.name)
-					})
-				}
-
-				// Otherwise just sort by name
-				return courts.sort((a, b) => a.name.localeCompare(b.name))
+					// Finally sort by name
+					return a.name.localeCompare(b.name)
+				})
 			}),
 			// Share the result to prevent multiple subscription executions
 			shareReplay(1),
@@ -175,23 +234,40 @@ export class CourtSelectStep extends $LitElement() {
 	}
 
 	/**
-	 * Check if a court is available using the enhanced availability data
+	 * Get court availability status based on our availability map
 	 */
-	private isCourtAvailable(courtId: string): boolean {
-		// Use the availability coordinator to check court availability
-		// This ensures consistent availability checking across components
-		const availabilityData = availabilityCoordinator.availabilityData$.value
+	private getCourtAvailabilityStatus(courtId: string): 'full' | 'partial' | 'none' {
+		const status = this.courtAvailability.get(courtId)
 
-		// Default to true if we don't have availability data
-		if (!availabilityData) return true
+		if (!status) return 'none'
 
-		// Check if the court exists in the availability data and is available
-		if (availabilityData.courts && availabilityData.courts[courtId]) {
-			return availabilityData.courts[courtId].isAvailable === true
-		}
+		if (status.fullyAvailable) return 'full'
 
-		// Default to true if court isn't in the data
-		return true
+		if (status.available) return 'partial'
+
+		return 'none'
+	}
+
+	/**
+	 * Check if a court can be selected based on availability
+	 */
+	private canSelectCourt(courtId: string): boolean {
+		const status = this.courtAvailability.get(courtId)
+		// Allow selection if at least partially available
+		return status?.available === true
+	}
+
+	/**
+	 * Get partially available time info for display
+	 */
+	private getPartialAvailabilityInfo(courtId: string): string {
+		const status = this.courtAvailability.get(courtId)
+		if (!status || !status.available || status.fullyAvailable) return ''
+
+		// Return the number of available slots out of total
+		return `${status.availableTimeSlots.length}/${
+			status.availableTimeSlots.length + status.unavailableTimeSlots.length
+		} slots`
 	}
 
 	/**
@@ -215,7 +291,7 @@ export class CourtSelectStep extends $LitElement() {
 	 */
 	private handleCourtSelect(court: Court): void {
 		// Don't allow selecting unavailable courts
-		if (!this.isCourtAvailable(court.id)) {
+		if (!this.canSelectCourt(court.id)) {
 			return
 		}
 
@@ -223,13 +299,11 @@ export class CourtSelectStep extends $LitElement() {
 		bookingContext.set({
 			...this.booking,
 			courtId: court.id,
-			startTime: '',
-			endTime: '',
 		})
 
-		// Advance to next step
+		// Advance to Payment step
 		BookingProgressContext.set({
-			currentStep: BookingStep.Time,
+			currentStep: BookingStep.Payment,
 		})
 
 		// Fire change event for parent components
@@ -242,11 +316,16 @@ export class CourtSelectStep extends $LitElement() {
 
 	private retryLoading(): void {
 		// Force a refresh of availability data
-		availabilityCoordinator.refreshData()
+		enhancedAvailabilityCoordinator.refreshData()
 
-		// Then reload courts
-		if (this.booking?.date && this.booking?.venueId) {
-			this.loadCourtsForDate(this.booking.date, this.booking.venueId)
+		// Then reload courts with availability
+		if (this.booking?.date && this.booking?.venueId && this.booking?.startTime && this.booking?.endTime) {
+			this.loadCourtsWithAvailability({
+				date: this.booking.date,
+				venueId: this.booking.venueId,
+				startTime: this.booking.startTime,
+				endTime: this.booking.endTime,
+			})
 		}
 	}
 
@@ -266,19 +345,22 @@ export class CourtSelectStep extends $LitElement() {
 	}
 
 	/**
-	 * Get court card container classes
-	 * Courts now have fixed dimensions based on type, so we just need to ensure
-	 * they display consistently in the grid
+	 * Get court card container classes based on availability
 	 */
-	private getCourtCardContainerClasses(): Record<string, boolean> {
+	private getCourtCardContainerClasses(courtId: string): Record<string, boolean> {
+		const availabilityStatus = this.getCourtAvailabilityStatus(courtId)
+
 		return {
 			flex: true,
 			'justify-center': true,
 			'items-center': true,
 			'transition-all': true,
 			'duration-300': true,
+			relative: true, // For availability indicator
+			'opacity-50': availabilityStatus === 'none',
 		}
 	}
+
 	/**
 	 * Render error state
 	 */
@@ -323,6 +405,44 @@ export class CourtSelectStep extends $LitElement() {
 	}
 
 	/**
+	 * Render availability badge on court card based on status
+	 */
+	private renderAvailabilityBadge(courtId: string): unknown {
+		const status = this.getCourtAvailabilityStatus(courtId)
+
+		if (status === 'full') {
+			return html`
+				<div
+					class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-success-default text-success-on rounded-full text-xs font-medium"
+				>
+					Available
+				</div>
+			`
+		}
+
+		if (status === 'partial') {
+			const info = this.getPartialAvailabilityInfo(courtId)
+			return html`
+				<div
+					class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-warning-default text-warning-on rounded-full text-xs font-medium flex items-center"
+				>
+					<schmancy-icon size="12px" class="mr-1">warning</schmancy-icon>
+					<span>Partial ${info}</span>
+				</div>
+			`
+		}
+
+		return html`
+			<div
+				class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-error-container text-error-on-container rounded-full text-xs font-medium flex items-center"
+			>
+				<schmancy-icon size="12px" class="mr-1">block</schmancy-icon>
+				<span>Unavailable</span>
+			</div>
+		`
+	}
+
+	/**
 	 * Main render method
 	 */
 	render() {
@@ -358,6 +478,9 @@ export class CourtSelectStep extends $LitElement() {
 						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
 							Select Court
 						</schmancy-typography>
+						<div class="text-xs text-surface-on-variant mt-1 mb-2">
+							Select a court for your ${this.booking?.startTime ? 'selected time slot' : 'booking'}
+						</div>
 					`,
 				)}
 				<div
@@ -371,17 +494,20 @@ export class CourtSelectStep extends $LitElement() {
 						court => court.id,
 						court => html`
 							<div
-								class="${classMap(this.getCourtCardContainerClasses())}"
+								class="${classMap(this.getCourtCardContainerClasses(court.id))}"
 								role="option"
 								aria-selected="${this.booking?.courtId === court.id ? 'true' : 'false'}"
-								aria-disabled="${!this.isCourtAvailable(court.id) ? 'true' : 'false'}"
+								aria-disabled="${!this.canSelectCourt(court.id) ? 'true' : 'false'}"
 							>
+								<!-- Availability badge -->
+								${this.renderAvailabilityBadge(court.id)}
+
 								<sport-court-card
 									id="${court.id}"
 									name="${court.name}"
 									type="${this.getCourtType(court)}"
 									.selected="${this.booking?.courtId === court.id}"
-									.disabled="${!this.isCourtAvailable(court.id)}"
+									.disabled="${!this.canSelectCourt(court.id)}"
 									.compact="${this.isCompactView}"
 									@court-click="${() => this.handleCourtSelect(court)}"
 								></sport-court-card>

@@ -302,25 +302,7 @@ export class CourtBookingSystem extends $LitElement() {
 
 		return html`
 			${when(
-				currentStep <= BookingStep.Duration,
-				() => html`
-					<date-selection-step class="max-w-full sticky top-0 block my-2 z-0"></date-selection-step>
-
-					<!-- Court select now includes preferences directly -->
-					<court-select-step
-						.hidden=${currentStep < BookingStep.Court}
-						class="max-w-full block mt-2 z-10"
-					></court-select-step>
-
-					${when(
-						currentStep >= BookingStep.Time,
-						() => html` <time-selection-step class="max-w-full sticky top-0 block mt-2 z-10"></time-selection-step> `,
-					)}
-					${when(
-						currentStep === BookingStep.Duration,
-						() => html` <duration-selection-step class="max-w-full mt-2 block"></duration-selection-step> `,
-					)}
-				`,
+				currentStep === BookingStep.Payment,
 				() => html`
 					<booking-summary .booking=${this.booking} .selectedCourt=${this.selectedCourt}></booking-summary>
 
@@ -331,6 +313,22 @@ export class CourtBookingSystem extends $LitElement() {
 					>
 						<slot slot="stripe-element" name="stripe-element"></slot>
 					</funkhaus-checkout-form>
+				`,
+				() => html`
+					<date-selection-step class="max-w-full sticky top-0 block my-2 z-0"></date-selection-step>
+
+					${when(
+						currentStep >= BookingStep.Time,
+						() => html` <time-selection-step class="max-w-full sticky top-0 block mt-2 z-10"></time-selection-step> `,
+					)}
+					${when(
+						currentStep >= BookingStep.Duration,
+						() => html` <duration-selection-step class="max-w-full mt-2 block"></duration-selection-step> `,
+					)}
+					${when(
+						currentStep >= BookingStep.Court,
+						() => html` <court-select-step class="max-w-full block mt-2 z-10"></court-select-step> `,
+					)}
 				`,
 			)}
 		`

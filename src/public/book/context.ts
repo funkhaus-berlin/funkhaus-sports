@@ -80,9 +80,9 @@ export const bookingContext = createContext<Booking>(
 // Simplified booking steps
 export enum BookingStep {
 	Date = 1,
-	Court = 2,
-	Time = 3,
-	Duration = 4,
+	Time = 2,
+	Duration = 3,
+	Court = 4,
 	Payment = 5,
 }
 

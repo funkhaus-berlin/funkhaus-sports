@@ -8,7 +8,7 @@ import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, filter, map, startWith, takeUntil, tap } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
-import { availabilityCoordinator } from 'src/bookingServices/availability-coordinator'
+import { enhancedAvailabilityCoordinator } from 'src/bookingServices/enhanced-availability-coordinator'
 import { Court } from 'src/db/courts.collection'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { Duration } from '../../types'
@@ -17,6 +17,7 @@ import { getUserTimezone, toUserTimezone } from 'src/utils/timezone'
 /**
  * Duration selection component that matches the time selection component design
  * Horizontally scrollable, responsive and with consistent animations
+ * Uses the enhanced availability coordinator to show durations for all courts
  */
 @customElement('duration-selection-step')
 export class DurationSelectionStep extends $LitElement(css`
@@ -43,6 +44,7 @@ export class DurationSelectionStep extends $LitElement(css`
 	@state() selectedCourt?: Court
 	@state() showingEstimatedPrices = false
 	@state() autoScrollAttempted = false
+	@state() availableCourtsCount = 0 // Added to show count of available courts
 
 	// Track the last successful durations data for better UX during errors
 	private lastSuccessfulData: { durations: Duration[] } | null = null
@@ -76,7 +78,7 @@ export class DurationSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Load durations based on court and venue data with proper timezone handling
+	 * Load durations for all courts using the enhanced availability coordinator
 	 */
 	private loadDurations(): void {
 		// Set initial loading state
@@ -92,64 +94,53 @@ export class DurationSelectionStep extends $LitElement(css`
 			return
 		}
 
-		// Find selected court
-		if (this.booking?.courtId && this.courts && this.courts.has(this.booking.courtId)) {
-			const court = this.courts.get(this.booking.courtId)
-			this.selectedCourt = court
+		// Only proceed if we have start time
+		if (this.booking?.startTime) {
+			console.log('Loading durations for all courts at time', this.booking.startTime)
 
-			// Only proceed if we have a court and start time
-			if (court && this.booking?.startTime) {
-				console.log('Loading durations for court', court.id, 'at time', this.booking.startTime)
+			try {
+				// Use enhanced availability coordinator to get all available durations across all courts
+				const allDurations = enhancedAvailabilityCoordinator.getAllAvailableDurations(this.booking.startTime)
 
-				// Log the important timezone debug info to help diagnose
-				const userTz = getUserTimezone()
-				const utcTime = dayjs(this.booking.startTime).utc()
-				const localTime = toUserTimezone(this.booking.startTime)
+				if (allDurations.length > 0) {
+					// Convert to the simpler Duration format needed for the UI
+					const durations: Duration[] = allDurations.map(duration => ({
+						label: duration.label,
+						value: duration.value,
+						price: duration.price,
+					}))
 
-				console.log(`Timezone Debug:`)
-				console.log(`- User timezone: ${userTz}`)
-				console.log(`- UTC time from booking: ${utcTime.format('YYYY-MM-DD HH:mm:ss')}`)
-				console.log(`- Converted to local time: ${localTime.format('YYYY-MM-DD HH:mm:ss')}`)
+					// Track available courts count
+					const maxAvailableCourts = Math.max(...allDurations.map(d => d.availableCourts.length))
+					this.availableCourtsCount = maxAvailableCourts
 
-				// Use availability coordinator to get valid durations with proper timezone context
-				try {
-					// Get available durations from the coordinator
-					const availableDurations = availabilityCoordinator.getAvailableDurations(court.id, this.booking.startTime)
-
-					if (availableDurations.length > 0) {
-						// We have valid durations from the availability system
-						this.durations = availableDurations
-						this.showingEstimatedPrices = false
-						this.lastSuccessfulData = { durations: availableDurations }
-						this.announceForScreenReader(`${availableDurations.length} duration options available`)
-						console.log('Loaded durations:', availableDurations)
+					this.durations = durations
+					this.showingEstimatedPrices = false
+					this.lastSuccessfulData = { durations }
+					this.announceForScreenReader(`${durations.length} duration options available`)
+					console.log('Loaded durations:', durations)
+				} else {
+					// No valid durations available - check if it's a data issue or truly no availability
+					if (enhancedAvailabilityCoordinator.error$.value) {
+						// There was an error fetching availability data
+						this.error = 'Could not determine available durations. Using estimates instead.'
+						this.setEstimatedPrices()
+						console.warn('Using estimated prices due to error:', enhancedAvailabilityCoordinator.error$.value)
 					} else {
-						// No valid durations available - check if it's a data issue or truly no availability
-						if (availabilityCoordinator.error$.value) {
-							// There was an error fetching availability data
-							this.error = 'Could not determine available durations. Using estimates instead.'
-							this.setEstimatedPrices()
-							console.warn('Using estimated prices due to error:', availabilityCoordinator.error$.value)
-						} else {
-							// No error, but still no available durations - truly unavailable
-							this.error = 'No valid duration options available for this time slot. Please select a different time.'
-							this.durations = []
-							console.warn('No durations available for this time slot')
-						}
+						// No error, but still no available durations - truly unavailable
+						this.error = 'No valid duration options available for this time slot. Please select a different time.'
+						this.durations = []
+						console.warn('No durations available for this time slot')
 					}
-				} catch (error) {
-					console.error('Error getting available durations:', error)
-					this.error = 'Error determining available durations. Using estimates instead.'
-					this.setEstimatedPrices()
 				}
-			} else {
-				// Missing court or start time
-				console.warn('Missing court or start time, using estimated prices')
+			} catch (error) {
+				console.error('Error getting available durations:', error)
+				this.error = 'Error determining available durations. Using estimates instead.'
 				this.setEstimatedPrices()
 			}
 		} else {
-			// Court not found
-			console.warn('Court not found, using estimated prices')
+			// Missing start time
+			console.warn('Missing start time, using estimated prices')
 			this.setEstimatedPrices()
 		}
 
@@ -158,7 +149,12 @@ export class DurationSelectionStep extends $LitElement(css`
 
 		// After data is loaded, try to scroll to the appropriate position
 		this.updateComplete.then(() => {
-			// [existing scrolling code...]
+			if (this.booking.endTime) {
+				setTimeout(() => this.scrollToSelectedDuration(), 150)
+			} else if (!this.autoScrollAttempted) {
+				this.autoScrollAttempted = true
+				setTimeout(() => this.scrollToFirstDuration(), 150)
+			}
 		})
 	}
 
@@ -179,6 +175,23 @@ export class DurationSelectionStep extends $LitElement(css`
 			}
 		})
 
+		// Subscribe to enhanced availability coordinator errors
+		enhancedAvailabilityCoordinator.error$
+			.pipe(
+				takeUntil(this.disconnecting),
+				filter(error => !!error),
+			)
+			.subscribe(error => {
+				this.error = error
+				this.requestUpdate()
+			})
+
+		// Subscribe to enhanced availability coordinator loading state
+		enhancedAvailabilityCoordinator.loading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
+			this.loading = loading
+			this.requestUpdate()
+		})
+
 		// Set up reactive subscription to booking context
 		// Enhanced to respond immediately to time selection changes
 		bookingContext.$.pipe(
@@ -187,19 +200,15 @@ export class DurationSelectionStep extends $LitElement(css`
 			filter(booking => {
 				// Ensure booking exists and has required properties
 				if (!booking) return false
-				return !!booking.date && !!booking.courtId && !!booking.startTime
+				return !!booking.date && !!booking.startTime
 			}),
 			map(booking => ({
 				date: booking.date,
-				venueId: booking.venueId,
-				courtId: booking.courtId,
 				startTime: booking.startTime,
 				endTime: booking.endTime,
 			})),
-			// Important: reload when time selection changes
-			distinctUntilChanged(
-				(prev, curr) => prev.courtId === curr.courtId && prev.startTime === curr.startTime && prev.date === curr.date,
-			),
+			// Important: reload when time selection changes (courtId is no longer important here)
+			distinctUntilChanged((prev, curr) => prev.startTime === curr.startTime && prev.date === curr.date),
 			tap(booking => {
 				console.log('Booking context changed, reloading durations:', booking)
 				this.loading = true
@@ -288,10 +297,11 @@ export class DurationSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Handle duration selection with improved scrolling behavior
+	 * Handle duration selection - now should help the user select a court
+	 * Since we may have multiple court options for a given duration
 	 */
 	private handleDurationSelect(duration: Duration): void {
-		// Update booking context
+		// Update booking context with duration info
 		if (this.booking && this.booking.startTime) {
 			// Convert from UTC to local, add duration, then back to UTC
 			const localStartTime = toUserTimezone(this.booking.startTime)
@@ -299,15 +309,6 @@ export class DurationSelectionStep extends $LitElement(css`
 
 			// Convert back to UTC for storage
 			const endTime = localEndTime.utc().toISOString()
-
-			// Log for debugging
-			console.log(`Duration selection:
-        - Start time (UTC): ${this.booking.startTime}
-        - Start time (local): ${localStartTime.format('YYYY-MM-DD HH:mm')}
-        - Duration: ${duration.value} minutes
-        - End time (local): ${localEndTime.format('YYYY-MM-DD HH:mm')}
-        - End time (UTC): ${endTime}
-      `)
 
 			bookingContext.set(
 				{
@@ -321,9 +322,9 @@ export class DurationSelectionStep extends $LitElement(css`
 		// Ensure the selected duration is properly centered after selection
 		setTimeout(() => this.scrollToSelectedDuration(), 150)
 
-		// Advance to next step
+		// Advance to court selection step
 		BookingProgressContext.set({
-			currentStep: BookingStep.Payment,
+			currentStep: BookingStep.Court,
 		})
 
 		// Dispatch event for parent components
@@ -516,6 +517,8 @@ export class DurationSelectionStep extends $LitElement(css`
 	 * Retry loading duration data
 	 */
 	private retryLoading(): void {
+		// Force a refresh of availability data
+		enhancedAvailabilityCoordinator.refreshData()
 		this.loadDurations()
 	}
 
@@ -618,6 +621,17 @@ export class DurationSelectionStep extends $LitElement(css`
 						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
 							Select Duration
 						</schmancy-typography>
+						<div class="text-xs text-surface-on-variant mt-1 flex items-center justify-between">
+							<span>Choose how long you'd like to play</span>
+							${this.availableCourtsCount > 0
+								? html`
+										<span class="text-success-default"
+											>${this.availableCourtsCount} ${this.availableCourtsCount === 1 ? 'court' : 'courts'}
+											available</span
+										>
+								  `
+								: ''}
+						</div>
 					`,
 				)}
 
@@ -644,12 +658,6 @@ export class DurationSelectionStep extends $LitElement(css`
 						? html`<p class="text-warning-default mt-1">
 								<schmancy-icon class="mr-1" size="12px">info</schmancy-icon>
 								Estimated prices. Actual price may vary.
-						  </p>`
-						: nothing}
-					${this.selectedCourt && !this.showingEstimatedPrices
-						? html`<p class="mt-1">
-								Pricing based on court:
-								<span class="font-medium">${this.selectedCourt.name}</span>
 						  </p>`
 						: nothing}
 				</div>

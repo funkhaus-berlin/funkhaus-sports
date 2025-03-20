@@ -229,24 +229,24 @@ export class FunkhausBookingSteps extends $LitElement() {
 						resetData.price = 0
 						break
 
-					case BookingStep.Court:
-						// Keep date, but reset court selection and all following steps
+					case BookingStep.Time:
+						// Keep date, but reset time, duration, court and payment
 						resetData.courtId = ''
 						resetData.startTime = ''
 						resetData.endTime = ''
 						resetData.price = 0
 						break
 
-					case BookingStep.Time:
-						// Keep date and court, but reset time selection and following steps
-						resetData.startTime = ''
+					case BookingStep.Duration:
+						// Keep date and time, but reset duration, court and payment
+						resetData.courtId = ''
 						resetData.endTime = ''
 						resetData.price = 0
 						break
 
-					case BookingStep.Duration:
-						// Keep date, court and start time, but reset duration (end time)
-						resetData.endTime = ''
+					case BookingStep.Court:
+						// Keep date, time, and duration but reset court
+						resetData.courtId = ''
 						resetData.price = 0
 						break
 				}

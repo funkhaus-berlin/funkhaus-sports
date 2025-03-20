@@ -9,10 +9,11 @@ import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, filter, startWith, takeUntil, tap } from 'rxjs'
-import { availabilityCoordinator } from 'src/bookingServices/availability-coordinator'
 import { toUTC } from 'src/utils/timezone'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { TimeSlot } from '../../types'
+// Import the enhanced availability coordinator
+import { enhancedAvailabilityCoordinator } from 'src/bookingServices/enhanced-availability-coordinator'
 
 // Configure dayjs with timezone plugins
 dayjs.extend(utc)
@@ -41,7 +42,7 @@ function toUserTimezone(isoString: string): dayjs.Dayjs {
 
 /**
  * Time selection component using the enhanced availability service
- * With proper timezone handling
+ * With proper timezone handling and ability to work without a specific court selected
  */
 @customElement('time-selection-step')
 export class TimeSelectionStep extends $LitElement(css`
@@ -72,6 +73,7 @@ export class TimeSelectionStep extends $LitElement(css`
 	@state() error: string | null = null
 	@state() autoScrollAttempted = false
 	@state() userTimezone = getUserTimezone()
+	@state() availableCourtsCount = 0
 
 	// Track the last successful time slots data for better UX during errors
 	private lastSuccessfulData: { timeSlots: TimeSlot[] } | null = null
@@ -103,8 +105,8 @@ export class TimeSelectionStep extends $LitElement(css`
 			}
 		})
 
-		// Subscribe to availability coordinator errors
-		availabilityCoordinator.error$
+		// Subscribe to enhanced availability coordinator errors
+		enhancedAvailabilityCoordinator.error$
 			.pipe(
 				takeUntil(this.disconnecting),
 				filter(error => !!error),
@@ -114,30 +116,29 @@ export class TimeSelectionStep extends $LitElement(css`
 				this.requestUpdate()
 			})
 
-		// Subscribe to availability coordinator loading state
-		availabilityCoordinator.loading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
+		// Subscribe to enhanced availability coordinator loading state
+		enhancedAvailabilityCoordinator.loading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
 			this.loading = loading
 			this.requestUpdate()
 		})
 
-		// Subscribe to booking context changes
+		// Subscribe to booking context changes - now only depends on date and venueId
 		bookingContext.$.pipe(
 			startWith(bookingContext.value),
 			takeUntil(this.disconnecting),
 			filter(booking => {
-				// Make sure we have both date and courtId before proceeding
-				const hasRequiredFields = !!booking.date && !!booking.courtId
+				// Make sure we have date and venueId before proceeding
+				const hasRequiredFields = !!booking.date && !!booking.venueId
 				if (!hasRequiredFields) {
 					console.log('Booking context missing required fields:', booking)
 				}
 				return hasRequiredFields
 			}),
-			// Important: we need to ensure we re-fetch when either date OR courtId changes
-			distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.courtId === curr.courtId),
+			// Only re-fetch when date or venueId changes - courtId no longer matters
+			distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.venueId === curr.venueId),
 			tap(booking => {
 				console.log('Booking context changed, triggering time slots refresh', {
 					date: booking.date,
-					courtId: booking.courtId,
 					venueId: booking.venueId,
 				})
 				// Reset time slots to force reload
@@ -147,13 +148,13 @@ export class TimeSelectionStep extends $LitElement(css`
 				this.error = null
 				this.lastSuccessfulData = null
 
-				// Force availability coordinator to refresh data for this court
-				availabilityCoordinator.refreshData()
+				// Force enhanced availability coordinator to refresh data
+				enhancedAvailabilityCoordinator.refreshData()
 			}),
 		).subscribe()
 
-		// Subscribe to availability data from coordinator
-		availabilityCoordinator.availabilityData$
+		// Subscribe to availability data from enhanced coordinator
+		enhancedAvailabilityCoordinator.availabilityData$
 			.pipe(
 				takeUntil(this.disconnecting),
 				filter(data => !!data),
@@ -161,78 +162,51 @@ export class TimeSelectionStep extends $LitElement(css`
 			.subscribe(data => {
 				console.log('Received availability data:', data)
 				if (data) {
-					this.processAvailabilityData(data)
+					this.loadTimeSlots()
 				}
 			})
 	}
 
-	// Improved processAvailabilityData method with timezone handling
-	private processAvailabilityData(data: any): void {
-		console.log('Processing availability data for court:', this.booking?.courtId)
-
-		// If we don't have a selected court, we can't determine availability
-		if (!this.booking?.courtId) {
-			this.timeSlots = []
-			this.error = 'No court selected'
-			this.loading = false
-			this.requestUpdate()
-			return
-		}
-
-		console.log('Processing availability data for court ID:', this.booking.courtId)
-
-		// Check if data is empty or missing timeSlots
-		if (!data || Object.keys(data).length === 0 || !data.timeSlots) {
-			console.warn('Missing or empty availability data - generating default time slots')
-			// Generate fallback time slots
-			this.generateDefaultTimeSlots()
-			return
-		}
+	/**
+	 * Load time slots from the enhanced availability coordinator
+	 * Shows all time slots where at least one court is available
+	 */
+	private loadTimeSlots(): void {
+		console.log('Loading time slots for all available courts')
 
 		try {
-			// Get the selected court ID from booking context
-			const courtId = this.booking.courtId
-
-			// Normalize the date format - this is crucial
-			// booking.date could be a full ISO string or just YYYY-MM-DD
+			// Normalize the date format
 			let formattedDate = this.booking.date
 			if (formattedDate.includes('T')) {
 				// If it's a full ISO string, extract just the date part
 				formattedDate = formattedDate.split('T')[0]
 			}
 
-			console.log('Processing availability for date:', formattedDate, 'court:', courtId)
+			// Get all time slots where ANY court is available
+			const timeSlotStatus = enhancedAvailabilityCoordinator.getAllAvailableTimeSlots(formattedDate)
+			console.log('Time slot availability status:', timeSlotStatus)
 
-			// Use the AvailabilityCoordinator's getAvailableTimeSlots method to get formatted time slots
-			const allTimeSlots = availabilityCoordinator.getAvailableTimeSlots(formattedDate)
-			console.log('All time slots from coordinator:', allTimeSlots)
+			// Convert to the simpler TimeSlot format needed for the UI
+			const timeSlots: TimeSlot[] = timeSlotStatus.map(slot => ({
+				label: slot.time,
+				value: slot.timeValue,
+				available: slot.hasAvailableCourts,
+			}))
 
-			// Filter time slots to only include those available for the selected court
-			const courtSpecificTimeSlots = allTimeSlots.map(slot => {
-				// Convert value back to time string format (HH:MM)
-				const hour = Math.floor(slot.value / 60)
-				const minute = slot.value % 60
-				const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
-
-				// Important: Use consistent timezone conversion when checking availability
-				const isAvailable = slot.available && availabilityCoordinator.isCourtAvailable(courtId, timeString)
-
-				return {
-					...slot,
-					available: isAvailable,
-				}
-			})
+			// Keep track of how many courts are available
+			const maxAvailableCourts = Math.max(...timeSlotStatus.map(slot => slot.availableCourts.length))
+			this.availableCourtsCount = maxAvailableCourts
 
 			// Log to help with debugging
 			console.log(
-				`Processed ${courtSpecificTimeSlots.length} time slots for court ${courtId}, ${
-					courtSpecificTimeSlots.filter(s => s.available).length
-				} available`,
+				`Processed ${timeSlots.length} time slots, ${
+					timeSlots.filter(s => s.available).length
+				} have at least one available court`,
 			)
 
 			// Update component state
-			this.timeSlots = courtSpecificTimeSlots
-			this.lastSuccessfulData = { timeSlots: courtSpecificTimeSlots }
+			this.timeSlots = timeSlots
+			this.lastSuccessfulData = { timeSlots }
 			this.loading = false
 			this.error = null
 
@@ -249,11 +223,9 @@ export class TimeSelectionStep extends $LitElement(css`
 				}
 			})
 
-			this.announceForScreenReader(
-				`${courtSpecificTimeSlots.filter(s => s.available).length} available time slots loaded`,
-			)
+			this.announceForScreenReader(`${timeSlots.filter(s => s.available).length} available time slots loaded`)
 		} catch (error) {
-			console.error('Error processing availability data:', error)
+			console.error('Error loading time slots:', error)
 			this.generateDefaultTimeSlots()
 		}
 	}
@@ -363,11 +335,12 @@ export class TimeSelectionStep extends $LitElement(css`
 	 */
 	private retryLoading(): void {
 		// Force a refresh of availability data
-		availabilityCoordinator.refreshData()
+		enhancedAvailabilityCoordinator.refreshData()
 	}
 
 	/**
 	 * Handle time slot selection with improved timezone handling
+	 * Now advances to court selection instead of duration selection
 	 */
 	private handleTimeSelect(slot: TimeSlot): void {
 		if (!slot.available) return
@@ -388,14 +361,21 @@ export class TimeSelectionStep extends $LitElement(css`
       `)
 
 			// Update booking context with the UTC time
-			bookingContext.set({
-				...this.booking,
-				startTime: newStartTime,
-			})
+			bookingContext.set(
+				{
+					startTime: newStartTime,
+					// Clear court selection since we're now choosing the court AFTER the time
+					courtId: '',
+					// Also clear end time since that will be determined by duration
+					endTime: '',
+				},
+				true,
+			)
 
 			// Ensure the selected time slot is properly centered after selection
 			setTimeout(() => this.scrollToSelectedTime(), 150)
 
+			// Go to court selection step (changed from duration step)
 			BookingProgressContext.set({
 				currentStep: BookingStep.Duration,
 			})
@@ -779,8 +759,16 @@ export class TimeSelectionStep extends $LitElement(css`
 						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
 							Select Time
 						</schmancy-typography>
-						<div class="text-xs text-surface-on-variant mt-1">
-							Times shown in your local timezone (${this.userTimezone})
+						<div class="text-xs text-surface-on-variant mt-1 flex items-center justify-between">
+							<span>Times shown in your local timezone (${this.userTimezone})</span>
+							${this.availableCourtsCount > 0
+								? html`
+										<span class="text-success-default"
+											>${this.availableCourtsCount} ${this.availableCourtsCount === 1 ? 'court' : 'courts'}
+											available</span
+										>
+								  `
+								: ''}
 						</div>
 					`,
 				)}
