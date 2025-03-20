@@ -6,7 +6,7 @@ import { customElement, property, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import { distinctUntilChanged, filter, map, startWith, takeUntil, tap } from 'rxjs'
+import { distinctUntilChanged, filter, startWith, takeUntil, tap } from 'rxjs'
 import { availabilityCoordinator } from 'src/bookingServices/availability-coordinator'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { TimeSlot } from '../../types'
@@ -29,8 +29,14 @@ export class TimeSelectionStep extends $LitElement(css`
 	@property({ type: Boolean }) hidden = false
 
 	// Basic dependencies
-	@select(bookingContext) booking!: Booking
-	@select(BookingProgressContext) bookingProgress!: BookingProgress
+	@select(bookingContext, undefined, {
+		required: true,
+	})
+	booking!: Booking
+	@select(BookingProgressContext, undefined, {
+		required: true,
+	})
+	bookingProgress!: BookingProgress
 
 	// State properties
 	@state() timeSlots: TimeSlot[] = []
@@ -52,9 +58,8 @@ export class TimeSelectionStep extends $LitElement(css`
 		return this.bookingProgress?.currentStep !== BookingStep.Time
 	}
 
-	/**
-	 * Set up all reactive subscriptions and initialize component
-	 */
+	// In start-time-select.ts
+
 	connectedCallback(): void {
 		super.connectedCallback()
 
@@ -84,10 +89,41 @@ export class TimeSelectionStep extends $LitElement(css`
 
 		// Subscribe to availability coordinator loading state
 		availabilityCoordinator.loading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
-			console.log(`Loading state changed: ${loading}`)
 			this.loading = loading
 			this.requestUpdate()
 		})
+
+		// Subscribe to booking context changes
+		bookingContext.$.pipe(
+			startWith(bookingContext.value),
+			takeUntil(this.disconnecting),
+			filter(booking => {
+				// Make sure we have both date and courtId before proceeding
+				const hasRequiredFields = !!booking.date && !!booking.courtId
+				if (!hasRequiredFields) {
+					console.log('Booking context missing required fields:', booking)
+				}
+				return hasRequiredFields
+			}),
+			// Important: we need to ensure we re-fetch when either date OR courtId changes
+			distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.courtId === curr.courtId),
+			tap(booking => {
+				console.log('Booking context changed, triggering time slots refresh', {
+					date: booking.date,
+					courtId: booking.courtId,
+					venueId: booking.venueId,
+				})
+				// Reset time slots to force reload
+				this.timeSlots = []
+				this.autoScrollAttempted = false
+				this.loading = true
+				this.error = null
+				this.lastSuccessfulData = null
+
+				// Force availability coordinator to refresh data for this court
+				availabilityCoordinator.refreshData()
+			}),
+		).subscribe()
 
 		// Subscribe to availability data from coordinator
 		availabilityCoordinator.availabilityData$
@@ -101,39 +137,11 @@ export class TimeSelectionStep extends $LitElement(css`
 					this.processAvailabilityData(data)
 				}
 			})
-
-		// Set up reactive subscription to booking context
-		bookingContext.$.pipe(
-			startWith(bookingContext.value),
-			takeUntil(this.disconnecting),
-			filter(booking => !!booking.date && !!booking.courtId),
-			map(booking => ({
-				date: booking.date,
-				venueId: booking.venueId,
-				courtId: booking.courtId,
-				startTime: booking.startTime,
-			})),
-			distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.courtId === curr.courtId),
-			tap(() => {
-				this.loading = true
-				this.autoScrollAttempted = false // Reset auto-scroll flag when data changes
-				// Availability data will be loaded through the coordinator
-			}),
-		).subscribe({
-			error: err => {
-				console.error('Error in booking subscription:', err)
-				this.error = 'Failed to load time slots'
-				this.loading = false
-				this.requestUpdate()
-			},
-		})
 	}
 
-	/**
-	 * Process availability data into time slots
-	 */
+	// Improved processAvailabilityData method to handle court-specific filtering better
 	private processAvailabilityData(data: any): void {
-		console.log('Processing availability data:', data)
+		console.log('Processing availability data for court:', this.booking?.courtId)
 
 		// If we don't have a selected court, we can't determine availability
 		if (!this.booking?.courtId) {
@@ -143,6 +151,8 @@ export class TimeSelectionStep extends $LitElement(css`
 			this.requestUpdate()
 			return
 		}
+
+		console.log('Processing availability data for court ID:', this.booking.courtId)
 
 		// Check if data is empty or missing timeSlots
 		if (!data || Object.keys(data).length === 0 || !data.timeSlots) {
@@ -156,13 +166,22 @@ export class TimeSelectionStep extends $LitElement(css`
 			// Get the selected court ID from booking context
 			const courtId = this.booking.courtId
 
-			// Use the AvailabilityCoordinator's getAvailableTimeSlots method to get formatted time slots
-			let processedTimeSlots = availabilityCoordinator.getAvailableTimeSlots(this.booking.date)
+			// Normalize the date format - this is crucial
+			// booking.date could be a full ISO string or just YYYY-MM-DD
+			let formattedDate = this.booking.date
+			if (formattedDate.includes('T')) {
+				// If it's a full ISO string, extract just the date part
+				formattedDate = formattedDate.split('T')[0]
+			}
 
-			console.log('Time slots from coordinator:', processedTimeSlots)
+			console.log('Processing availability for date:', formattedDate, 'court:', courtId)
+
+			// Use the AvailabilityCoordinator's getAvailableTimeSlots method to get formatted time slots
+			const allTimeSlots = availabilityCoordinator.getAvailableTimeSlots(formattedDate)
+			console.log('All time slots from coordinator:', allTimeSlots)
 
 			// Filter time slots to only include those available for the selected court
-			processedTimeSlots = processedTimeSlots.map(slot => {
+			const courtSpecificTimeSlots = allTimeSlots.map(slot => {
 				// Convert value back to time string format (HH:MM)
 				const hour = Math.floor(slot.value / 60)
 				const minute = slot.value % 60
@@ -171,23 +190,29 @@ export class TimeSelectionStep extends $LitElement(css`
 				// Check court-specific availability
 				const isAvailable = slot.available && availabilityCoordinator.isCourtAvailable(courtId, timeString)
 
+				// For debugging
+				if (!isAvailable && slot.available) {
+					console.log(`Time ${timeString} is globally available but not for court ${courtId}`)
+				}
+
 				return {
 					...slot,
 					available: isAvailable,
 				}
 			})
 
-			// Update component state
-			this.timeSlots = processedTimeSlots
-			this.lastSuccessfulData = { timeSlots: processedTimeSlots }
-			this.loading = false
-			this.error = null
-
+			// Log to help with debugging
 			console.log(
-				`Processed ${processedTimeSlots.length} time slots, ${
-					processedTimeSlots.filter(s => s.available).length
+				`Processed ${courtSpecificTimeSlots.length} time slots for court ${courtId}, ${
+					courtSpecificTimeSlots.filter(s => s.available).length
 				} available`,
 			)
+
+			// Update component state
+			this.timeSlots = courtSpecificTimeSlots
+			this.lastSuccessfulData = { timeSlots: courtSpecificTimeSlots }
+			this.loading = false
+			this.error = null
 
 			// Force update
 			this.requestUpdate()
@@ -202,7 +227,9 @@ export class TimeSelectionStep extends $LitElement(css`
 				}
 			})
 
-			this.announceForScreenReader(`${processedTimeSlots.filter(s => s.available).length} available time slots loaded`)
+			this.announceForScreenReader(
+				`${courtSpecificTimeSlots.filter(s => s.available).length} available time slots loaded`,
+			)
 		} catch (error) {
 			console.error('Error processing availability data:', error)
 			this.generateDefaultTimeSlots()
