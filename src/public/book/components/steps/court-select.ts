@@ -1,9 +1,11 @@
-import { select } from '@mhmo91/schmancy'
+import { $notify, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
+import dayjs from 'dayjs'
 import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
+import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, filter, map, shareReplay, startWith, takeUntil, tap } from 'rxjs'
 import { courtsContext, selectMyCourts } from 'src/admin/venues/courts/context'
 import { Court } from 'src/db/courts.collection'
@@ -15,12 +17,12 @@ import {
 	enhancedAvailabilityCoordinator,
 } from 'src/bookingServices/enhanced-availability-coordinator'
 
-import { when } from 'lit/directives/when.js'
 import './sport-court-card'
 
 /**
  * Updated Court selection component for the booking flow
  * Shows availability based on selected date, time, and duration
+ * Adds confirmation for partially available courts
  */
 @customElement('court-select-step')
 export class CourtSelectStep extends $LitElement() {
@@ -36,6 +38,10 @@ export class CourtSelectStep extends $LitElement() {
 
 	// New state to track court availability statuses
 	@state() courtAvailability: Map<string, CourtAvailabilityStatus> = new Map()
+
+	// State for confirmation dialog
+	@state() showConfirmationDialog: boolean = false
+	@state() pendingCourtSelection: Court | null = null
 
 	// Track the last successful court data fetch for better UX during errors
 	private lastSuccessfulData: { courts: Court[] } | null = null
@@ -234,6 +240,10 @@ export class CourtSelectStep extends $LitElement() {
 	}
 
 	/**
+	 * Calculate the availability ratio for a court
+	 * This shows what percentage of the requested time is available
+	 */
+	/**
 	 * Get court availability status based on our availability map
 	 */
 	private getCourtAvailabilityStatus(courtId: string): 'full' | 'partial' | 'none' {
@@ -246,6 +256,56 @@ export class CourtSelectStep extends $LitElement() {
 		if (status.available) return 'partial'
 
 		return 'none'
+	}
+
+	/**
+	 * Calculate the availability ratio for a court
+	 * This shows what percentage of the requested time is available
+	 */
+	private getAvailabilityRatio(courtId: string): number {
+		const status = this.courtAvailability.get(courtId)
+		if (!status) return 0
+
+		if (status.fullyAvailable) return 1 // Fully available = 100%
+		if (!status.available) return 0 // Not available = 0%
+
+		// Calculate ratio of available slots to total slots
+		const availableSlots = status.availableTimeSlots.length
+		const totalRequestedSlots = status.availableTimeSlots.length + status.unavailableTimeSlots.length
+
+		return totalRequestedSlots > 0 ? availableSlots / totalRequestedSlots : 0
+	}
+
+	/**
+	 * Render availability indicator for partial availability
+	 * Shows a visual progress bar of how much time is available
+	 */
+	private renderCourtAvailabilityIndicator(courtId: string): unknown {
+		const status = this.getCourtAvailabilityStatus(courtId)
+
+		if (status !== 'partial') return null
+
+		// Calculate ratio of available time
+		const ratio = this.getAvailabilityRatio(courtId)
+		const percentage = Math.round(ratio * 100)
+
+		// Get the actual available duration info
+		const availabilityInfo = this.getPartialAvailabilityInfo(courtId)
+
+		return html`
+			<div class="absolute bottom-0 left-0 right-0">
+				<!-- Progress bar -->
+				<div class="h-2 bg-surface-dim">
+					<div
+						class="h-full ${percentage >= 50 ? 'bg-success-container' : 'bg-warning-default'}"
+						style="width: ${percentage}%"
+					></div>
+				</div>
+
+				<!-- Text label -->
+				<div class="text-center text-xs font-medium py-1 bg-surface-container bg-opacity-75">${availabilityInfo}</div>
+			</div>
+		`
 	}
 
 	/**
@@ -264,10 +324,74 @@ export class CourtSelectStep extends $LitElement() {
 		const status = this.courtAvailability.get(courtId)
 		if (!status || !status.available || status.fullyAvailable) return ''
 
-		// Return the number of available slots out of total
+		// If we have available time slots, show actual available duration
+		if (status.availableTimeSlots.length > 0) {
+			// Sort time slots to find continuous periods
+			const sortedSlots = [...status.availableTimeSlots].sort()
+
+			// Calculate maximum continuous time available
+			let maxContinuousMinutes = 30 // Minimum is one slot (30 min)
+
+			// Try to determine the actual continuous duration
+			if (sortedSlots.length > 1) {
+				// Simple calculation for display purposes - actual time would need more precise calculation
+				maxContinuousMinutes = sortedSlots.length * 30
+			}
+
+			// Format for display
+			if (maxContinuousMinutes >= 60) {
+				const hours = Math.floor(maxContinuousMinutes / 60)
+				return `${hours}h available`
+			} else {
+				return `${maxContinuousMinutes}min available`
+			}
+		}
+
+		// Fallback to slots count
 		return `${status.availableTimeSlots.length}/${
 			status.availableTimeSlots.length + status.unavailableTimeSlots.length
 		} slots`
+	}
+
+	/**
+	 * Get formatted available time slots for display in confirmation dialog
+	 * Formats time slots into a more readable format
+	 */
+	private getFormattedAvailableTimes(courtId: string): string[] {
+		const status = this.courtAvailability.get(courtId)
+		if (!status || !status.availableTimeSlots.length) return []
+
+		// Sort time slots
+		const sortedSlots = [...status.availableTimeSlots].sort()
+
+		// Convert to more readable format
+		return sortedSlots.map(slot => {
+			const [hour, minute] = slot.split(':').map(Number)
+			// Convert to 12-hour format for readability
+			const hour12 = hour % 12 || 12
+			const ampm = hour >= 12 ? 'PM' : 'AM'
+			return `${hour12}:${minute.toString().padStart(2, '0')} ${ampm}`
+		})
+	}
+
+	/**
+	 * Get formatted unavailable time slots for display in confirmation dialog
+	 */
+	private getFormattedUnavailableTimes(courtId: string): string[] {
+		const status = this.courtAvailability.get(courtId)
+		if (!status || !status.unavailableTimeSlots.length) return []
+
+		// Sort time slots
+		const sortedSlots = [...status.unavailableTimeSlots].sort()
+
+		// Convert to more readable format
+		return sortedSlots.map(slot => {
+			const [hour, minute] = slot.split(':').map(Number)
+			// Convert to 12-hour format for readability
+			const hour12 = hour % 12 || 12
+			const ampm = hour >= 12 ? 'PM' : 'AM'
+			return `${hour12}:${minute.toString().padStart(2, '0')} ${ampm}`
+		})
 	}
 
 	/**
@@ -287,7 +411,7 @@ export class CourtSelectStep extends $LitElement() {
 	}
 
 	/**
-	 * Handle court selection
+	 * Handle court selection - now with confirmation for partially available courts
 	 */
 	private handleCourtSelect(court: Court): void {
 		// Don't allow selecting unavailable courts
@@ -295,16 +419,41 @@ export class CourtSelectStep extends $LitElement() {
 			return
 		}
 
+		// Check if court is partially available
+		const availabilityStatus = this.getCourtAvailabilityStatus(court.id)
+
+		if (availabilityStatus === 'partial') {
+			// Show confirmation dialog for partially available courts
+			this.pendingCourtSelection = court
+			this.showConfirmationDialog = true
+			return
+		}
+
+		// For fully available courts, proceed directly
+		this.confirmCourtSelection(court)
+	}
+
+	/**
+	 * Confirm court selection after user accepts partial availability
+	 */
+	private confirmCourtSelection(court: Court): void {
 		// Update booking context with selected court
 		bookingContext.set({
 			...this.booking,
 			courtId: court.id,
 		})
 
+		// Reset dialog state
+		this.pendingCourtSelection = null
+		this.showConfirmationDialog = false
+
 		// Advance to Payment step
 		BookingProgressContext.set({
 			currentStep: BookingStep.Payment,
 		})
+
+		// Show success notification
+		$notify.success(`Selected ${court.name}`)
 
 		// Fire change event for parent components
 		this.dispatchEvent(
@@ -312,6 +461,14 @@ export class CourtSelectStep extends $LitElement() {
 				detail: { court },
 			}),
 		)
+	}
+
+	/**
+	 * Cancel court selection from confirmation dialog
+	 */
+	private cancelCourtSelection(): void {
+		this.pendingCourtSelection = null
+		this.showConfirmationDialog = false
 	}
 
 	private retryLoading(): void {
@@ -327,6 +484,22 @@ export class CourtSelectStep extends $LitElement() {
 				endTime: this.booking.endTime,
 			})
 		}
+	}
+
+	/**
+	 * Format date for display in dialog
+	 */
+	private formatDate(dateStr: string): string {
+		return dayjs(dateStr).format('dddd, MMMM D, YYYY')
+	}
+
+	/**
+	 * Format time range for display
+	 */
+	private formatTimeRange(): string {
+		if (!this.booking.startTime || !this.booking.endTime) return ''
+
+		return `${dayjs(this.booking.startTime).format('h:mm A')} - ${dayjs(this.booking.endTime).format('h:mm A')}`
 	}
 
 	/**
@@ -358,7 +531,44 @@ export class CourtSelectStep extends $LitElement() {
 			'duration-300': true,
 			relative: true, // For availability indicator
 			'opacity-50': availabilityStatus === 'none',
+			'p-1': availabilityStatus === 'partial', // Add padding for the glow effect
+			'overflow-visible': availabilityStatus === 'partial', // Allow glow to extend beyond
 		}
+	}
+
+	/**
+	 * Get inline styles for the court card container
+	 * Used for effects that can't be done with Tailwind classes
+	 */
+	private getCourtCardContainerStyle(courtId: string): string {
+		const status = this.getCourtAvailabilityStatus(courtId)
+
+		if (status === 'partial') {
+			// Create a vibrant yellow glow effect with a gradient background
+			return `
+				background: linear-gradient(rgba(255, 236, 153, 0.5), rgba(255, 193, 7, 0.3));
+				box-shadow: 0 0 15px rgba(255, 193, 7, 0.6), inset 0 0 8px rgba(255, 193, 7, 0.4);
+				border: 2px solid #FFC107;
+				border-radius: 8px;
+			`
+		}
+
+		return ''
+	}
+
+	/**
+	 * Get styles for the yellow overlay effect
+	 */
+	private getYellowOverlayStyle(): string {
+		return `
+			position: absolute;
+			inset: 0;
+			background: linear-gradient(135deg, rgba(255, 235, 59, 0.15), rgba(255, 193, 7, 0.3));
+			backdrop-filter: saturate(180%) blur(2px);
+			z-index: 1;
+			border-radius: 6px;
+			pointer-events: none;
+		`
 	}
 
 	/**
@@ -426,8 +636,8 @@ export class CourtSelectStep extends $LitElement() {
 				<div
 					class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-warning-default text-warning-on rounded-full text-xs font-medium flex items-center"
 				>
-					<schmancy-icon size="12px" class="mr-1">warning</schmancy-icon>
-					<span>Partial ${info}</span>
+					<schmancy-icon size="12px" class="mr-1">schedule</schmancy-icon>
+					<span>${info}</span>
 				</div>
 			`
 		}
@@ -438,6 +648,156 @@ export class CourtSelectStep extends $LitElement() {
 			>
 				<schmancy-icon size="12px" class="mr-1">block</schmancy-icon>
 				<span>Unavailable</span>
+			</div>
+		`
+	}
+
+	/**
+	 * Render a diagonal "Limited" ribbon for partially available courts
+	 * With enhanced styling and animation
+	 */
+	private renderLimitedRibbon(courtId: string): unknown {
+		const status = this.getCourtAvailabilityStatus(courtId)
+
+		if (status !== 'partial') return null
+
+		return html`
+			<div class="absolute inset-0 overflow-hidden pointer-events-none z-10">
+				<div
+					class="absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 rotate-45 
+					bg-gradient-to-r from-yellow-500 to-orange-500 text-xs font-bold py-1 px-12 text-white 
+					shadow-lg limited-ribbon"
+				>
+					LIMITED
+				</div>
+
+				<!-- Add animation -->
+				<style>
+					.limited-ribbon {
+						animation: shimmer 2s infinite linear;
+						background-size: 200% 100%;
+					}
+					@keyframes shimmer {
+						0% {
+							background-position: 100% 0;
+						}
+						100% {
+							background-position: 0 0;
+						}
+					}
+				</style>
+			</div>
+		`
+	}
+
+	/**
+	 * Render a pulsing yellow overlay for limited courts
+	 */
+	private renderYellowGlassOverlay(courtId: string): unknown {
+		const status = this.getCourtAvailabilityStatus(courtId)
+
+		if (status !== 'partial') return null
+
+		return html`
+			<div style="${this.getYellowOverlayStyle()}" class="yellow-glass-overlay">
+				<!-- Add subtle animation effect -->
+				<style>
+					.yellow-glass-overlay {
+						animation: pulse-yellow 3s infinite;
+					}
+					@keyframes pulse-yellow {
+						0% {
+							opacity: 0.4;
+						}
+						50% {
+							opacity: 0.7;
+						}
+						100% {
+							opacity: 0.4;
+						}
+					}
+				</style>
+			</div>
+		`
+	}
+
+	/**
+	 * Get the simplified time range for partially available courts
+	 */
+	private getSimplifiedTimeRange(courtId: string): { from: string; to: string; duration: string } {
+		const status = this.courtAvailability.get(courtId)
+		if (!status || !status.availableTimeSlots.length) {
+			return { from: '', to: '', duration: '' }
+		}
+
+		// Sort time slots
+		const sortedSlots = [...status.availableTimeSlots].sort()
+
+		// Get first and last available time
+		const firstTime = sortedSlots[0]
+		const lastTime = sortedSlots[sortedSlots.length - 1]
+
+		// Convert to readable format
+		const formatTime = (timeStr: string) => {
+			const [hour, minute] = timeStr.split(':').map(Number)
+			const hour12 = hour % 12 || 12
+			const ampm = hour >= 12 ? 'PM' : 'AM'
+			return `${hour12}:${minute.toString().padStart(2, '0')} ${ampm}`
+		}
+
+		// Calculate duration
+		const durationMinutes = sortedSlots.length * 30
+		let duration = ''
+
+		if (durationMinutes >= 60) {
+			const hours = Math.floor(durationMinutes / 60)
+			const minutes = durationMinutes % 60
+			duration = hours + (minutes > 0 ? `.5` : '') + ` hour${hours > 1 ? 's' : ''}`
+		} else {
+			duration = `${durationMinutes} minutes`
+		}
+
+		return {
+			from: formatTime(firstTime),
+			to: formatTime(lastTime),
+			duration,
+		}
+	}
+
+	/**
+	 * Render simplified partial availability confirmation dialog
+	 */
+	private renderConfirmationDialog(): unknown {
+		if (!this.showConfirmationDialog || !this.pendingCourtSelection) return null
+
+		const court = this.pendingCourtSelection
+		const timeInfo = this.getSimplifiedTimeRange(court.id)
+
+		return html`
+			<div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+				<div class="bg-surface-default rounded-lg p-6 max-w-md w-full shadow-xl text-center">
+					<div class="mb-4">
+						<schmancy-icon size="48px" class="text-warning-default">warning</schmancy-icon>
+						<h3 class="text-xl font-bold text-primary-default mt-2">Limited Availability</h3>
+					</div>
+
+					<p class="text-lg mb-6">
+						<strong>${court.name}</strong> is only available for
+						<strong class="text-success-default">${timeInfo.duration}</strong>
+						<br />from ${timeInfo.from} to ${timeInfo.to}
+					</p>
+
+					<p class="mb-8 text-surface-on">You requested: <strong>${this.formatTimeRange()}</strong></p>
+
+					<div class="flex justify-center gap-3 mt-4">
+						<schmancy-button variant="outlined" @click=${() => this.cancelCourtSelection()}>
+							Choose Another Court
+						</schmancy-button>
+						<schmancy-button variant="filled" @click=${() => this.confirmCourtSelection(court)}>
+							Book Available Time
+						</schmancy-button>
+					</div>
+				</div>
 			</div>
 		`
 	}
@@ -496,11 +856,21 @@ export class CourtSelectStep extends $LitElement() {
 							<div
 								class="${classMap(this.getCourtCardContainerClasses(court.id))}"
 								role="option"
+								style="${this.getCourtCardContainerStyle(court.id)}"
 								aria-selected="${this.booking?.courtId === court.id ? 'true' : 'false'}"
 								aria-disabled="${!this.canSelectCourt(court.id) ? 'true' : 'false'}"
 							>
+								<!-- Yellow glass overlay effect -->
+								${this.renderYellowGlassOverlay(court.id)}
+
 								<!-- Availability badge -->
 								${this.renderAvailabilityBadge(court.id)}
+
+								<!-- Limited availability ribbon for partial availability -->
+								${this.renderLimitedRibbon(court.id)}
+
+								<!-- Visual availability indicator for partial availability -->
+								${this.renderCourtAvailabilityIndicator(court.id)}
 
 								<sport-court-card
 									id="${court.id}"
@@ -516,6 +886,9 @@ export class CourtSelectStep extends $LitElement() {
 					)}
 				</div>
 			</div>
+
+			<!-- Confirmation dialog for partial availability -->
+			${this.renderConfirmationDialog()}
 		`
 	}
 }
