@@ -114,6 +114,8 @@ export class AvailabilityService {
 				}
 
 				const courtIds = Object.keys(courts)
+				console.clear()
+				console.log('Bookings:', bookings)
 
 				// Generate time slots based on venue operating hours
 				const timeSlotKeys = this.generateTimeSlotKeysFromVenue(venue, date)
@@ -192,7 +194,7 @@ export class AvailabilityService {
 		const bookingsRef = collection(db, 'bookings')
 		const bookingQuery = query(
 			bookingsRef,
-			where('date', '==', date),
+			where('date', '==', dayjs(date).format('YYYY-MM-DD')),
 			where('courtId', 'in', courtIds),
 			where('status', 'in', ['confirmed', 'pending']),
 		)
@@ -494,16 +496,19 @@ export class AvailabilityService {
 
 					// Mark all slots in the range as unavailable
 					for (let hour = startHour; hour <= endHour; hour++) {
-						// Check full hour slot
-						if ((hour > startHour || startMinute === 0) && (hour < endHour || endMinute === 0)) {
-							const timeKey = `${hour.toString().padStart(2, '0')}:00`
-							this.markSlotAsBooked(result, timeKey, courtId)
-						}
+						// Mark all slots in the range as unavailable
+						for (let hour = startHour; hour <= endHour; hour++) {
+							// Check full hour slot
+							if ((hour > startHour || startMinute === 0) && (hour < endHour || endMinute === 0)) {
+								const timeKey = `${hour.toString().padStart(2, '0')}:00`
+								this.markSlotAsBooked(result, timeKey, courtId)
+							}
 
-						// Check half-hour slot
-						if ((hour > startHour || startMinute <= 30) && (hour < endHour || endMinute > 30)) {
-							const timeKey = `${hour.toString().padStart(2, '0')}:30`
-							this.markSlotAsBooked(result, timeKey, courtId)
+							// Check half-hour slot
+							if ((hour > startHour || startMinute <= 30) && (hour < endHour || endMinute > 30)) {
+								const timeKey = `${hour.toString().padStart(2, '0')}:30`
+								this.markSlotAsBooked(result, timeKey, courtId)
+							}
 						}
 					}
 				})
