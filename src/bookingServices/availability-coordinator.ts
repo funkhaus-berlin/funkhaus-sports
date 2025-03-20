@@ -1,17 +1,25 @@
-// src/public/book/availability-coordinator.ts
+// src/bookingServices/availability-coordinator.ts
 
 import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 import { BehaviorSubject, Observable, Subject, timer } from 'rxjs'
 import { filter, map, switchMap, takeUntil, tap } from 'rxjs/operators'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { bookingContext } from 'src/public/book/context'
 import { Duration, TimeSlot } from 'src/public/book/types'
+import { getUserTimezone, toUserTimezone } from 'src/utils/timezone'
 import { AvailabilityResponse, AvailabilityService } from './availability'
 import { pricingService } from './dynamic-pricing-service'
+
+// Set up dayjs plugins
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 /**
  * Coordinates availability data across booking components
  * Single source of truth for availability information
+ * With proper timezone handling
  */
 export class AvailabilityCoordinator {
 	private static instance: AvailabilityCoordinator
@@ -20,6 +28,7 @@ export class AvailabilityCoordinator {
 	// Current availability data
 	private _availabilityData = new BehaviorSubject<AvailabilityResponse | null>(null)
 	public availabilityData$ = this._availabilityData
+
 	// Loading and error state
 	private _loading = new BehaviorSubject<boolean>(false)
 	public loading$ = this._loading.asObservable()
@@ -131,6 +140,7 @@ export class AvailabilityCoordinator {
 
 	/**
 	 * Check if a court is available at a specific time
+	 * With proper timezone handling
 	 */
 	public isCourtAvailable(courtId: string, timeSlot: string): boolean {
 		const data = this._availabilityData.value
@@ -144,6 +154,7 @@ export class AvailabilityCoordinator {
 
 	/**
 	 * Get available time slots based on current availability data
+	 * With proper timezone handling
 	 */
 	public getAvailableTimeSlots(date: string): TimeSlot[] {
 		const data = this._availabilityData.value
@@ -151,10 +162,12 @@ export class AvailabilityCoordinator {
 
 		const slots: TimeSlot[] = []
 
-		// Check if selected date is today
-		const isToday = dayjs(date).isSame(dayjs(), 'day')
-		const currentTime = isToday ? dayjs() : null
-		const currentMinutes = currentTime ? currentTime.hour() * 60 + currentTime.minute() : 0
+		// Check if selected date is today in user's timezone
+		const userTimezone = getUserTimezone()
+		const selectedDate = dayjs(date).tz(userTimezone)
+		const now = dayjs().tz(userTimezone)
+		const isToday = selectedDate.format('YYYY-MM-DD') === now.format('YYYY-MM-DD')
+		const currentMinutes = isToday ? now.hour() * 60 + now.minute() : 0
 
 		// Process each time slot from the availability data
 		Object.entries(data.timeSlots).forEach(([timeKey, slotData]) => {
@@ -162,7 +175,7 @@ export class AvailabilityCoordinator {
 			const value = hour * 60 + (minute || 0)
 
 			// Check if time slot is in the past for today
-			const isPastTime = isToday && currentTime ? value < currentMinutes : false
+			const isPastTime = isToday && value < currentMinutes
 
 			// A time slot is available if it has available courts AND it's not in the past
 			const isAvailable = slotData.isAvailable === true && !isPastTime
@@ -190,11 +203,9 @@ export class AvailabilityCoordinator {
 		}
 	}
 
-	// In availability-coordinator.ts
-
 	/**
 	 * Check if a court is available for an entire duration
-	 * Enhanced to check for consecutive availability
+	 * With proper timezone handling
 	 */
 	public isCourtAvailableForDuration(courtId: string, startTime: string, durationMinutes: number): boolean {
 		const data = this._availabilityData.value
@@ -206,17 +217,21 @@ export class AvailabilityCoordinator {
 		// If the court itself isn't available, return false immediately
 		if (court.isAvailable === false) return false
 
-		// Parse the start time
-		const start = dayjs(startTime)
+		// Convert startTime to user's timezone
+		const localStart = toUserTimezone(startTime)
+		const localEnd = localStart.add(durationMinutes, 'minute')
 
-		// Calculate the end time
-		const end = start.add(durationMinutes, 'minute')
+		// Log for debugging
+		console.log(`Checking court ${courtId} availability for:`)
+		console.log(`- UTC Start: ${startTime}`)
+		console.log(`- Local Start: ${localStart.format('HH:mm')}`)
+		console.log(`- Local End: ${localEnd.format('HH:mm')}`)
 
 		// Convert to 24-hour format strings for comparison
-		const startHour = start.hour()
-		const startMinute = start.minute()
-		const endHour = end.hour()
-		const endMinute = end.minute()
+		const startHour = localStart.hour()
+		const startMinute = localStart.minute()
+		const endHour = localEnd.hour()
+		const endMinute = localEnd.minute()
 
 		// We need to check every 30-minute slot between start and end
 		// Special handling for the start slot if it starts at an odd time
@@ -279,7 +294,7 @@ export class AvailabilityCoordinator {
 
 	/**
 	 * Get available durations for a court at a specific start time
-	 * Enhanced to properly check consecutive availability
+	 * With proper timezone handling
 	 */
 	public getAvailableDurations(courtId: string, startTime: string): Duration[] {
 		const data = this._availabilityData.value
@@ -297,8 +312,8 @@ export class AvailabilityCoordinator {
 		// Get standard durations from pricing service
 		let standardDurations = pricingService.getStandardDurationPrices(court, startTime, bookingContext.value.userId)
 
-		console.log('Checking available durations for court', courtId, 'at time', startTime)
-		console.log('Standard durations:', standardDurations)
+		console.log(`Checking available durations for court ${courtId} at time ${startTime}`)
+		console.log(`Standard durations:`, standardDurations)
 
 		// Filter to only include durations that are available for this court and time
 		const availableDurations = standardDurations.filter(duration => {

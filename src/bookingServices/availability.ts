@@ -8,6 +8,7 @@ import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { db } from 'src/firebase/firebase'
 import { FirebaseServiceQuery, FirestoreService } from 'src/firebase/firestore.service'
+import { toUserTimezone } from 'src/utils/timezone'
 
 // Define the OperatingHours interface with specific days
 export interface OperatingHours {
@@ -141,19 +142,25 @@ export class AvailabilityService {
 				})
 
 				// Step 4: Mark booked slots
+				// Mark booked slots with proper timezone handling
 				bookings.forEach(booking => {
 					const { courtId, startTime, endTime } = booking
 
 					// Skip if this court isn't in our result set
 					if (!courtIds.includes(courtId)) return
 
-					// Calculate time range
-					const start = new Date(startTime)
-					const end = new Date(endTime)
-					const startHour = start.getHours()
-					const startMinute = start.getMinutes()
-					const endHour = end.getHours()
-					const endMinute = end.getMinutes()
+					// Calculate time range with explicit timezone conversion to local time
+					const start = dayjs(startTime).tz('Europe/Berlin') // Use explicit timezone
+					const end = dayjs(endTime).tz('Europe/Berlin')
+
+					const startHour = start.hour()
+					const startMinute = start.minute()
+					const endHour = end.hour()
+					const endMinute = end.minute()
+
+					console.log(`Converting booking times for court ${courtId}:`)
+					console.log(`UTC: ${startTime} - ${endTime}`)
+					console.log(`Local: ${start.format('HH:mm')} - ${end.format('HH:mm')}`)
 
 					// Mark all slots in the range as unavailable
 					for (let hour = startHour; hour <= endHour; hour++) {
@@ -336,7 +343,7 @@ export class AvailabilityService {
 	/**
 	 * Check if a court is available for the entire duration from start to end time
 	 */
-	isCourtAvailableForDuration(
+	public isCourtAvailableForDuration(
 		availabilityData: AvailabilityResponse,
 		courtId: string,
 		startTime: string,
@@ -346,7 +353,8 @@ export class AvailabilityService {
 			return false
 		}
 
-		const start = dayjs(startTime)
+		// Convert using user's timezone
+		const start = toUserTimezone(startTime)
 		const end = start.add(durationMinutes, 'minute')
 
 		// Convert to 24-hour format strings for comparison (e.g., "14:00")
@@ -364,7 +372,6 @@ export class AvailabilityService {
 			return slotData.courts?.[courtId] === true
 		})
 	}
-
 	/**
 	 * Get all valid durations for a court at a specific start time
 	 */
@@ -480,35 +487,38 @@ export class AvailabilityService {
 				})
 
 				// Mark booked slots
+				// Mark booked slots with proper timezone handling
 				bookings.forEach(booking => {
 					const { courtId, startTime, endTime } = booking
 
 					// Skip if this court isn't in our result set
 					if (!courtIds.includes(courtId)) return
 
-					// Calculate time range
-					const start = new Date(startTime)
-					const end = new Date(endTime)
-					const startHour = start.getHours()
-					const startMinute = start.getMinutes()
-					const endHour = end.getHours()
-					const endMinute = end.getMinutes()
+					// Calculate time range with user's timezone
+					const start = toUserTimezone(startTime)
+					const end = toUserTimezone(endTime)
+
+					const startHour = start.hour()
+					const startMinute = start.minute()
+					const endHour = end.hour()
+					const endMinute = end.minute()
+
+					console.log(`Converting booking times for court ${courtId}:`)
+					console.log(`UTC: ${startTime} - ${endTime}`)
+					console.log(`Local: ${start.format('HH:mm')} - ${end.format('HH:mm')}`)
 
 					// Mark all slots in the range as unavailable
 					for (let hour = startHour; hour <= endHour; hour++) {
-						// Mark all slots in the range as unavailable
-						for (let hour = startHour; hour <= endHour; hour++) {
-							// Check full hour slot
-							if ((hour > startHour || startMinute === 0) && (hour < endHour || endMinute === 0)) {
-								const timeKey = `${hour.toString().padStart(2, '0')}:00`
-								this.markSlotAsBooked(result, timeKey, courtId)
-							}
+						// Check full hour slot
+						if ((hour > startHour || startMinute === 0) && (hour < endHour || endMinute === 0)) {
+							const timeKey = `${hour.toString().padStart(2, '0')}:00`
+							this.markSlotAsBooked(result, timeKey, courtId)
+						}
 
-							// Check half-hour slot
-							if ((hour > startHour || startMinute <= 30) && (hour < endHour || endMinute > 30)) {
-								const timeKey = `${hour.toString().padStart(2, '0')}:30`
-								this.markSlotAsBooked(result, timeKey, courtId)
-							}
+						// Check half-hour slot
+						if ((hour > startHour || startMinute <= 30) && (hour < endHour || endMinute > 30)) {
+							const timeKey = `${hour.toString().padStart(2, '0')}:30`
+							this.markSlotAsBooked(result, timeKey, courtId)
 						}
 					}
 				})

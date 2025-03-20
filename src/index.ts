@@ -12,6 +12,11 @@ import { VenuesDB } from './db/venue-collection'
 import { VenueLandingPage } from './public/venues/venues'
 import './schmancy'
 import { BookingConfirmationRoute } from './public/booking-confirmation/booking-confirmation-route'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
+import dayjs from 'dayjs'
+dayjs.extend(utc)
+dayjs.extend(timezone)
 @customElement('app-index')
 export class AppIndex extends $LitElement() {
 	@query('schmancy-surface') surface!: HTMLElement

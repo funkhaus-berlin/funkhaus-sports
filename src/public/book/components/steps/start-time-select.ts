@@ -1,6 +1,8 @@
 import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 import { css, html, nothing } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
@@ -11,9 +13,34 @@ import { availabilityCoordinator } from 'src/bookingServices/availability-coordi
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { TimeSlot } from '../../types'
 
+// Configure dayjs with timezone plugins
+dayjs.extend(utc)
+dayjs.extend(timezone)
+
+/**
+ * Get user's timezone or default to Berlin
+ */
+function getUserTimezone(): string {
+	try {
+		const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+		return detectedTimezone || 'Europe/Berlin'
+	} catch (e) {
+		console.warn('Could not detect timezone:', e)
+		return 'Europe/Berlin'
+	}
+}
+
+/**
+ * Convert UTC ISO string to user's local timezone
+ */
+function toUserTimezone(isoString: string): dayjs.Dayjs {
+	const userTimezone = getUserTimezone()
+	return dayjs(isoString).tz(userTimezone)
+}
+
 /**
  * Time selection component using the enhanced availability service
- * Aligned with court-select-step design patterns for consistency
+ * With proper timezone handling
  */
 @customElement('time-selection-step')
 export class TimeSelectionStep extends $LitElement(css`
@@ -43,6 +70,7 @@ export class TimeSelectionStep extends $LitElement(css`
 	@state() loading = true
 	@state() error: string | null = null
 	@state() autoScrollAttempted = false
+	@state() userTimezone = getUserTimezone()
 
 	// Track the last successful time slots data for better UX during errors
 	private lastSuccessfulData: { timeSlots: TimeSlot[] } | null = null
@@ -57,8 +85,6 @@ export class TimeSelectionStep extends $LitElement(css`
 	get isCompact(): boolean {
 		return this.bookingProgress?.currentStep !== BookingStep.Time
 	}
-
-	// In start-time-select.ts
 
 	connectedCallback(): void {
 		super.connectedCallback()
@@ -139,7 +165,7 @@ export class TimeSelectionStep extends $LitElement(css`
 			})
 	}
 
-	// Improved processAvailabilityData method to handle court-specific filtering better
+	// Improved processAvailabilityData method with timezone handling
 	private processAvailabilityData(data: any): void {
 		console.log('Processing availability data for court:', this.booking?.courtId)
 
@@ -238,12 +264,15 @@ export class TimeSelectionStep extends $LitElement(css`
 
 	/**
 	 * Generate default time slots when availability data is missing
+	 * With proper timezone handling
 	 */
 	private generateDefaultTimeSlots(): void {
 		// Check if date is today
-		const selectedDate = dayjs(this.booking.date)
-		const isToday = selectedDate.isSame(dayjs(), 'day')
-		const currentTime = isToday ? dayjs() : null
+		const userTimezone = getUserTimezone()
+		const selectedDate = dayjs(this.booking.date).tz(userTimezone)
+		const now = dayjs().tz(userTimezone)
+		const isToday = selectedDate.format('YYYY-MM-DD') === now.format('YYYY-MM-DD')
+		const currentTime = isToday ? now : null
 
 		// Start time (8:00 AM or current time rounded up to next 30 min if today)
 		let startHour = 8
@@ -342,36 +371,52 @@ export class TimeSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Handle time slot selection with improved scrolling behavior
+	 * Handle time slot selection with improved timezone handling
 	 */
 	private handleTimeSelect(slot: TimeSlot): void {
 		if (!slot.available) return
 
-		// Update booking context with the new time
-		const selectedDate = dayjs(this.booking.date)
-		const hour = Math.floor(slot.value / 60)
-		const minute = slot.value % 60
-		const newStartTime = selectedDate.hour(hour).minute(minute).toISOString()
+		try {
+			// Update booking context with the new time
+			const userTimezone = getUserTimezone()
+			const selectedDate = dayjs(this.booking.date).tz(userTimezone)
+			const hour = Math.floor(slot.value / 60)
+			const minute = slot.value % 60
 
-		// First update the booking context to show selection
-		bookingContext.set({
-			...this.booking,
-			startTime: newStartTime,
-		})
+			// Create a local datetime in the user's timezone, then convert to UTC for storage
+			const selectedLocalTime = selectedDate.hour(hour).minute(minute)
+			const newStartTime = selectedLocalTime.toISOString()
 
-		// Ensure the selected time slot is properly centered after selection
-		setTimeout(() => this.scrollToSelectedTime(), 150)
+			// Log for debugging
+			console.log(`Selected time: ${hour}:${minute} (${slot.label})`)
+			console.log(`User timezone: ${userTimezone}`)
+			console.log(`Local datetime: ${selectedLocalTime.format('YYYY-MM-DD HH:mm:ss')}`)
+			console.log(`UTC ISO string: ${newStartTime}`)
 
-		BookingProgressContext.set({
-			currentStep: BookingStep.Duration,
-		})
+			// First update the booking context to show selection
+			bookingContext.set({
+				...this.booking,
+				startTime: newStartTime,
+			})
 
-		this.dispatchEvent(
-			new CustomEvent('next', {
-				bubbles: true,
-				composed: true,
-			}),
-		)
+			// Ensure the selected time slot is properly centered after selection
+			setTimeout(() => this.scrollToSelectedTime(), 150)
+
+			BookingProgressContext.set({
+				currentStep: BookingStep.Duration,
+			})
+
+			this.dispatchEvent(
+				new CustomEvent('next', {
+					bubbles: true,
+					composed: true,
+				}),
+			)
+		} catch (error) {
+			console.error('Error handling time selection:', error)
+			this.error = 'Failed to select time. Please try again.'
+			this.requestUpdate()
+		}
 	}
 
 	/**
@@ -380,19 +425,19 @@ export class TimeSelectionStep extends $LitElement(css`
 	private scrollToSelectedTime(): void {
 		if (!this.booking?.startTime) return
 
-		const time = dayjs(this.booking.startTime)
-		const timeValue = time.hour() * 60 + time.minute()
-
 		try {
-			// Get the scrollable container
+			// Convert stored UTC time to user's timezone
+			const localTime = toUserTimezone(this.booking.startTime)
+			const timeValue = localTime.hour() * 60 + localTime.minute()
+
+			// Find and scroll to the element
 			const scrollContainer = this.shadowRoot?.querySelector('div.overflow-x-auto') as HTMLElement
 			if (!scrollContainer) return
 
-			// Find the selected time element
 			const timeEl = this.shadowRoot?.querySelector(`[data-time-value="${timeValue}"]`) as HTMLElement
 			if (!timeEl) return
 
-			// Check if element is already in view
+			// Check visibility and scroll if needed
 			const containerRect = scrollContainer.getBoundingClientRect()
 			const elementRect = timeEl.getBoundingClientRect()
 
@@ -437,56 +482,46 @@ export class TimeSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Scroll to a specific time
+	 * Scroll to a specific time with timezone handling
 	 */
 	private scrollToTime(timeString: string): void {
-		const time = dayjs(timeString)
-		const timeValue = time.hour() * 60 + time.minute()
-
 		try {
+			// Convert to user's local time
+			const localTime = toUserTimezone(timeString)
+			const timeValue = localTime.hour() * 60 + localTime.minute()
+
 			// Get the scrollable container
 			const scrollContainer = this.shadowRoot?.querySelector('div.overflow-x-auto') as HTMLElement
 			if (!scrollContainer) return
 
 			// Find the time element
 			const timeEl = this.shadowRoot?.querySelector(`[data-time-value="${timeValue}"]`) as HTMLElement
-			if (!timeEl) return
-
-			// Check if element is already in view
-			const containerRect = scrollContainer.getBoundingClientRect()
-			const elementRect = timeEl.getBoundingClientRect()
-
-			// Element is fully visible if its left and right edges are within the container's viewport
-			const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
-
-			// Element is partially visible if at least some part of it is in the viewport
-			const isPartiallyVisible = elementRect.left < containerRect.right && elementRect.right > containerRect.left
-
-			// If the element is already fully visible, don't scroll
-			if (isFullyVisible) {
+			if (!timeEl) {
+				console.log(`Time element not found for value: ${timeValue}`)
 				return
 			}
 
-			// If partially visible but more than half is visible, don't scroll either
+			// Check visibility and scroll if needed
+			const containerRect = scrollContainer.getBoundingClientRect()
+			const elementRect = timeEl.getBoundingClientRect()
+			const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
+			const isPartiallyVisible = elementRect.left < containerRect.right && elementRect.right > containerRect.left
+
+			if (isFullyVisible) return
+
 			if (isPartiallyVisible) {
 				const visibleWidth =
 					Math.min(elementRect.right, containerRect.right) - Math.max(elementRect.left, containerRect.left)
 				const elementVisiblePercentage = visibleWidth / elementRect.width
-
-				if (elementVisiblePercentage > 0.5) {
-					return
-				}
+				if (elementVisiblePercentage > 0.5) return
 			}
 
-			// Calculate the center position
+			// Calculate and perform smooth scroll
 			const containerWidth = scrollContainer.clientWidth
 			const elementOffset = timeEl.offsetLeft
 			const elementWidth = timeEl.offsetWidth
-
-			// Calculate scroll position to center the element
 			const scrollPosition = elementOffset - containerWidth / 2 + elementWidth / 2
 
-			// Smooth scroll to the calculated position
 			scrollContainer.scrollTo({
 				left: scrollPosition,
 				behavior: 'smooth',
@@ -595,26 +630,18 @@ export class TimeSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Format time for display
+	 * Format time for display, respecting user's locale and timezone
 	 */
 	private formatTime(hour: number, minute: number): string {
 		try {
-			const date = new Date()
-			date.setHours(hour)
-			date.setMinutes(minute)
+			// Create a date in the user's timezone
+			const userTimezone = getUserTimezone()
+			const date = dayjs().tz(userTimezone).hour(hour).minute(minute).second(0).millisecond(0)
 
 			if (this.use24HourFormat) {
-				return new Intl.DateTimeFormat(this.userLocale, {
-					hour: '2-digit',
-					minute: '2-digit',
-					hour12: false,
-				}).format(date)
+				return date.format('HH:mm')
 			} else {
-				return new Intl.DateTimeFormat(this.userLocale, {
-					hour: 'numeric',
-					minute: '2-digit',
-					hour12: true,
-				}).format(date)
+				return date.format('h:mm A')
 			}
 		} catch (error) {
 			// Fallback formatting
@@ -626,16 +653,22 @@ export class TimeSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Check if a time slot is currently selected
+	 * Check if a time slot is currently selected, with timezone handling
 	 */
 	private isTimeSelected(slot: TimeSlot): boolean {
 		if (!!this.booking && !this.booking.startTime) return false
 
-		const startTime = dayjs(this.booking.startTime)
-		const slotValue = slot.value
-		const timeValue = startTime.hour() * 60 + startTime.minute()
+		try {
+			// Convert stored UTC time to user's timezone
+			const localStartTime = toUserTimezone(this.booking.startTime)
+			const slotValue = slot.value
+			const timeValue = localStartTime.hour() * 60 + localStartTime.minute()
 
-		return timeValue === slotValue
+			return timeValue === slotValue
+		} catch (error) {
+			console.error('Error checking if time is selected:', error)
+			return false
+		}
 	}
 
 	/**
@@ -752,6 +785,9 @@ export class TimeSelectionStep extends $LitElement(css`
 						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
 							Select Time
 						</schmancy-typography>
+						<div class="text-xs text-surface-on-variant mt-1">
+							Times shown in your local timezone (${this.userTimezone})
+						</div>
 					`,
 				)}
 
