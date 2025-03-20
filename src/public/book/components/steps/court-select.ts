@@ -4,15 +4,15 @@ import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
-import { distinctUntilChanged, filter, map, Observable, shareReplay, startWith, switchMap, takeUntil, tap } from 'rxjs'
+import { distinctUntilChanged, filter, map, shareReplay, startWith, takeUntil, tap } from 'rxjs'
 import { courtsContext, selectMyCourts } from 'src/admin/venues/courts/context'
-import { AvailabilityResponse, AvailabilityService } from 'src/bookingServices/availability'
 import { Court } from 'src/db/courts.collection'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 
 // Import the sport-court-card component
-import './sport-court-card'
 import { when } from 'lit/directives/when.js'
+import { availabilityCoordinator } from 'src/bookingServices/availability-coordinator'
+import './sport-court-card'
 
 /**
  * Court selection component for the booking flow
@@ -29,13 +29,9 @@ export class CourtSelectStep extends $LitElement() {
 	@state() selectedVenueCourts: Court[] = []
 	@state() loading: boolean = true
 	@state() error: string | null = null
-	@state() availabilityData: AvailabilityResponse | null = null
 
 	// Track the last successful court data fetch for better UX during errors
-	private lastSuccessfulData: { courts: Court[]; availabilityData: AvailabilityResponse } | null = null
-
-	// Service for checking court availability
-	private availabilityService = new AvailabilityService()
+	private lastSuccessfulData: { courts: Court[] } | null = null
 
 	/**
 	 * Determine if compact view should be used based on current step
@@ -49,7 +45,25 @@ export class CourtSelectStep extends $LitElement() {
 	 */
 	connectedCallback() {
 		super.connectedCallback()
-		// Set up the court data subscription with proper error handling
+
+		// Subscribe to availability coordinator errors
+		availabilityCoordinator.error$
+			.pipe(
+				takeUntil(this.disconnecting),
+				filter(error => !!error),
+			)
+			.subscribe(error => {
+				this.error = error
+				this.requestUpdate()
+			})
+
+		// Subscribe to availability coordinator loading state
+		availabilityCoordinator.loading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
+			this.loading = loading
+			this.requestUpdate()
+		})
+
+		// Set up the court data subscription with improved error handling
 		return bookingContext.$.pipe(
 			startWith(bookingContext.value),
 			takeUntil(this.disconnecting),
@@ -66,7 +80,7 @@ export class CourtSelectStep extends $LitElement() {
 	private loadCourtsForDate(date: string, venueId: string): void {
 		this.loading = true
 		this.loadCourtData(date, venueId).subscribe({
-			next: data => this.handleCourtDataLoaded(data),
+			next: courts => this.handleCourtDataLoaded(courts),
 			error: err => this.handleCourtDataError(err),
 		})
 	}
@@ -74,12 +88,12 @@ export class CourtSelectStep extends $LitElement() {
 	/**
 	 * Handle successful court data loading
 	 */
-	private handleCourtDataLoaded(data: { courts: Court[]; availabilityData: AvailabilityResponse }): void {
-		this.selectedVenueCourts = data.courts
-		this.availabilityData = data.availabilityData
-		this.lastSuccessfulData = data
+	private handleCourtDataLoaded(courts: Court[]): void {
+		this.selectedVenueCourts = courts
+		this.lastSuccessfulData = { courts }
 		this.loading = false
 		this.error = null
+		this.requestUpdate()
 
 		// Announce to screen readers that courts have been loaded
 		this.announceForScreenReader(`${this.selectedVenueCourts.length} courts loaded`)
@@ -94,7 +108,6 @@ export class CourtSelectStep extends $LitElement() {
 		// Use last successful data if available to maintain user experience
 		if (this.lastSuccessfulData) {
 			this.selectedVenueCourts = this.lastSuccessfulData.courts
-			this.availabilityData = this.lastSuccessfulData.availabilityData
 			this.error = 'Unable to refresh court data. Showing previously loaded courts.'
 		} else {
 			this.error = 'Failed to load available courts. Please try again.'
@@ -127,28 +140,23 @@ export class CourtSelectStep extends $LitElement() {
 	/**
 	 * Load court data with availability information using the enhanced service
 	 */
-	private loadCourtData(
-		date: string,
-		venueId: string,
-	): Observable<{
-		courts: Court[]
-		availabilityData: AvailabilityResponse
-	}> {
+	private loadCourtData(date: string, venueId: string) {
 		return selectMyCourts.pipe(
-			switchMap(courts => {
-				// Get availability data from the enhanced service
-				return this.availabilityService
-					.getVenueAvailability(date, venueId)
-					.pipe(map(availabilityData => ({ courts, availabilityData })))
+			map(courts => Array.from(courts.values())),
+			map(courts => {
+				// Filter active courts for this venue
+				return courts.filter(court => court.status === 'active' && court.venueId === venueId)
 			}),
-			map(({ courts, availabilityData }) => {
-				// Filter active courts and sort by availability
-				const activeCourts = Array.from(courts.values())
-					.filter(court => court.status === 'active')
-					.sort((a, b) => {
+			map(courts => {
+				// Sort courts by availability using the coordinator
+				const availabilityData = availabilityCoordinator.availabilityData$.value
+
+				// If we have availability data, use it for sorting
+				if (availabilityData) {
+					return courts.sort((a, b) => {
 						// Sort by availability (available first), then by name
-						const aAvailable = availabilityData.courts[a.id]?.isAvailable !== false
-						const bAvailable = availabilityData.courts[b.id]?.isAvailable !== false
+						const aAvailable = this.isCourtAvailable(a.id)
+						const bAvailable = this.isCourtAvailable(b.id)
 
 						if (aAvailable !== bAvailable) {
 							return aAvailable ? -1 : 1
@@ -156,11 +164,10 @@ export class CourtSelectStep extends $LitElement() {
 
 						return a.name.localeCompare(b.name)
 					})
-
-				return {
-					courts: activeCourts,
-					availabilityData,
 				}
+
+				// Otherwise just sort by name
+				return courts.sort((a, b) => a.name.localeCompare(b.name))
 			}),
 			// Share the result to prevent multiple subscription executions
 			shareReplay(1),
@@ -171,11 +178,20 @@ export class CourtSelectStep extends $LitElement() {
 	 * Check if a court is available using the enhanced availability data
 	 */
 	private isCourtAvailable(courtId: string): boolean {
+		// Use the availability coordinator to check court availability
+		// This ensures consistent availability checking across components
+		const availabilityData = availabilityCoordinator.availabilityData$.value
+
 		// Default to true if we don't have availability data
-		if (!this.availabilityData) return true
+		if (!availabilityData) return true
 
 		// Check if the court exists in the availability data and is available
-		return this.availabilityData.courts[courtId]?.isAvailable !== false
+		if (availabilityData.courts && availabilityData.courts[courtId]) {
+			return availabilityData.courts[courtId].isAvailable === true
+		}
+
+		// Default to true if court isn't in the data
+		return true
 	}
 
 	/**
@@ -224,6 +240,16 @@ export class CourtSelectStep extends $LitElement() {
 		)
 	}
 
+	private retryLoading(): void {
+		// Force a refresh of availability data
+		availabilityCoordinator.refreshData()
+
+		// Then reload courts
+		if (this.booking?.date && this.booking?.venueId) {
+			this.loadCourtsForDate(this.booking.date, this.booking.venueId)
+		}
+	}
+
 	/**
 	 * Get container classes based on compact mode
 	 */
@@ -253,7 +279,6 @@ export class CourtSelectStep extends $LitElement() {
 			'duration-300': true,
 		}
 	}
-
 	/**
 	 * Render error state
 	 */
@@ -298,20 +323,9 @@ export class CourtSelectStep extends $LitElement() {
 	}
 
 	/**
-	 * Retry loading court data
-	 */
-	private retryLoading(): void {
-		if (this.booking?.date && this.booking?.venueId) {
-			this.loadCourtsForDate(this.booking.date, this.booking.venueId)
-		}
-	}
-
-	/**
 	 * Main render method
 	 */
 	render() {
-		if (this.hidden) return html``
-
 		// Show loading state
 		if (this.loading && !this.lastSuccessfulData) {
 			return this.renderLoadingState()

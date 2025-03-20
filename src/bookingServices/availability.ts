@@ -1,290 +1,87 @@
-import { Firestore, collection, doc, getDoc, getDocs, getFirestore, query, where } from 'firebase/firestore'
-import { Observable, forkJoin, from, of, throwError } from 'rxjs'
-import { catchError, map, shareReplay, switchMap } from 'rxjs/operators'
-import { Court } from 'src/db/courts.collection'
-import { OperatingHours, Venue } from 'src/db/venue-collection'
-import { db } from 'src/firebase/firebase'
-import dayjs from 'dayjs'
+// Enhanced AvailabilityService using FirestoreService pattern
 
-/**
- * Court availability time slot status
- */
-export interface TimeSlotStatus {
-	isAvailable: boolean
-	bookedBy: string | null
-	bookingId: string | null
+import dayjs from 'dayjs'
+import { collection, getDocs, query, where } from 'firebase/firestore'
+import { combineLatest, forkJoin, from, Observable, of, throwError } from 'rxjs'
+import { catchError, map, shareReplay, switchMap, tap } from 'rxjs/operators'
+import { Court } from 'src/db/courts.collection'
+import { Venue } from 'src/db/venue-collection'
+import { db } from 'src/firebase/firebase'
+import { FirebaseServiceQuery, FirestoreService } from 'src/firebase/firestore.service'
+
+// Define the OperatingHours interface with specific days
+export interface OperatingHours {
+	monday?: { open: string; close: string }
+	tuesday?: { open: string; close: string }
+	wednesday?: { open: string; close: string }
+	thursday?: { open: string; close: string }
+	friday?: { open: string; close: string }
+	saturday?: { open: string; close: string }
+	sunday?: { open: string; close: string }
 }
 
-/**
- * Court availability time slot details with extended information
- */
+// Define weekday type for type checking
+export type Weekday = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
+
+export interface CourtAvailability {
+	isAvailable: boolean
+	bookedTimeSlots?: string[] // Slots that are already booked
+}
+
 export interface TimeSlotAvailability {
 	isAvailable: boolean
-	startTime: string // ISO string
-	endTime: string // ISO string
-	price?: number
-	capacity?: number
-	bookedBy?: string | null
-	bookingId?: string | null
+	availableCourts: string[] // IDs of available courts
+	courts: Record<string, boolean> // Map of court IDs to availability
 }
 
-/**
- * Standardized availability response structure
- */
 export interface AvailabilityResponse {
-	// Court-level availability
-	courts: {
-		[courtId: string]: {
-			isAvailable: boolean // At least one time slot is available
-			slots: {
-				[timeKey: string]: TimeSlotAvailability
-			}
-		}
-	}
-
-	// Aggregated time slots across all courts
-	timeSlots: {
-		[timeKey: string]: {
-			isAvailable: boolean // At least one court is available at this time
-			availableCourts: string[] // IDs of available courts at this time
-		}
-	}
-
-	// Date for this availability data
 	date: string
-
-	// Venue for this availability data
-	venueId: string
+	timeSlots: Record<string, TimeSlotAvailability>
+	courts: Record<string, CourtAvailability>
 }
 
-/**
- * Enhanced Availability Service that integrates the legacy implementation
- * with the new standardized structure
- */
+export interface Booking {
+	id: string
+	courtId: string
+	date: string
+	startTime: string
+	endTime: string
+	status: string
+	[key: string]: any
+}
+
 export class AvailabilityService {
-	private firestore: Firestore
-	private cache: Map<string, Observable<AvailabilityResponse>> = new Map()
+	private courtsService: FirestoreService<Court>
+	private bookingsService: FirestoreService<Booking>
+	private venuesService: FirestoreService<Venue>
+	private cache: Map<string, { data: AvailabilityResponse; timestamp: number }> = new Map()
+	private CACHE_TTL = 30000 // 30 seconds cache TTL
 
 	constructor() {
-		try {
-			this.firestore = db
-		} catch (e) {
-			this.firestore = getFirestore()
-		}
+		this.courtsService = new FirestoreService<Court>('courts')
+		this.bookingsService = new FirestoreService<Booking>('bookings')
+		this.venuesService = new FirestoreService<Venue>('venues')
 	}
 
 	/**
-	 * Get availability for all courts on a specific date
-	 * This implements the legacy API but uses the new structure internally
+	 * Fetch availability data using FirestoreService
 	 *
 	 * @param date - Date in YYYY-MM-DD format
-	 * @param venueId - Optional venue ID to filter courts
-	 * @returns Observable of court availabilities in legacy format
+	 * @param venueId - Venue ID
+	 * @returns Observable of availability response
 	 */
-	getAllCourtsAvailability(date: string, venueId?: string): Observable<Record<string, Record<string, TimeSlotStatus>>> {
-		return this.getVenueAvailability(date, venueId || '').pipe(
-			map(response => {
-				const legacyFormat: Record<string, Record<string, TimeSlotStatus>> = {}
+	private fetchAvailabilityData(date: string, venueId: string): Observable<AvailabilityResponse> {
+		// Step 1: Get all active courts for the venue using the FirestoreService
+		const courtQueries: FirebaseServiceQuery[] = [
+			{ key: 'status', value: 'active', operator: '==' },
+			{ key: 'venueId', value: venueId, operator: '==' },
+		]
 
-				// Convert to legacy format
-				Object.entries(response.courts).forEach(([courtId, courtData]) => {
-					legacyFormat[courtId] = {}
-
-					Object.entries(courtData.slots).forEach(([timeKey, slotData]) => {
-						legacyFormat[courtId][timeKey] = {
-							isAvailable: slotData.isAvailable,
-							bookedBy: slotData.bookedBy || null,
-							bookingId: slotData.bookingId || null,
-						}
-					})
-				})
-
-				return legacyFormat
-			}),
-		)
-	}
-
-	/**
-	 * Check if a court is available for a specific time range
-	 * Used during the booking process to prevent double booking
-	 *
-	 * @param date - Date in YYYY-MM-DD format
-	 * @param courtId - Court ID to check
-	 * @param startTime - Start time in ISO format
-	 * @param endTime - End time in ISO format
-	 * @returns Observable of whether the court is available for the entire time range
-	 */
-	isCourtAvailableForTimeRange(date: string, courtId: string, startTime: string, endTime: string): Observable<boolean> {
-		return this.getCourtAvailability(courtId, date, '').pipe(
-			map(courtAvailability => {
-				if (!courtAvailability.isAvailable) {
-					return false // Court not available at all
-				}
-
-				// Parse times
-				const start = new Date(startTime)
-				const end = new Date(endTime)
-				const startHour = start.getHours()
-				const startMinute = start.getMinutes()
-				const endHour = end.getHours()
-				const endMinute = end.getMinutes()
-
-				// Check every 30-minute slot in the range
-				for (let hour = startHour; hour <= endHour; hour++) {
-					// Check full hour slot if needed
-					if ((hour > startHour || startMinute === 0) && (hour < endHour || endMinute === 0)) {
-						const timeKey = `${hour.toString().padStart(2, '0')}:00`
-						const slot = courtAvailability.slots[timeKey]
-						if (!slot || !slot.isAvailable) {
-							return false // Slot not available
-						}
-					}
-
-					// Check half-hour slot if needed
-					if ((hour > startHour || startMinute <= 30) && (hour < endHour || endMinute > 30)) {
-						const timeKey = `${hour.toString().padStart(2, '0')}:30`
-						const slot = courtAvailability.slots[timeKey]
-						if (!slot || !slot.isAvailable) {
-							return false // Slot not available
-						}
-					}
-				}
-
-				return true // All slots are available
-			}),
-			catchError(error => {
-				console.error('Error checking court availability:', error)
-				return of(false) // Assume not available on error for safety
-			}),
-		)
-	}
-
-	/**
-	 * Get complete availability data for a venue on a specific date
-	 * Returns a standardized structure that can be used by both court and time selectors
-	 *
-	 * @param date The date to check availability for (YYYY-MM-DD)
-	 * @param venueId The venue ID to check availability for
-	 * @returns Observable of standardized availability data
-	 */
-	getVenueAvailability(date: string, venueId: string): Observable<AvailabilityResponse> {
-		const cacheKey = `${date}_${venueId}`
-
-		// Return cached response if available
-		if (this.cache.has(cacheKey)) {
-			return this.cache.get(cacheKey)!
-		}
-
-		// Implement the original getAllCourtsAvailability logic but transform to new format
-		const response$ = this.fetchRawAvailabilityData(date, venueId).pipe(
-			map(rawData => this.transformToNewFormat(rawData, date, venueId)),
-			catchError(error => {
-				console.error('Error fetching availability:', error)
-				return of(this.getEmptyResponse(date, venueId))
-			}),
-			// Cache the response
-			shareReplay(1),
-		)
-
-		this.cache.set(cacheKey, response$)
-		return response$
-	}
-
-	/**
-	 * Get availability for a specific court on a specific date
-	 *
-	 * @param courtId The court ID to check availability for
-	 * @param date The date to check availability for (YYYY-MM-DD)
-	 * @param venueId The venue ID the court belongs to
-	 * @returns Observable of time slots for the specific court
-	 */
-	getCourtAvailability(
-		courtId: string,
-		date: string,
-		venueId: string,
-	): Observable<{
-		isAvailable: boolean
-		slots: { [timeKey: string]: TimeSlotAvailability }
-	}> {
-		return this.getVenueAvailability(date, venueId).pipe(
-			map(response => {
-				const courtData = response.courts[courtId]
-				return courtData || { isAvailable: false, slots: {} }
-			}),
-		)
-	}
-
-	/**
-	 * Get availability for a specific time slot across all courts
-	 *
-	 * @param timeKey The time slot key (HH:MM)
-	 * @param date The date to check availability for (YYYY-MM-DD)
-	 * @param venueId The venue ID to check availability for
-	 * @returns Observable of courts available at the specified time
-	 */
-	getTimeSlotAvailability(
-		timeKey: string,
-		date: string,
-		venueId: string,
-	): Observable<{
-		isAvailable: boolean
-		availableCourts: string[]
-	}> {
-		return this.getVenueAvailability(date, venueId).pipe(
-			map(response => {
-				const slotData = response.timeSlots[timeKey]
-				return slotData || { isAvailable: false, availableCourts: [] }
-			}),
-		)
-	}
-
-	/**
-	 * Clear cached availability data
-	 * Should be called when bookings are made or other events that would invalidate the cache
-	 *
-	 * @param date Optional date to clear cache for
-	 * @param venueId Optional venue ID to clear cache for
-	 */
-	clearCache(date?: string, venueId?: string): void {
-		if (date && venueId) {
-			this.cache.delete(`${date}_${venueId}`)
-		} else if (date) {
-			// Clear all entries for this date
-			for (const key of this.cache.keys()) {
-				if (key.startsWith(date)) {
-					this.cache.delete(key)
-				}
-			}
-		} else {
-			// Clear the entire cache
-			this.cache.clear()
-		}
-	}
-
-	/**
-	 * Fetches the raw availability data using the original implementation
-	 * @private
-	 */
-	private fetchRawAvailabilityData(
-		date: string,
-		venueId?: string,
-	): Observable<Record<string, Record<string, TimeSlotStatus>>> {
-		// Step 1: Get all active courts (optionally filtered by venue)
-		const courtsRef = collection(this.firestore, 'courts')
-		let courtQuery = query(courtsRef, where('status', '==', 'active'))
-
-		// Add venue filter if provided
-		if (venueId) {
-			courtQuery = query(courtQuery, where('venueId', '==', venueId))
-		}
-
-		// Step 2: Get court data and existing bookings for the date
-		return from(getDocs(courtQuery)).pipe(
-			map(querySnapshot => {
+		return this.courtsService.getCollection(courtQueries).pipe(
+			map(courtsMap => {
 				const courts: Record<string, Court> = {}
-				querySnapshot.forEach(docSnap => {
-					const data = docSnap.data() as Court
-					courts[docSnap.id] = { ...data, id: docSnap.id }
+				courtsMap.forEach((court, id) => {
+					courts[id] = { ...court, id }
 				})
 				return courts
 			}),
@@ -293,67 +90,60 @@ export class AvailabilityService {
 
 				// If no courts found, return empty result
 				if (courtIds.length === 0) {
-					return of({ courts, bookings: [] })
+					return of({ courts, bookings: [] as Booking[], venue: undefined as Venue | undefined })
 				}
 
-				// Get all bookings for these courts on this date
-				const bookingsRef = collection(this.firestore, 'bookings')
-				const bookingQuery = query(
-					bookingsRef,
-					where('date', '==', date),
-					where('courtId', 'in', courtIds),
-					where('status', 'in', ['confirmed', 'pending']), // Only consider active bookings
-				)
+				// Get venue data
+				const venueObs = this.venuesService.get(venueId)
+
+				// Use the custom getCollection method with the in operator queries
+				const bookingsObs = this.getBookingsForCourts(date, courtIds)
 
 				return forkJoin({
 					courts: of(courts),
-					bookings: from(getDocs(bookingQuery)).pipe(
-						map(snapshot => {
-							const bookings: any[] = []
-							snapshot.forEach(doc => {
-								bookings.push({ id: doc.id, ...doc.data() })
-							})
-							return bookings
-						}),
-					),
-				})
-			}),
-			switchMap(({ courts, bookings }) => {
-				// Step 3: Determine venue operating hours
-				// We'll take the venueId from the first court if it's not provided
-				const firstCourtId = Object.keys(courts)[0]
-				const venueIdToUse = venueId || (firstCourtId ? courts[firstCourtId].venueId : null)
-
-				if (!venueIdToUse) {
-					return of({ courts, bookings, venue: null })
-				}
-
-				const venueRef = doc(this.firestore, 'venues', venueIdToUse)
-				return forkJoin({
-					courts: of(courts),
-					bookings: of(bookings),
-					venue: from(getDoc(venueRef)).pipe(
-						map(docSnap => (docSnap.exists() ? ({ id: docSnap.id, ...docSnap.data() } as Venue) : null)),
-					),
+					bookings: bookingsObs,
+					venue: venueObs,
 				})
 			}),
 			map(({ courts, bookings, venue }) => {
-				// Step 4: Generate availability data for each court
-				const result: Record<string, Record<string, TimeSlotStatus>> = {}
+				// Step 3: Format the response
+				const result: AvailabilityResponse = {
+					date,
+					timeSlots: {},
+					courts: {},
+				}
 
-				// For each court, generate default available slots based on venue hours
-				Object.keys(courts).forEach(courtId => {
-					// Create default slots based on venue operating hours
-					const defaultSlots = this.generateSlotsFromVenueHours(venue, date)
-					result[courtId] = { ...defaultSlots }
+				const courtIds = Object.keys(courts)
+
+				// Generate time slots based on venue operating hours
+				const timeSlotKeys = this.generateTimeSlotKeysFromVenue(venue, date)
+
+				// Initialize time slot availability for all slots
+				timeSlotKeys.forEach(timeKey => {
+					result.timeSlots[timeKey] = {
+						isAvailable: true,
+						availableCourts: [...courtIds],
+						courts: courtIds.reduce((acc, courtId) => {
+							acc[courtId] = true
+							return acc
+						}, {} as Record<string, boolean>),
+					}
 				})
 
-				// Step 5: Mark booked slots as unavailable
+				// Initialize court availability
+				courtIds.forEach(courtId => {
+					result.courts[courtId] = {
+						isAvailable: true,
+						bookedTimeSlots: [],
+					}
+				})
+
+				// Step 4: Mark booked slots
 				bookings.forEach(booking => {
-					const { courtId, startTime, endTime, userId, id } = booking
+					const { courtId, startTime, endTime } = booking
 
 					// Skip if this court isn't in our result set
-					if (!result[courtId]) return
+					if (!courtIds.includes(courtId)) return
 
 					// Calculate time range
 					const start = new Date(startTime)
@@ -365,28 +155,16 @@ export class AvailabilityService {
 
 					// Mark all slots in the range as unavailable
 					for (let hour = startHour; hour <= endHour; hour++) {
-						// Determine if we need to mark the full hour slot
+						// Check full hour slot
 						if ((hour > startHour || startMinute === 0) && (hour < endHour || endMinute === 0)) {
 							const timeKey = `${hour.toString().padStart(2, '0')}:00`
-							if (result[courtId][timeKey]) {
-								result[courtId][timeKey] = {
-									isAvailable: false,
-									bookedBy: userId || null,
-									bookingId: id,
-								}
-							}
+							this.markSlotAsBooked(result, timeKey, courtId)
 						}
 
-						// Determine if we need to mark the half-hour slot
+						// Check half-hour slot
 						if ((hour > startHour || startMinute <= 30) && (hour < endHour || endMinute > 30)) {
 							const timeKey = `${hour.toString().padStart(2, '0')}:30`
-							if (result[courtId][timeKey]) {
-								result[courtId][timeKey] = {
-									isAvailable: false,
-									bookedBy: userId || null,
-									bookingId: id,
-								}
-							}
+							this.markSlotAsBooked(result, timeKey, courtId)
 						}
 					}
 				})
@@ -394,174 +172,353 @@ export class AvailabilityService {
 				return result
 			}),
 			catchError(error => {
-				console.error('Error fetching court availability:', error)
-				return throwError(() => new Error('Failed to fetch court availability. Please try again.'))
+				console.error('Error fetching availability data:', error)
+				return throwError(() => new Error('Failed to fetch venue availability data'))
 			}),
 			shareReplay(1),
 		)
 	}
 
 	/**
-	 * Generate time slots based on venue operating hours
-	 *
-	 * @param venue - Venue with operating hours
-	 * @param date - Date for which to generate slots
-	 * @returns Time slots respecting venue operating hours
+	 * Custom method to get bookings for multiple courts
+	 * This is needed because FirestoreService doesn't directly support 'in' queries
 	 */
-	private generateSlotsFromVenueHours(venue: Venue | null, date: string): Record<string, TimeSlotStatus> {
+	private getBookingsForCourts(date: string, courtIds: string[]): Observable<Booking[]> {
+		if (courtIds.length === 0) {
+			return of([])
+		}
+
+		// Use direct Firestore query for 'in' operations which are not easily supported by FirestoreService
+		const bookingsRef = collection(db, 'bookings')
+		const bookingQuery = query(
+			bookingsRef,
+			where('date', '==', date),
+			where('courtId', 'in', courtIds),
+			where('status', 'in', ['confirmed', 'pending']),
+		)
+
+		return from(getDocs(bookingQuery)).pipe(
+			map(snapshot => {
+				const bookings: Booking[] = []
+				snapshot.forEach(doc => {
+					bookings.push({ id: doc.id, ...doc.data() } as Booking)
+				})
+				return bookings
+			}),
+			catchError(error => {
+				console.error('Error fetching bookings:', error)
+				return throwError(() => new Error('Failed to fetch bookings'))
+			}),
+		)
+	}
+
+	/**
+	 * Generate time slot keys based on venue operating hours
+	 */
+	private generateTimeSlotKeysFromVenue(venue: Venue | undefined, date: string): string[] {
 		if (!venue || !venue.operatingHours) {
-			return this.generateDefaultTimeSlots()
+			return this.generateDefaultTimeSlotKeys()
 		}
 
 		// Get day of week
-		const dayOfWeek = dayjs(date).format('dddd').toLowerCase()
+		const dayOfWeekFull = dayjs(date).format('dddd').toLowerCase() as Weekday
+
+		// Check if the day is a valid key in operating hours
+		if (!this.isValidWeekday(dayOfWeekFull)) {
+			return this.generateDefaultTimeSlotKeys()
+		}
 
 		// Get operating hours for the day
-		const todayHours = venue.operatingHours[dayOfWeek as keyof OperatingHours]
+		const todayHours = venue.operatingHours[dayOfWeekFull]
 
-		// If venue is closed today, return empty slots
+		// If venue is closed today, return empty array
 		if (!todayHours) {
-			return {}
+			return []
 		}
 
 		// Parse operating hours
 		const [openHour, _openMinute] = todayHours.open.split(':').map(Number)
 		const [closeHour, _closeMinute] = todayHours.close.split(':').map(Number)
 
-		// Generate slots from opening time to closing time
-		return this.generateDefaultTimeSlots(openHour, closeHour)
+		// Generate slot keys from opening time to closing time
+		return this.generateDefaultTimeSlotKeys(openHour, closeHour)
 	}
 
 	/**
-	 * Generate default time slots for standard business hours
-	 *
-	 * @param startHour - Starting hour (default: 8 AM)
-	 * @param endHour - Ending hour (default: 10 PM)
-	 * @returns Record of default time slots
+	 * Type guard to check if a string is a valid weekday key
 	 */
-	private generateDefaultTimeSlots(startHour: number = 8, endHour: number = 22): Record<string, TimeSlotStatus> {
-		const slots: Record<string, TimeSlotStatus> = {}
+	private isValidWeekday(day: string): day is Weekday {
+		return ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].includes(day)
+	}
+
+	/**
+	 * Generate default time slot keys
+	 */
+	private generateDefaultTimeSlotKeys(startHour: number = 8, endHour: number = 22): string[] {
+		const keys: string[] = []
 
 		for (let hour = startHour; hour < endHour; hour++) {
 			// Full hour slot
-			const timeKey = `${hour.toString().padStart(2, '0')}:00`
-			slots[timeKey] = {
-				isAvailable: true,
-				bookedBy: null,
-				bookingId: null,
-			}
+			keys.push(`${hour.toString().padStart(2, '0')}:00`)
 
 			// Half hour slot
-			const halfHourKey = `${hour.toString().padStart(2, '0')}:30`
-			slots[halfHourKey] = {
-				isAvailable: true,
-				bookedBy: null,
-				bookingId: null,
-			}
+			keys.push(`${hour.toString().padStart(2, '0')}:30`)
 		}
 
-		return slots
+		return keys
 	}
 
 	/**
-	 * Transform the raw availability data to the new format
-	 * @private
+	 * Mark a slot as booked in the availability response
 	 */
-	private transformToNewFormat(
-		rawData: Record<string, Record<string, TimeSlotStatus>>,
-		date: string,
-		venueId: string,
-	): AvailabilityResponse {
-		const result: AvailabilityResponse = this.getEmptyResponse(date, venueId)
+	private markSlotAsBooked(response: AvailabilityResponse, timeKey: string, courtId: string): void {
+		// Skip if the time slot doesn't exist in our response
+		if (!response.timeSlots[timeKey]) return
 
-		// Process court-by-court availability
-		Object.entries(rawData).forEach(([courtId, courtSlots]) => {
-			// Initialize court in the result
-			result.courts[courtId] = {
-				isAvailable: false,
-				slots: {},
-			}
+		// Update time slot data
+		const timeSlot = response.timeSlots[timeKey]
+		timeSlot.courts[courtId] = false
 
-			let hasAvailableSlot = false
+		// Update available courts list
+		timeSlot.availableCourts = timeSlot.availableCourts.filter(id => id !== courtId)
 
-			// Process each time slot for this court
-			Object.entries(courtSlots).forEach(([timeKey, slotData]) => {
-				// Add the slot data to the court
-				result.courts[courtId].slots[timeKey] = {
-					isAvailable: slotData.isAvailable,
-					startTime: this.createISOTimeString(date, timeKey),
-					endTime: this.createISOTimeString(date, this.advanceTimeSlot(timeKey)),
-					bookedBy: slotData.bookedBy,
-					bookingId: slotData.bookingId,
+		// Update overall availability flag
+		timeSlot.isAvailable = timeSlot.availableCourts.length > 0
+
+		// Update court data
+		if (response.courts[courtId]) {
+			response.courts[courtId].bookedTimeSlots = [...(response.courts[courtId].bookedTimeSlots || []), timeKey]
+
+			// Remove duplicates
+			response.courts[courtId].bookedTimeSlots = [...new Set(response.courts[courtId].bookedTimeSlots)]
+		}
+	}
+
+	/**
+	 * Get venue availability data with caching and automatic refresh
+	 */
+	getVenueAvailability(date: string, venueId: string): Observable<AvailabilityResponse> {
+		const cacheKey = `${date}_${venueId}`
+		const cached = this.cache.get(cacheKey)
+		const now = Date.now()
+
+		// Return cached data if it's fresh
+		if (cached && now - cached.timestamp < this.CACHE_TTL) {
+			return of(cached.data)
+		}
+
+		// Fetch fresh data
+		return this.fetchAvailabilityData(date, venueId).pipe(
+			tap(data => {
+				// Cache the result
+				this.cache.set(cacheKey, { data, timestamp: now })
+			}),
+			catchError(error => {
+				// If we have stale cached data, return it instead of failing
+				if (cached) {
+					console.warn('Failed to update availability, using cached data', error)
+					return of(cached.data)
+				}
+				return throwError(() => error)
+			}),
+		)
+	}
+
+	/**
+	 * Clear cache to force data refresh
+	 */
+	clearCache(): void {
+		this.cache.clear()
+	}
+
+	/**
+	 * Check if a court is available for the entire duration from start to end time
+	 */
+	isCourtAvailableForDuration(
+		availabilityData: AvailabilityResponse,
+		courtId: string,
+		startTime: string,
+		durationMinutes: number,
+	): boolean {
+		if (!availabilityData || !availabilityData.timeSlots) {
+			return false
+		}
+
+		const start = dayjs(startTime)
+		const end = start.add(durationMinutes, 'minute')
+
+		// Convert to 24-hour format strings for comparison (e.g., "14:00")
+		const startSlot = start.format('HH:mm')
+		const endSlot = end.format('HH:mm')
+
+		// Get all relevant time slots in the range
+		const relevantSlots = Object.entries(availabilityData.timeSlots).filter(
+			([timeKey, _]) => timeKey >= startSlot && timeKey < endSlot,
+		)
+
+		// Check if all slots have this court available
+		return relevantSlots.every(([_, slotData]) => {
+			// Court must be explicitly available in each slot
+			return slotData.courts?.[courtId] === true
+		})
+	}
+
+	/**
+	 * Get all valid durations for a court at a specific start time
+	 */
+	getAvailableDurations(
+		availabilityData: AvailabilityResponse,
+		courtId: string,
+		startTime: string,
+		possibleDurations: number[], // Array of durations in minutes (e.g., [30, 60, 90, 120])
+	): number[] {
+		return possibleDurations.filter(duration =>
+			this.isCourtAvailableForDuration(availabilityData, courtId, startTime, duration),
+		)
+	}
+
+	/**
+	 * Refresh availability data on demand
+	 */
+	refreshAvailability(date: string, venueId: string): Observable<AvailabilityResponse> {
+		const cacheKey = `${date}_${venueId}`
+		this.cache.delete(cacheKey) // Remove from cache to force a refresh
+		return this.getVenueAvailability(date, venueId)
+	}
+
+	/**
+	 * Set up periodic refresh of data
+	 * @returns Subscription that should be unsubscribed to stop refresh
+	 */
+	setupPeriodicRefresh(date: string, venueId: string, intervalMs: number = 60000): { unsubscribe: () => void } {
+		const intervalId = setInterval(() => {
+			this.refreshAvailability(date, venueId).subscribe({
+				error: err => console.error('Error refreshing availability data:', err),
+			})
+		}, intervalMs)
+
+		// Return an object with unsubscribe method
+		return {
+			unsubscribe: () => clearInterval(intervalId),
+		}
+	}
+
+	/**
+	 * Subscribe to real-time updates for venue availability
+	 * Uses the FirestoreService subscription methods for real-time updates
+	 */
+	subscribeToVenueAvailability(date: string, venueId: string): Observable<AvailabilityResponse> {
+		// Get court queries
+		const courtQueries: FirebaseServiceQuery[] = [
+			{ key: 'status', value: 'active', operator: '==' },
+			{ key: 'venueId', value: venueId, operator: '==' },
+		]
+
+		// Get venue
+		const venue$ = this.venuesService.subscribe(venueId)
+
+		// Get all active courts for the venue
+		const courts$ = this.courtsService.subscribeToCollection(courtQueries)
+
+		// Subscribe to bookings for this date
+		const bookings$ = this.bookingsService.subscribeToCollection([{ key: 'date', value: date, operator: '==' }])
+
+		// Combine all observables
+		return combineLatest([courts$, bookings$, venue$]).pipe(
+			map(([courtsMap, bookingsMap, venue]) => {
+				// Process courts
+				const courts: Record<string, Court> = {}
+				courtsMap.forEach((court, id) => {
+					if (court.status === 'active' && court.venueId === venueId) {
+						courts[id] = { ...court, id }
+					}
+				})
+
+				// Process bookings
+				const bookings: Booking[] = []
+				const courtIds = Object.keys(courts)
+				bookingsMap.forEach((booking, id) => {
+					if (
+						courtIds.includes(booking.courtId) &&
+						['confirmed', 'pending'].includes(booking.status) &&
+						booking.date === date
+					) {
+						bookings.push({ ...booking })
+					}
+				})
+
+				// Format the response
+				const result: AvailabilityResponse = {
+					date,
+					timeSlots: {},
+					courts: {},
 				}
 
-				// Update court availability
-				if (slotData.isAvailable) {
-					hasAvailableSlot = true
+				// Generate time slots based on venue operating hours
+				const timeSlotKeys = this.generateTimeSlotKeysFromVenue(venue, date)
 
-					// Initialize time slot in aggregated view if needed
-					if (!result.timeSlots[timeKey]) {
-						result.timeSlots[timeKey] = {
-							isAvailable: true,
-							availableCourts: [],
+				// Initialize time slot availability for all slots
+				timeSlotKeys.forEach(timeKey => {
+					result.timeSlots[timeKey] = {
+						isAvailable: true,
+						availableCourts: [...courtIds],
+						courts: courtIds.reduce((acc, courtId) => {
+							acc[courtId] = true
+							return acc
+						}, {} as Record<string, boolean>),
+					}
+				})
+
+				// Initialize court availability
+				courtIds.forEach(courtId => {
+					result.courts[courtId] = {
+						isAvailable: true,
+						bookedTimeSlots: [],
+					}
+				})
+
+				// Mark booked slots
+				bookings.forEach(booking => {
+					const { courtId, startTime, endTime } = booking
+
+					// Skip if this court isn't in our result set
+					if (!courtIds.includes(courtId)) return
+
+					// Calculate time range
+					const start = new Date(startTime)
+					const end = new Date(endTime)
+					const startHour = start.getHours()
+					const startMinute = start.getMinutes()
+					const endHour = end.getHours()
+					const endMinute = end.getMinutes()
+
+					// Mark all slots in the range as unavailable
+					for (let hour = startHour; hour <= endHour; hour++) {
+						// Check full hour slot
+						if ((hour > startHour || startMinute === 0) && (hour < endHour || endMinute === 0)) {
+							const timeKey = `${hour.toString().padStart(2, '0')}:00`
+							this.markSlotAsBooked(result, timeKey, courtId)
+						}
+
+						// Check half-hour slot
+						if ((hour > startHour || startMinute <= 30) && (hour < endHour || endMinute > 30)) {
+							const timeKey = `${hour.toString().padStart(2, '0')}:30`
+							this.markSlotAsBooked(result, timeKey, courtId)
 						}
 					}
+				})
 
-					// Add this court to the available courts for this time slot
-					result.timeSlots[timeKey].availableCourts.push(courtId)
-				} else if (!result.timeSlots[timeKey]) {
-					// Initialize unavailable time slot if it doesn't exist
-					result.timeSlots[timeKey] = {
-						isAvailable: false,
-						availableCourts: [],
-					}
-				}
-			})
+				// Cache the result
+				const cacheKey = `${date}_${venueId}`
+				this.cache.set(cacheKey, { data: result, timestamp: Date.now() })
 
-			// Update court availability based on any available slot
-			result.courts[courtId].isAvailable = hasAvailableSlot
-		})
-
-		return result
-	}
-
-	/**
-	 * Create an empty response structure
-	 */
-	private getEmptyResponse(date: string, venueId: string): AvailabilityResponse {
-		return {
-			courts: {},
-			timeSlots: {},
-			date,
-			venueId,
-		}
-	}
-
-	/**
-	 * Create an ISO string from a date and time
-	 */
-	private createISOTimeString(dateStr: string, timeStr: string): string {
-		const [hours, minutes] = timeStr.split(':').map(Number)
-		const date = new Date(dateStr)
-		date.setHours(hours, minutes, 0, 0)
-		return date.toISOString()
-	}
-
-	/**
-	 * Advance a time slot by 30 minutes (or your slot duration)
-	 * Format: "HH:MM" -> "HH:MM"
-	 */
-	private advanceTimeSlot(timeStr: string): string {
-		const [hours, minutes] = timeStr.split(':').map(Number)
-		let newMinutes = minutes + 30
-		let newHours = hours
-
-		if (newMinutes >= 60) {
-			newMinutes -= 60
-			newHours += 1
-		}
-
-		// Format with leading zeros
-		return `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`
+				return result
+			}),
+			catchError(error => {
+				console.error('Error subscribing to availability data:', error)
+				return throwError(() => new Error('Failed to subscribe to venue availability data'))
+			}),
+			shareReplay(1),
+		)
 	}
 }

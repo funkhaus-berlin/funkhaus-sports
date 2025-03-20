@@ -132,9 +132,7 @@ export class BookingErrorDisplay extends $LitElement(css`
 	private lastError: BookingError | null = null
 	private animating: boolean = false
 
-	connectedCallback() {
-		super.connectedCallback()
-
+	firstUpdated() {
 		// Subscribe to booking progress context changes
 		BookingProgressContext.$.pipe(takeUntil(this.disconnecting)).subscribe(() => {
 			// Trigger animation if error changes

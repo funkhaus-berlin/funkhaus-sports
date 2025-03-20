@@ -8,8 +8,7 @@ import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, filter, map, startWith, takeUntil, tap } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
-import { venuesContext } from 'src/admin/venues/venue-context'
-import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
+import { availabilityCoordinator } from 'src/bookingServices/availability-coordinator'
 import { Court } from 'src/db/courts.collection'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { Duration } from '../../types'
@@ -137,6 +136,8 @@ export class DurationSelectionStep extends $LitElement(css`
 	/**
 	 * Load durations based on court and venue data
 	 */
+	// Updated loadDurations method for duration-selection-step.ts
+
 	private loadDurations(): void {
 		// Set initial loading state
 		this.loading = true
@@ -158,73 +159,40 @@ export class DurationSelectionStep extends $LitElement(css`
 
 			// Only proceed if we have a court and start time
 			if (court && this.booking?.startTime) {
-				// Get venue directly from venueId in booking context
-				const venue = this.booking.venueId
-					? venuesContext.value.get(this.booking.venueId)
-					: venuesContext.value.get(court.venueId)
+				// Use availability coordinator to get valid durations
+				try {
+					// Get available durations from the coordinator
+					const availableDurations = availabilityCoordinator.getAvailableDurations(court.id, this.booking.startTime)
 
-				// Get the day of week for operating hours
-				const startTime = dayjs(this.booking.startTime)
-				const dayOfWeek = startTime.format('dddd').toLowerCase()
-				const operatingHours = venue?.operatingHours?.[dayOfWeek as keyof typeof venue.operatingHours]
-
-				// Calculate available time until closing
-				let maxAvailableMinutes = 180 // Default max (3 hours)
-
-				if (operatingHours) {
-					// Parse closing time
-					const [closeHour, closeMinute] = operatingHours.close.split(':').map(Number)
-					const closeTimeMinutes = closeHour * 60 + (closeMinute || 0)
-
-					// Calculate current time in minutes since midnight
-					const currentHour = startTime.hour()
-					const currentMinute = startTime.minute()
-					const currentTimeMinutes = currentHour * 60 + currentMinute
-
-					// Calculate available minutes until closing
-					maxAvailableMinutes = closeTimeMinutes - currentTimeMinutes
-
-					// Apply a small buffer to ensure bookings don't end exactly at closing time
-					maxAvailableMinutes -= 15
-
-					// Ensure we have a positive value
-					maxAvailableMinutes = Math.max(0, maxAvailableMinutes)
-				}
-
-				// Get standard durations from pricing service
-				let standardDurations = pricingService.getStandardDurationPrices(
-					court,
-					this.booking.startTime,
-					this.booking.userId,
-				)
-
-				// Filter durations to only include those that fit within operating hours
-				standardDurations = standardDurations.filter(duration => duration.value <= maxAvailableMinutes)
-
-				// If no durations fit, add at least a 30-minute option if possible
-				if (standardDurations.length === 0 && maxAvailableMinutes >= 30) {
-					const minDuration = {
-						label: '30m',
-						value: 30,
-						price: Math.round(court.pricing?.baseHourlyRate / 2) || 15,
+					if (availableDurations.length > 0) {
+						// We have valid durations from the availability system
+						this.durations = availableDurations
+						this.showingEstimatedPrices = false
+						this.lastSuccessfulData = { durations: availableDurations }
+						this.announceForScreenReader(`${availableDurations.length} duration options available`)
+					} else {
+						// No valid durations available - check if it's a data issue or truly no availability
+						if (availabilityCoordinator.error$.value) {
+							// There was an error fetching availability data
+							this.error = 'Could not determine available durations. Using estimates instead.'
+							this.setEstimatedPrices()
+						} else {
+							// No error, but still no available durations - truly unavailable
+							this.error = 'No valid duration options available for this time slot. Please select a different time.'
+							this.durations = []
+						}
 					}
-					standardDurations = [minDuration]
-				}
-
-				// Update durations only if we have some
-				if (standardDurations.length > 0) {
-					this.durations = standardDurations
-					this.showingEstimatedPrices = false
-					this.lastSuccessfulData = { durations: standardDurations }
-					this.announceForScreenReader(`${standardDurations.length} duration options available`)
-				} else {
-					// If we couldn't determine any valid durations, fall back to estimated prices
+				} catch (error) {
+					console.error('Error getting available durations:', error)
+					this.error = 'Error determining available durations. Using estimates instead.'
 					this.setEstimatedPrices()
 				}
 			} else {
+				// Missing court or start time
 				this.setEstimatedPrices()
 			}
 		} else {
+			// Court not found
 			this.setEstimatedPrices()
 		}
 
