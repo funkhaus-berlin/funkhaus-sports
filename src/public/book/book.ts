@@ -10,10 +10,10 @@ import { venuesContext } from 'src/admin/venues/venue-context'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
+import './components'
 import { BookingErrorService } from './components/errors/booking-error-service'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep, ErrorCategory } from './context'
 import { PaymentStatusHandler } from './payment-status-handler'
-import './components'
 /**
  * Court booking system component
  * Handles the complete booking flow from date selection to payment
@@ -312,20 +312,13 @@ export class CourtBookingSystem extends $LitElement() {
 						class="max-w-full block mt-2 z-10"
 					></court-select-step>
 
-					<time-selection-step
-						.hidden=${currentStep < BookingStep.Time}
-						.active=${currentStep === BookingStep.Time}
-						class="max-w-full sticky top-0 block mt-2 z-10"
-					></time-selection-step>
-
+					${when(
+						currentStep >= BookingStep.Time,
+						() => html` <time-selection-step class="max-w-full sticky top-0 block mt-2 z-10"></time-selection-step> `,
+					)}
 					${when(
 						currentStep === BookingStep.Duration,
-						() => html`
-							<duration-selection-step
-								class="max-w-full mt-2 block"
-								.selectedDuration=${this.getDuration()}
-							></duration-selection-step>
-						`,
+						() => html` <duration-selection-step class="max-w-full mt-2 block"></duration-selection-step> `,
 					)}
 				`,
 				() => html`
