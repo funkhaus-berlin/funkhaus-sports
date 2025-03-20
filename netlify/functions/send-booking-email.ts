@@ -1,9 +1,8 @@
 // netlify/functions/send-booking-email.ts
 import { Handler } from '@netlify/functions'
-import dayjs from 'dayjs'
 import admin from 'firebase-admin'
 
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
+import PDFDocument from 'pdfkit'
 import QRCode from 'qrcode'
 import { corsHeaders } from './_shared/cors'
 import { emailConfig } from './_shared/email-config'
@@ -140,280 +139,231 @@ async function sendEmail(data: any, pdfBuffer: Buffer): Promise<boolean> {
 }
 
 /**
- * Generate PDF with booking details
+ * Generate invoice PDF with booking details
  */
 async function generateBookingPDF(data: any): Promise<Buffer> {
 	// Create a new PDF document
-	const pdfDoc = await PDFDocument.create()
-	const page = pdfDoc.addPage([595.28, 841.89]) // A4 size
+	const doc = new PDFDocument({ size: 'A4', margin: 50 })
+	let buffers: Array<Buffer> = []
+	doc.on('data', chunk => buffers.push(chunk))
 
-	// Load fonts
-	const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
-	const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+	// Define styled text helpers
+	const normalFont = 'Helvetica'
+	const boldFont = 'Helvetica-Bold'
 
-	// Set default font size
-	const fontSize = 12
+	// Header - Invoice title
+	let y = 90
+	doc.font(boldFont).fontSize(24).fillColor('#5e808e').text('INVOICE', 50, 65)
+	doc.fillColor('#000000')
 
-	// Start Y position (top of page)
-	let y = 800
-	const lineHeight = 20
-	const leftMargin = 50
+	// invoice number - using booking ID
+	doc
+		.font(boldFont)
+		.fontSize(12)
+		.text('Invoice Number:', 50, (y += 4))
+	doc.font(normalFont).text(`FBB-${data.bookingId.substring(0, 6)}`, 150, y)
 
-	// Add header
-	page.drawText('Booking Confirmation', {
-		x: leftMargin,
+	// invoice date
+	doc.font(boldFont).text('Date of Issue:', 50, (y += 15))
+	doc.font(normalFont).text(
+		new Date().toLocaleDateString('en-US', {
+			year: 'numeric',
+			month: 'long',
+			day: 'numeric',
+		}),
+		150,
 		y,
-		size: 24,
-		font: boldFont,
-	})
+	)
 
-	y -= lineHeight * 2
+	// Service date
+	doc.font(boldFont).text('Service Date:', 50, (y += 15))
+	doc.font(normalFont).text(data.bookingDetails.date, 150, y)
 
-	// Draw court info section
-	page.drawText('Court Details', {
-		x: leftMargin,
-		y,
-		size: 16,
-		font: boldFont,
-	})
-
-	y -= lineHeight
-
-	// Court name and type
-	page.drawText(`Court: ${data.bookingDetails.court} (${data.bookingDetails.courtType})`, {
-		x: leftMargin,
-		y,
-		size: fontSize,
-		font: font,
-	})
-
-	y -= lineHeight
-
-	// Venue
-	page.drawText(`Venue: ${data.bookingDetails.venue}`, {
-		x: leftMargin,
-		y,
-		size: fontSize,
-		font: font,
-	})
-
-	if (data.venueInfo?.address) {
-		y -= lineHeight
-		page.drawText(`Address: ${data.venueInfo.address.street}, ${data.venueInfo.address.city}`, {
-			x: leftMargin,
-			y,
-			size: fontSize,
-			font: font,
-		})
-
-		y -= lineHeight
-		page.drawText(`${data.venueInfo.address.postalCode}, ${data.venueInfo.address.country}`, {
-			x: leftMargin + 65,
-			y,
-			size: fontSize,
-			font: font,
-		})
-	}
-
-	y -= lineHeight * 2
-
-	// Draw booking details section
-	page.drawText('Booking Details', {
-		x: leftMargin,
-		y,
-		size: 16,
-		font: boldFont,
-	})
-
-	y -= lineHeight
-
-	// Date and time
-	page.drawText(`Date: ${data.bookingDetails.date}`, {
-		x: leftMargin,
-		y,
-		size: fontSize,
-		font: font,
-	})
-
-	y -= lineHeight
-
-	page.drawText(`Time: ${data.bookingDetails.startTime} - ${data.bookingDetails.endTime}`, {
-		x: leftMargin,
-		y,
-		size: fontSize,
-		font: font,
-	})
-
-	y -= lineHeight
-
-	page.drawText(`Duration: ${data.bookingDetails.duration}`, {
-		x: leftMargin,
-		y,
-		size: fontSize,
-		font: font,
-	})
-
-	y -= lineHeight * 2
-
-	// Customer info
-	page.drawText('Customer Information', {
-		x: leftMargin,
-		y,
-		size: 16,
-		font: boldFont,
-	})
-
-	y -= lineHeight
-
-	page.drawText(`Name: ${data.customerName}`, {
-		x: leftMargin,
-		y,
-		size: fontSize,
-		font: font,
-	})
-
-	y -= lineHeight
-
-	page.drawText(`Email: ${data.customerEmail}`, {
-		x: leftMargin,
-		y,
-		size: fontSize,
-		font: font,
-	})
-
-	y -= lineHeight
-
-	if (data.customerPhone) {
-		page.drawText(`Phone: ${data.customerPhone}`, {
-			x: leftMargin,
-			y,
-			size: fontSize,
-			font: font,
-		})
-		y -= lineHeight
-	}
-
-	// Payment info
-	y -= lineHeight
-
-	page.drawText('Payment Information', {
-		x: leftMargin,
-		y,
-		size: 16,
-		font: boldFont,
-	})
-
-	y -= lineHeight
-
-	page.drawText(`Status: ${data.paymentInfo.paymentStatus}`, {
-		x: leftMargin,
-		y,
-		size: fontSize,
-		font: font,
-	})
-
-	y -= lineHeight
-
-	page.drawText(`Booking ID: ${data.bookingId}`, {
-		x: leftMargin,
-		y,
-		size: fontSize,
-		font: font,
-	})
-
-	y -= lineHeight
-
-	// Price details
-	page.drawText(`Price Details:`, {
-		x: leftMargin,
-		y,
-		size: fontSize,
-		font: boldFont,
-	})
-
-	y -= lineHeight
-
-	page.drawText(`Net Amount: €${data.bookingDetails.vatInfo.netAmount}`, {
-		x: leftMargin + 20,
-		y,
-		size: fontSize,
-		font: font,
-	})
-
-	y -= lineHeight
-
-	page.drawText(`VAT (${data.bookingDetails.vatInfo.vatRate}): €${data.bookingDetails.vatInfo.vatAmount}`, {
-		x: leftMargin + 20,
-		y,
-		size: fontSize,
-		font: font,
-	})
-
-	y -= lineHeight
-
-	page.drawText(`Total: €${data.bookingDetails.price}`, {
-		x: leftMargin + 20,
-		y,
-		size: fontSize,
-		font: boldFont,
-	})
-
-	// Generate QR code
+	// Try to add QR code
 	try {
+		// Generate QR code
 		const qrCodeData = await QRCode.toDataURL(
 			JSON.stringify({
 				bookingId: data.bookingId,
-				court: data.bookingDetails.court,
 				date: data.bookingDetails.date,
-				time: data.bookingDetails.startTime,
 			}),
 		)
-
-		// Extract base64 data (remove data URL prefix)
-		const qrCodeBase64 = qrCodeData.replace('data:image/png;base64,', '')
-		const qrCodeImage = await pdfDoc.embedPng(Buffer.from(qrCodeBase64, 'base64'))
-
-		// Position the QR code at top right of the page
-		const qrWidth = 100
-		const qrHeight = 100
-		page.drawImage(qrCodeImage, {
-			x: 445,
-			y: 730,
-			width: qrWidth,
-			height: qrHeight,
-		})
-
-		// Add QR code label
-		page.drawText('Booking QR Code', {
-			x: 450,
-			y: 720,
-			size: 10,
-			font: font,
-		})
+		doc.image(qrCodeData, 450, 50, { width: 90 })
 	} catch (err) {
 		console.error('Error generating QR code:', err)
 	}
 
-	// Add footer
-	const footerY = 50
-	page.drawText('Thank you for booking with Funkhaus Sports!', {
-		x: leftMargin,
-		y: footerY,
-		size: fontSize,
-		font: boldFont,
-	})
+	// Draw a line under the header section
+	doc
+		.strokeColor('#cccccc')
+		.lineWidth(1)
+		.moveTo(50, y + 20)
+		.lineTo(550, y + 20)
+		.stroke()
 
-	page.drawText(`Generated on ${dayjs().format('MMM D, YYYY')}`, {
-		x: leftMargin,
-		y: footerY - lineHeight,
-		size: 10,
-		font: font,
-		color: rgb(0.5, 0.5, 0.5),
-	})
+	y += 40
 
-	// Serialize the PDF document to bytes
-	const pdfBytes = await pdfDoc.save()
-	return Buffer.from(pdfBytes)
+	// Buyer Information (left side)
+	doc.font(boldFont).fontSize(14).text('Bill To:', 50, y)
+	y += 20
+	doc.font(normalFont).fontSize(12)
+	doc.text(data.customerName, 50, y)
+	y += 15
+
+	// Add customer address if available
+	if (data.customerAddress) {
+		if (data.customerAddress.street) {
+			doc.text(data.customerAddress.street, 50, y)
+			y += 15
+		}
+
+		let locationLine = ''
+		if (data.customerAddress.postalCode) locationLine += data.customerAddress.postalCode + ' '
+		if (data.customerAddress.city) locationLine += data.customerAddress.city
+
+		if (locationLine) {
+			doc.text(locationLine, 50, y)
+			y += 15
+		}
+
+		if (data.customerAddress.country) {
+			doc.text(data.customerAddress.country, 50, y)
+			y += 15
+		}
+	}
+
+	// Add contact information
+	doc.text(data.customerEmail || '', 50, y)
+	y += 15
+
+	if (data.customerPhone) {
+		doc.text(data.customerPhone, 50, y)
+		y += 15
+	}
+
+	// Seller Information (Right side)
+	y = 165 // Reset Y position for right column
+	doc.font(boldFont).fontSize(14).text('Bill From:', 300, y)
+	y += 20
+	doc.font(normalFont).fontSize(12)
+	doc.text('Funkhaus Sports GmbH', 300, y)
+	y += 15
+	doc.text('Nalepastrasse 18', 300, y)
+	y += 15
+	doc.text('12459 Berlin, Germany', 300, y)
+	y += 15
+	doc.text('VAT: DE187992171', 300, y)
+	y += 15
+	doc.text('booking@funkhaus-berlin.net', 300, y)
+	y += 15
+	doc.text('funkhaus-berlin.net', 300, y)
+
+	// Move to the invoice items section
+	y = 300
+
+	// Section title
+	doc.font(boldFont).fontSize(14).fillColor('#5e808e').text('BOOKING DETAILS', 50, y)
+	doc.fillColor('#000000')
+	y += 20
+
+	// Draw table headers with background
+	doc.fillColor('#f5f5f5').rect(50, y, 500, 25).fill()
+	doc.fillColor('#000000')
+
+	// Table headers
+	doc.font(boldFont).fontSize(12)
+	doc.text('Description', 60, y + 8)
+	doc.text('Duration', 310, y + 8)
+	doc.text('Rate', 390, y + 8)
+	doc.text('Amount', 470, y + 8)
+
+	y += 25
+
+	// Calculate VAT
+	const vatRate = 0.07 // 7%
+	const totalAmount = parseFloat(data.bookingDetails.price)
+	const netAmount = totalAmount / (1 + vatRate)
+	const vatAmount = totalAmount - netAmount
+
+	// Format the description
+	const description = `${data.bookingDetails.court} - ${data.bookingDetails.venue}`
+	const duration = `${data.bookingDetails.startTime} - ${data.bookingDetails.endTime}`
+
+	// Invoice item
+	doc.font(normalFont).fontSize(12)
+	doc.text(description, 60, y + 8, { width: 240 })
+	doc.text(duration, 310, y + 8)
+	doc.text(`€${netAmount.toFixed(2)}`, 390, y + 8)
+	doc.text(`€${netAmount.toFixed(2)}`, 470, y + 8)
+
+	y += 30
+
+	// Draw line before summary
+	doc.strokeColor('#cccccc').lineWidth(1).moveTo(50, y).lineTo(550, y).stroke()
+
+	y += 15
+
+	// Summary section
+	// Net total
+	doc.font(normalFont).text('Net Total:', 390, y)
+	doc.text(`€${netAmount.toFixed(2)}`, 470, y)
+
+	y += 20
+
+	// VAT
+	doc.text(`VAT (${(vatRate * 100).toFixed(0)}%):`, 390, y)
+	doc.text(`€${vatAmount.toFixed(2)}`, 470, y)
+
+	y += 5
+
+	// Draw line above total
+	doc
+		.strokeColor('#000000')
+		.lineWidth(1)
+		.moveTo(390, y + 10)
+		.lineTo(550, y + 10)
+		.stroke()
+
+	y += 15
+
+	// Total
+	doc.font(boldFont).fillColor('#5e808e').text('TOTAL:', 390, y)
+	doc.text(`€${totalAmount.toFixed(2)}`, 470, y)
+	doc.fillColor('#000000')
+
+	// Footer
+	const footerY = 600
+
+	// Payment Information
+	doc.font(boldFont).fontSize(12).text('Payment Information:', 50, footerY)
+	doc.font(normalFont).fontSize(12)
+	doc.text('Funkhaus Berlin Sports GmbH', 50, footerY + 15)
+	doc.text('IBAN: DE39 1002 0890 0037 4687 11', 50, footerY + 30)
+	doc.text('BIC: HYVEDEMM488', 50, footerY + 45)
+
+	// Thank you note
+	doc.text('Thank you for your business!', 50, footerY + 75)
+
+	// Draw final line
+	doc
+		.strokeColor('#cccccc')
+		.lineWidth(1)
+		.moveTo(50, footerY + 100)
+		.lineTo(550, footerY + 100)
+		.stroke()
+
+	// Page number and date
+	doc.fontSize(10).text(new Date().toISOString().split('T')[0], 50, footerY + 115)
+	doc.text('Page 1 of 1', 500, footerY + 115)
+
+	// End the document
+	doc.end()
+
+	// Return a promise that resolves with the PDF buffer
+	return new Promise<Buffer>(resolve => {
+		doc.on('end', () => {
+			resolve(Buffer.concat(buffers))
+		})
+	})
 }
-
 export { handler }

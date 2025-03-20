@@ -248,10 +248,10 @@ export class BookingErrorDisplay extends $LitElement(css`
 			'bg-error-container': true,
 			'text-error-onContainer': true,
 			'rounded-lg': true,
-			'p-3': true,
+			'p-2': true,
 			'mb-4': true,
 			flex: true,
-			'items-start': true,
+			'items-center': true,
 			'gap-2': true,
 			[`error-${error.category}`]: true,
 		}
@@ -295,9 +295,7 @@ export class BookingErrorDisplay extends $LitElement(css`
 				<!-- Dismiss button (if enabled) -->
 				${when(
 					this.dismissible,
-					() => html`
-						<schmancy-icon-button @click=${this.dismissError} title="Dismiss" size="md">close</schmancy-icon-button>
-					`,
+					() => html` <schmancy-icon-button @click=${this.dismissError} title="Dismiss">close</schmancy-icon-button> `,
 				)}
 			</div>
 		`
