@@ -1,13 +1,13 @@
 // src/public/book/FormValidator.ts
 
-import { Booking } from './context'
-import { BookingErrorHandler } from './error-handler'
+import { BookingErrorService } from './components/errors/booking-error-service'
+import { ErrorMessageKey } from './components/errors/i18n/error-messages'
+import { Booking, ErrorCategory } from './context'
 
 /**
  * Validates form fields and manages form state
  */
 export class FormValidator {
-	private errorHandler = new BookingErrorHandler()
 	private _formValidity: Record<string, boolean> = {}
 
 	/**
@@ -89,8 +89,13 @@ export class FormValidator {
 					console.error(`Missing required booking field: ${field.key}`)
 					isValid = false
 
-					// Show a different error for system fields
-					this.errorHandler.setError(`Please complete your booking selection first (${field.label}).`)
+					// Show a different error for system fields using i18n
+					BookingErrorService.setErrorI18n(
+						ErrorMessageKey.VALIDATION_REQUIRED_FIELDS,
+						ErrorCategory.VALIDATION,
+						{ field: field.label },
+						{ recoverySuggestionKey: ErrorMessageKey.RECOVERY_CHECK_INPUTS },
+					)
 					this._formValidity = newFormValidity
 					return false
 				}
@@ -104,7 +109,12 @@ export class FormValidator {
 			newFormValidity.emailFormat = validEmailFormat
 
 			if (!validEmailFormat) {
-				this.errorHandler.setError('Please enter a valid email address.')
+				BookingErrorService.setErrorI18n(
+					ErrorMessageKey.VALIDATION_INVALID_EMAIL,
+					ErrorCategory.VALIDATION,
+					{},
+					{ recoverySuggestionKey: ErrorMessageKey.RECOVERY_CHECK_INPUTS },
+				)
 				this._formValidity = newFormValidity
 				return false
 			}
@@ -116,7 +126,12 @@ export class FormValidator {
 			newFormValidity.phoneValid = phoneValid
 
 			if (!phoneValid) {
-				this.errorHandler.setError('Please enter a valid phone number.')
+				BookingErrorService.setErrorI18n(
+					ErrorMessageKey.VALIDATION_INVALID_EMAIL, // We should create a specific key for phone validation
+					ErrorCategory.VALIDATION,
+					{},
+					{ recoverySuggestionKey: ErrorMessageKey.RECOVERY_CHECK_INPUTS },
+				)
 				this._formValidity = newFormValidity
 				return false
 			}
@@ -128,7 +143,9 @@ export class FormValidator {
 			newFormValidity.postalCodeValid = postalCodeValid
 
 			if (!postalCodeValid) {
-				this.errorHandler.setError('Please enter a valid postal code.')
+				BookingErrorService.setError('Please enter a valid postal code.', ErrorCategory.VALIDATION, {
+					recoverySuggestion: 'Check if your postal code is correct and try again.',
+				})
 				this._formValidity = newFormValidity
 				return false
 			}
@@ -139,9 +156,15 @@ export class FormValidator {
 
 		// Show missing fields error if any
 		if (!isValid && missingFields.length > 0) {
-			this.errorHandler.setError(`Please fill in the following required fields: ${missingFields.join(', ')}`)
+			// Use i18n error with field names
+			BookingErrorService.setErrorI18n(
+				ErrorMessageKey.VALIDATION_REQUIRED_FIELDS,
+				ErrorCategory.VALIDATION,
+				{ fields: missingFields.join(', ') },
+				{ recoverySuggestionKey: ErrorMessageKey.RECOVERY_CHECK_INPUTS },
+			)
 		} else {
-			this.errorHandler.clearError()
+			BookingErrorService.clearError()
 		}
 
 		return isValid

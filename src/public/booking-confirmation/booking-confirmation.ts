@@ -8,8 +8,8 @@ import { venuesContext } from 'src/admin/venues/venue-context'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { VenueLandingPage } from 'src/public/venues/venues'
-import { BookingUtilities } from '../booking-utilities'
-import { Booking, bookingContext, BookingProgressContext } from '../context'
+import { BookingUtils } from '../book/booking-utils'
+import { Booking, bookingContext, BookingProgressContext } from '../book/context'
 
 @customElement('booking-confirmation')
 export class BookingConfirmation extends $LitElement() {
@@ -21,7 +21,6 @@ export class BookingConfirmation extends $LitElement() {
 	@property({ attribute: false }) onNewBooking?: () => void
 
 	// Utilities for booking data formatting and operations
-	private utilities = new BookingUtilities()
 	private venue?: Venue
 	private downloading: boolean = false
 
@@ -47,10 +46,10 @@ export class BookingConfirmation extends $LitElement() {
 			this.downloading = true
 
 			// Generate QR code
-			const qrDataUrl = this.utilities.generateQRCodeDataUrl(this.booking, this.selectedCourt)
+			const qrDataUrl = BookingUtils.generateQRCodeDataUrl(this.booking, this.selectedCourt)
 
 			// Generate filename
-			const filename = this.utilities.generateQRFilename(this.booking, this.selectedCourt, this.venue)
+			const filename = BookingUtils.generateQRFilename(this.booking, this.selectedCourt, this.venue)
 
 			// Create download link
 			const link = document.createElement('a')
@@ -107,7 +106,7 @@ export class BookingConfirmation extends $LitElement() {
 		// Format booking details
 		const dateFormatted = this.formatDate(this.booking.date)
 		const timeFormatted = this.formatTime(this.booking.startTime, this.booking.endTime)
-		const calendarUrl = this.utilities.generateCalendarFile(this.booking, this.selectedCourt?.name)
+		const calendarUrl = BookingUtils.generateCalendarFile(this.booking, this.selectedCourt?.name)
 		const courtName = this.selectedCourt?.name || 'Court'
 		const venueName = this.venue?.name || 'Venue'
 
@@ -135,7 +134,7 @@ export class BookingConfirmation extends $LitElement() {
 									<!-- QR Code Section -->
 									<div class="flex flex-col items-center py-4">
 										<img
-											src=${this.utilities.generateQRCodeDataUrl(this.booking, this.selectedCourt)}
+											src=${BookingUtils.generateQRCodeDataUrl(this.booking, this.selectedCourt)}
 											alt="Booking QR Code"
 											width="160"
 											height="160"
@@ -195,7 +194,7 @@ export class BookingConfirmation extends $LitElement() {
 												>Duration:</schmancy-typography
 											>
 											<schmancy-typography type="body" weight="medium">
-												${this.utilities.formatDuration(this.booking.startTime, this.booking.endTime)}
+												${BookingUtils.formatDuration(this.booking.startTime, this.booking.endTime)}
 											</schmancy-typography>
 										</schmancy-grid>
 
@@ -223,7 +222,7 @@ export class BookingConfirmation extends $LitElement() {
 
 								<schmancy-button
 									variant="filled"
-									@click=${() => this.utilities.shareBooking(this.booking, this.selectedCourt?.name)}
+									@click=${() => BookingUtils.shareBooking(this.booking, this.selectedCourt?.name)}
 								>
 									<schmancy-icon>share</schmancy-icon>
 									Share

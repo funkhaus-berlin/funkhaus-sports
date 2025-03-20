@@ -21,10 +21,10 @@ import {
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
 import { OperatingHours, Venue } from 'src/db/venue-collection'
-import { courtsContext } from '../../../admin/venues/courts/context'
-import { Court } from '../../../db/courts.collection'
-import { Booking, bookingContext, BookingProgressContext, BookingStep } from '../context'
-import { Duration } from '../types'
+import { courtsContext } from '../../../../admin/venues/courts/context'
+import { Court } from '../../../../db/courts.collection'
+import { Booking, bookingContext, BookingProgressContext, BookingStep } from '../../context'
+import { Duration } from '../../types'
 
 /**
  * Duration selection component with improved price display

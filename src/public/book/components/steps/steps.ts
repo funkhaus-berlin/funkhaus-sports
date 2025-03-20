@@ -3,7 +3,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
-import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../context'
+import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 
 /**
  * Step item interface

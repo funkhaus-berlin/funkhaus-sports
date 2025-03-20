@@ -1,12 +1,12 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { css, html, PropertyValues } from 'lit'
-import { customElement, property, query, state } from 'lit/decorators.js'
+import { customElement, query, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { styleMap } from 'lit/directives/style-map.js'
-import { debounceTime, startWith } from 'rxjs'
-import { bookingContext, BookingProgressContext, BookingStep } from '../context'
+import { debounceTime, distinctUntilChanged, filter, fromEvent, map, merge, startWith, takeUntil, tap } from 'rxjs'
+import { bookingContext, BookingProgressContext, BookingStep } from '../../context'
 
 // Define golden ratio constant
 const GOLDEN_RATIO = 1.618
@@ -25,9 +25,6 @@ export class DateSelectionStep extends $LitElement(css`
 		display: none; /* Chrome, Safari, and Opera */
 	}
 `) {
-	// Use private backing field for the value property with custom getter/setter
-	private _value?: string
-
 	// Cached values to improve performance
 	private _today = dayjs()
 	private _todayISO = this._today.format('YYYY-MM-DD')
@@ -47,31 +44,8 @@ export class DateSelectionStep extends $LitElement(css`
 	// ResizeObserver reference to clean up properly
 	private _resizeObserver: ResizeObserver | null = null
 
-	@property({ type: String })
-	get value(): string | undefined {
-		return this._value
-	}
-
-	set value(val: string | undefined) {
-		// Prevent selection of dates before today
-		if (val && dayjs(val).isBefore(this._today, 'day')) {
-			val = this._todayISO
-		}
-
-		const oldValue = this._value
-		this._value = val
-		this.requestUpdate('value', oldValue)
-
-		// When value changes, scroll to selected date after render completes
-		if (val !== undefined && val !== oldValue) {
-			this.updateComplete.then(() => {
-				setTimeout(() => this._scrollToSelectedDate(), 50)
-			})
-		}
-	}
-
 	// Add a property to control whether the step is active
-	@property({ type: Boolean })
+	@state()
 	active = true
 
 	// Track viewport size to determine layout
@@ -81,6 +55,7 @@ export class DateSelectionStep extends $LitElement(css`
 	@state() currentYear = ''
 	@state() private contentHeight = 0
 
+	@state() value: string = ''
 	// Animation keyframes and options
 	private animations: {
 		[key: string]: {
@@ -116,21 +91,50 @@ export class DateSelectionStep extends $LitElement(css`
 	connectedCallback(): void {
 		super.connectedCallback()
 
-		// Set up window resize listener
-		window.addEventListener('resize', this._handleResize)
-	}
+		merge(
+			fromEvent(window, 'resize').pipe(
+				debounceTime(100),
+				startWith(window.innerWidth),
+				tap(() => {
+					this._handleResize()
+				}),
+			),
 
-	disconnectedCallback(): void {
-		super.disconnectedCallback()
+			BookingProgressContext.$.pipe(
+				startWith(BookingProgressContext.value),
+				tap(b => {
+					this.active = b.currentStep === BookingStep.Date
+				}),
+			),
 
-		// Clean up resize listener
-		window.removeEventListener('resize', this._handleResize)
+			bookingContext.$.pipe(
+				startWith(bookingContext.value),
+				filter(() => bookingContext.ready),
+				map(b => b.date),
+				distinctUntilChanged(),
+				tap(date => {
+					// if date is before today, reset it
+					if (date && dayjs(date).isBefore(this._today, 'day')) {
+						date = this._todayISO
+					}
+					if (date) {
+						this.value = date
 
-		// Clean up resize observer
-		if (this._resizeObserver) {
-			this._resizeObserver.disconnect()
-			this._resizeObserver = null
-		}
+						// Update current month and year display based on selected date
+						const selectedDate = dayjs(date)
+						this.currentMonth = selectedDate.format('MMMM')
+						this.currentYear = selectedDate.format('YYYY')
+
+						// Scroll to the selected date after a short delay to ensure rendering
+						this.updateComplete.then(() => {
+							setTimeout(() => this._scrollToSelectedDate(), 100)
+						})
+					}
+				}),
+			),
+		)
+			.pipe(takeUntil(this.disconnecting))
+			.subscribe()
 	}
 
 	// Handle window resize events

@@ -8,7 +8,7 @@ import { distinctUntilChanged, filter, map, Observable, shareReplay, startWith, 
 import { courtsContext, selectMyCourts } from 'src/admin/venues/courts/context'
 import { AvailabilityResponse, AvailabilityService } from 'src/bookingServices/availability'
 import { Court } from 'src/db/courts.collection'
-import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../context'
+import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 
 // Import the sport-court-card component
 import './sport-court-card'

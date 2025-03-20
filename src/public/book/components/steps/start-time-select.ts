@@ -8,9 +8,9 @@ import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, filter, map, Observable, shareReplay, startWith, takeUntil, tap } from 'rxjs'
 import { venuesContext } from 'src/admin/venues/venue-context'
-import { AvailabilityResponse, AvailabilityService } from '../../../bookingServices/availability'
-import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../context'
-import { TimeSlot } from '../types'
+import { AvailabilityResponse, AvailabilityService } from '../../../../bookingServices/availability'
+import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
+import { TimeSlot } from '../../types'
 
 /**
  * Time selection component using the enhanced availability service
@@ -622,15 +622,13 @@ export class TimeSelectionStep extends $LitElement(css`
 
 		// Define class objects for animated transitions
 		const containerClasses = {
+			'px-2': true,
 			'w-full': true,
-			'bg-surface-container-low': true,
+			'bg-surface-low': true,
 			'rounded-lg': true,
-			'shadow-sm': true,
 			'transition-all': true,
 			'duration-300': true,
 			'mt-3': true, // Match court select spacing
-			'p-4': !this.isCompact,
-			'p-3': this.isCompact,
 			transform: true,
 			'ease-in-out': true,
 			'scale-100': this.active,
@@ -639,7 +637,7 @@ export class TimeSelectionStep extends $LitElement(css`
 
 		// Render main content
 		return html`
-			<div class=${classMap(containerClasses)}>
+			<div class=${this.classMap(containerClasses)}>
 				<!-- Error message if present while still showing content -->
 				${this.error
 					? html`
@@ -661,22 +659,20 @@ export class TimeSelectionStep extends $LitElement(css`
 				)}
 
 				<!-- Time slots scrollable container with animation -->
-				<schmancy-scroll hide>
-					<div
-						class="flex py-2 overflow-x-auto scrollbar-hide transition-all duration-300 ${this.isCompact
-							? 'gap-2'
-							: 'gap-3'}"
-						role="listbox"
-						aria-label="Available Time Slots"
-						aria-multiselectable="false"
-					>
-						${repeat(
-							this.timeSlots,
-							slot => slot.value,
-							slot => this.renderTimeSlot(slot),
-						)}
-					</div>
-				</schmancy-scroll>
+				<div
+					class="flex py-2 overflow-x-auto scrollbar-hide transition-all duration-300 ${this.isCompact
+						? 'gap-2'
+						: 'gap-3'}"
+					role="listbox"
+					aria-label="Available Time Slots"
+					aria-multiselectable="false"
+				>
+					${repeat(
+						this.timeSlots,
+						slot => slot.value,
+						slot => this.renderTimeSlot(slot),
+					)}
+				</div>
 			</div>
 		`
 	}

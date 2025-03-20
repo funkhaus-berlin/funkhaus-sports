@@ -1,18 +1,42 @@
-// context.ts
+// src/public/book/context.ts
+
 import { createContext } from '@mhmo91/schmancy'
 
+// Error interfaces
+export interface BookingErrorField {
+	field: string
+	message: string
+}
+
+export enum ErrorCategory {
+	VALIDATION = 'validation',
+	PAYMENT = 'payment',
+	NETWORK = 'network',
+	AVAILABILITY = 'availability',
+	SYSTEM = 'system',
+}
+
+export interface BookingError {
+	message: string
+	category: ErrorCategory
+	code?: string
+	timestamp: number
+	fieldErrors?: BookingErrorField[]
+	isDismissible?: boolean
+}
+
+// Booking interface
 export interface Booking {
 	id: string
 	userId: string
 	userName: string
 	courtId: string
-	venueId: string // Add this new field
+	venueId: string
 	startTime: string
 	endTime: string
 	price: number
 	date: string
 	paymentStatus?: string
-	courtPreference?: 'indoor' | 'outdoor'
 	status?: string
 	paymentIntentId?: string
 	customerEmail?: string
@@ -47,61 +71,73 @@ export const bookingContext = createContext<Booking>(
 			postalCode: '',
 			country: '',
 		},
-		venueId: '', // Add this new field
+		venueId: '',
 	},
 	'session',
 	'booking',
 )
 
-// types.ts
-export interface TimeSlot {
-	label: string
-	value: number
-	available: boolean
-}
-
-export interface Duration {
-	label: string
-	value: number // minutes
-	price: number
-}
-
+// Simplified booking steps
 export enum BookingStep {
 	Date = 1,
-	Court = 2, // New step
-	Time = 3, // Shifted
-	Preferences = 4, // Shifted
-	Duration = 5, // Shifted
-	Payment = 6, // Shifted
+	Court = 2,
+	Time = 3,
+	Duration = 4,
+	Payment = 5,
 }
+
 export class BookingProgress {
 	currentStep: BookingStep = BookingStep.Date
-	steps: Array<{
-		step: BookingStep
-		label: string
-		icon: string
-	}>
 
-	// private bookingSteps = [
-	// 	{ label: 'Date', icon: 'event' },
-	// 	{ label: 'Court', icon: 'sports_tennis' },
-	// 	{ label: 'Time', icon: 'schedule' },
-	// 	{ label: 'Duration', icon: 'timelapse' },
-	// 	{ label: 'Payment', icon: 'payment' },
-	// ]
+	// Added error state to the progress context
+	currentError: BookingError | null = null
+	fieldErrors: Record<string, string> = {}
 
-	constructor() {
-		this.currentStep = BookingStep.Date
-		this.steps = [
-			{ step: BookingStep.Date, label: 'Date', icon: 'event' },
-			{ step: BookingStep.Court, label: 'Court', icon: 'sports_tennis' }, // New step
-			{ step: BookingStep.Time, label: 'Time', icon: 'schedule' },
-			{ step: BookingStep.Preferences, label: 'Preferences', icon: 'settings' },
-			{ step: BookingStep.Duration, label: 'Duration', icon: 'timer' },
-			{ step: BookingStep.Payment, label: 'Payment', icon: 'payment' },
-		]
+	steps = [
+		{ step: BookingStep.Date, label: 'Date', icon: 'event' },
+		{ step: BookingStep.Court, label: 'Court', icon: 'sports_tennis' },
+		{ step: BookingStep.Time, label: 'Time', icon: 'schedule' },
+		{ step: BookingStep.Duration, label: 'Duration', icon: 'timer' },
+		{ step: BookingStep.Payment, label: 'Payment', icon: 'payment' },
+	]
+
+	// Helper methods for error management
+	setError(error: BookingError): void {
+		this.currentError = error
+
+		// Update field errors if provided
+		if (error.fieldErrors) {
+			error.fieldErrors.forEach(fieldError => {
+				this.fieldErrors[fieldError.field] = fieldError.message
+			})
+		}
+	}
+
+	clearError(): void {
+		this.currentError = null
+	}
+
+	setFieldError(field: string, message: string): void {
+		this.fieldErrors[field] = message
+	}
+
+	clearFieldError(field: string): void {
+		delete this.fieldErrors[field]
+	}
+
+	clearAllFieldErrors(): void {
+		this.fieldErrors = {}
+	}
+
+	hasFieldError(field: string): boolean {
+		return !!this.fieldErrors[field]
+	}
+
+	getFieldError(field: string): string | undefined {
+		return this.fieldErrors[field]
 	}
 }
+
 export const BookingProgressContext = createContext<BookingProgress>(
 	new BookingProgress(),
 	'session',

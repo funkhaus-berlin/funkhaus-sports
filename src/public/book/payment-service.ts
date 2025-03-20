@@ -6,16 +6,16 @@ import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators'
 import { BookingService } from 'src/bookingServices/booking.service'
 import { auth } from 'src/firebase/firebase'
 import { createPaymentIntent } from '../stripe'
-import { Booking } from './context'
-import { BookingErrorHandler } from './error-handler'
+import { Booking, ErrorCategory } from './context'
 import dayjs from 'dayjs'
+import { BookingErrorService } from './components/errors/booking-error-service'
+import { ErrorMessageKey } from './components/errors/i18n/error-messages'
 
 /**
  * Handles payment processing and Stripe integration
  */
 export class PaymentService {
 	private bookingService = new BookingService()
-	private errorHandler = new BookingErrorHandler()
 
 	// Track processing state
 	private _processing = new BehaviorSubject<boolean>(false)
@@ -164,23 +164,31 @@ export class PaymentService {
 			catchError(error => {
 				console.error('Payment or booking error:', error)
 
-				// More specific error messages based on error type
-				let errorMessage
-				if (error.message && error.message.includes('network')) {
-					errorMessage = 'Network issue detected. Please check your internet connection and try again.'
-				} else if (error.type === 'card_error') {
-					errorMessage = error.message || 'Your card was declined. Please try another payment method.'
-				} else if (error.type === 'validation_error') {
-					errorMessage = error.message || 'Please check your payment details and try again.'
-				} else if (error.message && error.message.includes('Missing required booking fields')) {
-					errorMessage = 'Please ensure all required booking information is filled out.'
-				} else {
-					errorMessage = this.errorHandler.getReadableErrorMessage(error)
-				}
-
 				// Only update error if component is still mounted
 				if (this._processingLock === lockFlag) {
-					this.errorHandler.setError(errorMessage)
+					// Use internationalized error handling
+					if (error.message && error.message.includes('network')) {
+						BookingErrorService.setErrorI18n(
+							ErrorMessageKey.NETWORK_CONNECTION,
+							ErrorCategory.NETWORK,
+							{},
+							{ recoverySuggestionKey: ErrorMessageKey.RECOVERY_CHECK_CONNECTION },
+						)
+					} else if (error.type === 'card_error') {
+						BookingErrorService.handleStripeErrorI18n(error)
+					} else if (error.type === 'validation_error') {
+						BookingErrorService.setErrorI18n(
+							ErrorMessageKey.VALIDATION_REQUIRED_FIELDS,
+							ErrorCategory.VALIDATION,
+							{},
+							{ recoverySuggestionKey: ErrorMessageKey.RECOVERY_CHECK_INPUTS },
+						)
+					} else if (error.message && error.message.includes('Missing required booking fields')) {
+						BookingErrorService.setErrorI18n(ErrorMessageKey.VALIDATION_REQUIRED_FIELDS, ErrorCategory.VALIDATION)
+					} else {
+						// Handle general errors with appropriate message keys
+						BookingErrorService.handleErrorI18n(error)
+					}
 				}
 
 				return of({ success: false, booking: bookingData, error })

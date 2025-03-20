@@ -5,8 +5,8 @@ import { customElement, property, query, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { styleMap } from 'lit/directives/style-map.js'
 import { CourtPreferences } from 'src/bookingServices/court-assignment.service'
-import { Booking, bookingContext } from '../context'
-import { PreferencesHelper } from '../preferences-helper'
+import { Booking, bookingContext } from '../src/public/book/context'
+import { PreferencesHelper } from '../src/public/book/preferences-helper'
 
 // Context key for storing court preferences
 const PREFERENCES_KEY = 'courtPreferences'

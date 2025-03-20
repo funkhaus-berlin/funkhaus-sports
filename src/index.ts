@@ -11,7 +11,7 @@ import { CourtsDB } from './db/courts.collection'
 import { VenuesDB } from './db/venue-collection'
 import { VenueLandingPage } from './public/venues/venues'
 import './schmancy'
-import { BookingConfirmationRoute } from './public/book/booking-confirmation-route'
+import { BookingConfirmationRoute } from './public/booking-confirmation/booking-confirmation-route'
 @customElement('app-index')
 export class AppIndex extends $LitElement() {
 	@query('schmancy-surface') surface!: HTMLElement
@@ -82,7 +82,7 @@ export class AppIndex extends $LitElement() {
 			}
 
 			// Check for admin route
-			if (url.searchParams.has('admin')) {
+			if (path.startsWith('/admin')) {
 				return FunkhausAdmin
 			}
 

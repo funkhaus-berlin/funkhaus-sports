@@ -1,5 +1,5 @@
 // src/public/book/booking-confirmation-route.ts
-import { $notify, area, fullHeight, select } from '@mhmo91/schmancy'
+import { area, fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
@@ -8,7 +8,7 @@ import { courtsContext } from 'src/admin/venues/courts/context'
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Court } from 'src/db/courts.collection'
 import { VenueLandingPage } from '../venues/venues'
-
+import './booking-confirmation'
 /**
  * Booking confirmation route component
  * Handles the display of booking confirmation and recovery from interrupted sessions

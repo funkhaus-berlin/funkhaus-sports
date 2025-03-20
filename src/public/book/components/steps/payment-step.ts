@@ -1,6 +1,6 @@
 // src/public/book/steps/payment-step.ts
 
-import { $notify, fullHeight, SchmancyAutocompleteChangeEvent, sheet } from '@mhmo91/schmancy'
+import { $notify, SchmancyAutocompleteChangeEvent, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { Stripe, StripeElements } from '@stripe/stripe-js'
 import { html, PropertyValues } from 'lit'
@@ -11,10 +11,10 @@ import { Subscription } from 'rxjs'
 import countries from 'src/assets/countries'
 import { Court } from 'src/db/courts.collection'
 import stripePromise, { $stripeElements } from 'src/public/stripe'
-import { Booking, bookingContext } from '../context'
-import { FormValidator } from '../form-validator'
-import { PaymentService } from '../payment-service'
-import { FunkhausSportsTermsAndConditions } from '../terms-and-conditions'
+import { FunkhausSportsTermsAndConditions } from '../../../shared/components/terms-and-conditions'
+import { Booking, bookingContext } from '../../context'
+import { FormValidator } from '../../form-validator'
+import { PaymentService } from '../../payment-service'
 
 /**
  * Checkout form component with Stripe integration

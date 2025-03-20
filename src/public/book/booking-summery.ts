@@ -7,7 +7,7 @@ import { when } from 'lit/directives/when.js'
 import { debounceTime, fromEvent, Subscription, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { Court } from 'src/db/courts.collection'
-import { Booking, bookingContext } from '../context'
+import { Booking, bookingContext } from './context'
 
 /**
  * Booking summary component that shows details about the current booking

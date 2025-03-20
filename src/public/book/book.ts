@@ -1,4 +1,4 @@
-// src/public/book/book.ts - updated version
+// src/public/book/book.ts - merged version
 import { fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, PropertyValues } from 'lit'
@@ -10,11 +10,10 @@ import { venuesContext } from 'src/admin/venues/venue-context'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
-import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from './context'
-import { BookingErrorHandler } from './error-handler'
+import { BookingErrorService } from './components/errors/booking-error-service'
+import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep, ErrorCategory } from './context'
 import { PaymentStatusHandler } from './payment-status-handler'
-import './steps'
-
+import './components'
 /**
  * Court booking system component
  * Handles the complete booking flow from date selection to payment
@@ -25,7 +24,6 @@ export class CourtBookingSystem extends $LitElement() {
 	@state() selectedCourt?: Court = undefined
 	@state() bookingInProgress: boolean = false
 	@state() loadingCourts: boolean = false
-	@state() error: string | null = null
 
 	// Contexts
 	@select(courtsContext) availableCourts!: Map<string, Court>
@@ -38,7 +36,6 @@ export class CourtBookingSystem extends $LitElement() {
 
 	// Services and helpers
 	private paymentStatusHandler = new PaymentStatusHandler()
-	private errorHandler = new BookingErrorHandler()
 
 	// LIFECYCLE METHODS
 
@@ -55,16 +52,15 @@ export class CourtBookingSystem extends $LitElement() {
 		this.initializeStripe()
 
 		// Subscribe to booking progress context
-		BookingProgressContext.$.pipe(
-			filter(() => !!this.bookingProgress),
-			takeUntil(this.disconnecting),
-		).subscribe(() => {
-			// Update URL when step changes
-			this.updateUrlForStep(this.bookingProgress.currentStep)
-			// Clear any errors
-			this.errorHandler.clearError()
-			this.error = null
-		})
+		// BookingProgressContext.$.pipe(
+		// 	filter(() => !!this.bookingProgress),
+		// 	takeUntil(this.disconnecting),
+		// ).subscribe(() => {
+		// 	// Update URL when step changes
+		// 	this.updateUrlForStep(this.bookingProgress.currentStep)
+		// 	// Clear any errors when changing steps
+		// 	BookingErrorService.clearError()
+		// })
 	}
 
 	disconnectedCallback() {
@@ -110,7 +106,10 @@ export class CourtBookingSystem extends $LitElement() {
 		$stripe.pipe(distinctUntilChanged(), takeUntil(this.disconnecting)).subscribe(async amount => {
 			try {
 				const stripe = await stripePromise
-				if (!stripe) return
+				if (!stripe) {
+					BookingErrorService.setError('Unable to initialize payment system', ErrorCategory.PAYMENT)
+					return
+				}
 
 				const elements = stripe.elements({
 					fonts: [
@@ -136,11 +135,12 @@ export class CourtBookingSystem extends $LitElement() {
 						paymentElement.mount('#stripe-element')
 						$stripeElements.next(elements)
 					} else {
-						console.error('Could not find stripe-element container')
+						BookingErrorService.setError('Could not find payment element container', ErrorCategory.SYSTEM)
 					}
 				})
 			} catch (error) {
 				console.error('Failed to initialize Stripe:', error)
+				BookingErrorService.handleError(error)
 			}
 		})
 	}
@@ -150,6 +150,14 @@ export class CourtBookingSystem extends $LitElement() {
 			if (result.processed && result.success && result.bookingId) {
 				// Redirect to confirmation page instead of showing it inline
 				this.redirectToConfirmation(result.bookingId)
+			} else if (result.processed && !result.success) {
+				// Handle payment failure
+				BookingErrorService.setError(
+					'Payment processing failed. Please try again.',
+					ErrorCategory.PAYMENT,
+					{},
+					true, // Show notification
+				)
 			}
 		})
 	}
@@ -277,15 +285,13 @@ export class CourtBookingSystem extends $LitElement() {
 		return html` <funkhaus-booking-steps></funkhaus-booking-steps> `
 	}
 
-	private renderErrorNotification() {
-		if (!this.error) return ''
-
+	private renderProcessingOverlay() {
 		return html`
-			<div class="bg-error-container text-error-onContainer rounded-lg p-2 flex">
-				<schmancy-flex justify="center" align="center" gap="sm">
-					<schmancy-icon>error</schmancy-icon>
-					<schmancy-typography>${this.error}</schmancy-typography>
-					<schmancy-button variant="text" @click=${() => (this.error = null)}> Dismiss </schmancy-button>
+			<div
+				class="fixed inset-0 z-50 bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
+			>
+				<schmancy-flex class="px-4" justify="center" flow="row" gap="md" align="center">
+					<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
 				</schmancy-flex>
 			</div>
 		`
@@ -298,12 +304,9 @@ export class CourtBookingSystem extends $LitElement() {
 			${when(
 				currentStep <= BookingStep.Duration,
 				() => html`
-					<date-selection-step
-						.active=${currentStep === BookingStep.Date}
-						class="max-w-full sticky top-0 block my-2 z-0"
-						.value=${this.booking.date}
-					></date-selection-step>
+					<date-selection-step class="max-w-full sticky top-0 block my-2 z-0"></date-selection-step>
 
+					<!-- Court select now includes preferences directly -->
 					<court-select-step
 						.hidden=${currentStep < BookingStep.Court}
 						class="max-w-full block mt-2 z-10"
@@ -326,7 +329,7 @@ export class CourtBookingSystem extends $LitElement() {
 					)}
 				`,
 				() => html`
-					<booking-summery .booking=${this.booking} .selectedCourt=${this.selectedCourt}> </booking-summery>
+					<booking-summary .booking=${this.booking} .selectedCourt=${this.selectedCourt}></booking-summary>
 
 					<funkhaus-checkout-form
 						.booking=${this.booking}
@@ -340,27 +343,14 @@ export class CourtBookingSystem extends $LitElement() {
 		`
 	}
 
-	private renderProcessingOverlay() {
-		return html`
-			<div
-				class="fixed inset-0 z-50 bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
-			>
-				<schmancy-flex class="px-4" justify="center" flow="row" gap="md" align="center">
-					<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
-				</schmancy-flex>
-			</div>
-		`
-	}
-
 	render() {
 		return html`
 			<schmancy-surface ${fullHeight()} type="containerLow" rounded="all" elevation="1">
 				<schmancy-grid rows="auto auto 1fr" ${fullHeight()} flow="row" class="max-w-lg mx-auto pt-2">
 					${this.renderProgressSteps()}
 
-					<!-- Error notification -->
-					${this.error ? this.renderErrorNotification() : ''}
-
+					<!-- Error display component - shows errors from BookingProgressContext -->
+					<booking-error-display showRecoverySuggestion language="en"></booking-error-display>
 					<schmancy-scroll hide>${this.renderCurrentStep()}</schmancy-scroll>
 				</schmancy-grid>
 
