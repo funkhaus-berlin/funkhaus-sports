@@ -3,8 +3,8 @@
 import { Observable, of } from 'rxjs'
 import { catchError, map } from 'rxjs/operators'
 import { Court } from 'src/db/courts.collection'
-import { AvailabilityService } from './availability'
-import { TimeSlotStatus } from './availability.model'
+import { AvailabilityService } from '../src/bookingServices/availability'
+import { TimeSlotStatus } from '../src/bookingServices/availability.model'
 
 /**
  * Different strategies for court assignment

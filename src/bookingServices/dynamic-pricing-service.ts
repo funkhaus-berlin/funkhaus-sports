@@ -1,39 +1,31 @@
 // src/bookingServices/pricing.service.ts
-
 import dayjs from 'dayjs'
 import { Court } from 'src/db/courts.collection'
 
 /**
- * Service for calculating dynamic pricing based on court pricing structure
+ * Service for calculating prices based on court pricing structure
  */
 export class PricingService {
 	/**
-	 * Calculate the price for a booking based on court pricing, date, and duration
-	 *
-	 * @param court - The court being booked
-	 * @param startTime - Start time ISO string
-	 * @param endTime - End time ISO string
-	 * @param userId - Optional user ID for checking member status
-	 * @returns The calculated price
+	 * Calculate the price for a booking
 	 */
 	calculatePrice(court: Court, startTime: string, endTime: string, userId?: string): number {
 		// Get court pricing or use default
 		const pricing = court.pricing || { baseHourlyRate: 30 }
 
-		// Calculate duration in hours (precise to minutes)
+		// Calculate duration in hours
 		const start = dayjs(startTime)
 		const end = dayjs(endTime)
 		const durationHours = end.diff(start, 'minute') / 60
 
 		// Base rate calculation
 		let rate = pricing.baseHourlyRate
-		let totalPrice = 0
 
 		// Get day of week (0 = Sunday, 6 = Saturday)
 		const dayOfWeek = start.day()
 		const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
 
-		// Check if we have weekend pricing and it's a weekend
+		// Apply weekend pricing if applicable
 		if (isWeekend && pricing.weekendRate) {
 			rate = pricing.weekendRate
 		} else {
@@ -42,29 +34,27 @@ export class PricingService {
 				rate = pricing.peakHourRate
 			}
 
-			// Check for special rates that might apply
+			// Check for special rates
 			const specialRate = this.getApplicableSpecialRate(pricing, start, dayOfWeek)
 			if (specialRate) {
 				rate = specialRate.rate
 			}
 		}
 
-		// Calculate total price based on duration and rate
-		totalPrice = rate * durationHours
+		// Calculate total price
+		let totalPrice = rate * durationHours
 
 		// Apply member discount if applicable
-		if (userId && this.isMember(userId) && pricing.memberDiscount) {
-			const discountAmount = totalPrice * (pricing.memberDiscount / 100)
-			totalPrice -= discountAmount
+		if (userId && pricing.memberDiscount) {
+			totalPrice -= totalPrice * (pricing.memberDiscount / 100)
 		}
 
 		// Round to 2 decimal places and ensure minimum price
-		return Math.max(this.roundToTwoDecimals(totalPrice), 1)
+		return Math.max(Math.round((totalPrice + Number.EPSILON) * 100) / 100, 1)
 	}
 
 	/**
 	 * Calculate prices for all standard durations
-	 * Used to populate the duration selection UI
 	 */
 	getStandardDurationPrices(
 		court: Court,
@@ -128,7 +118,7 @@ export class PricingService {
 			return null
 		}
 
-		// Convert day of week to string as expected in specialRates
+		// Convert day of week to string
 		const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 		const dayName = dayNames[dayOfWeek]
 
@@ -159,23 +149,6 @@ export class PricingService {
 		}
 
 		return null
-	}
-
-	/**
-	 * Check if user is a member (to apply discounts)
-	 * This is a placeholder that would connect to your user management system
-	 */
-	private isMember(_userId: string): boolean {
-		// Placeholder implementation
-		// In a real system, you would check membership status from a database
-		return false
-	}
-
-	/**
-	 * Round to two decimal places
-	 */
-	private roundToTwoDecimals(value: number): number {
-		return Math.round((value + Number.EPSILON) * 100) / 100
 	}
 }
 

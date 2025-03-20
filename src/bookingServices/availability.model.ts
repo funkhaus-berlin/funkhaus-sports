@@ -51,35 +51,3 @@ export interface OperatingHours {
 		close: string // Format: HH:MM (24-hour)
 	} | null // null means closed on this day
 }
-
-/**
- * Converts time string (HH:MM) to minutes from midnight
- */
-export function timeToMinutes(timeString: string): number {
-	const [hours, minutes] = timeString.split(':').map(Number)
-	return hours * 60 + minutes
-}
-
-/**
- * Converts minutes from midnight to time string (HH:MM)
- */
-export function minutesToTime(minutes: number): string {
-	const hours = Math.floor(minutes / 60)
-	const mins = minutes % 60
-	return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
-}
-
-/**
- * Checks if a time is within operating hours
- */
-export function isWithinOperatingHours(
-	timeMinutes: number,
-	dayOperatingHours: { open: string; close: string } | null,
-): boolean {
-	if (!dayOperatingHours) return false
-
-	const openMinutes = timeToMinutes(dayOperatingHours.open)
-	const closeMinutes = timeToMinutes(dayOperatingHours.close)
-
-	return timeMinutes >= openMinutes && timeMinutes < closeMinutes
-}
