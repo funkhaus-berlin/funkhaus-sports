@@ -31,7 +31,7 @@ export class SportCourtCard extends $LitElement(css`
 	 * Court type
 	 */
 	@property({ type: String })
-	type: 'padel' | 'pickleball' | 'volleyball' = 'pickleball'
+	type: 'padel' | 'pickleball' | 'volleyball' = 'volleyball'
 
 	/**
 	 * Whether this court is selected

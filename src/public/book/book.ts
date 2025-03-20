@@ -339,7 +339,7 @@ export class CourtBookingSystem extends $LitElement() {
 	render() {
 		return html`
 			<schmancy-surface ${fullHeight()} type="containerLow" rounded="all" elevation="1">
-				<schmancy-grid rows="auto auto 1fr" ${fullHeight()} flow="row" class="max-w-lg mx-auto pt-2">
+				<schmancy-grid rows="auto auto 1fr" ${fullHeight()} flow="row" class="max-w-xl mx-auto pt-2">
 					${this.renderProgressSteps()}
 
 					<!-- Error display component - shows errors from BookingProgressContext -->
