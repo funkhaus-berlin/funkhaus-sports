@@ -8,7 +8,7 @@ import { filter, map, switchMap, takeUntil, tap } from 'rxjs/operators'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { bookingContext } from 'src/public/book/context'
 import { Duration, TimeSlot } from 'src/public/book/types'
-import { getUserTimezone, toUserTimezone } from 'src/utils/timezone'
+import { createTimeRange, getUserTimezone, toUserTimezone, toUTC } from 'src/utils/timezone'
 import { AvailabilityResponse, AvailabilityService } from './availability'
 import { pricingService } from './dynamic-pricing-service'
 
@@ -139,20 +139,6 @@ export class AvailabilityCoordinator {
 	}
 
 	/**
-	 * Check if a court is available at a specific time
-	 * With proper timezone handling
-	 */
-	public isCourtAvailable(courtId: string, timeSlot: string): boolean {
-		const data = this._availabilityData.value
-		if (!data || !data.courts) return false
-
-		const court = data.courts[courtId]
-		if (!court) return false
-
-		return court.isAvailable === true
-	}
-
-	/**
 	 * Get available time slots based on current availability data
 	 * With proper timezone handling
 	 */
@@ -204,6 +190,42 @@ export class AvailabilityCoordinator {
 	}
 
 	/**
+	 * Check if a court is available at a specific time
+	 * With proper timezone handling
+	 */
+	public isCourtAvailable(courtId: string, timeSlot: string): boolean {
+		const data = this._availabilityData.value
+		if (!data || !data.courts) return false
+
+		const court = data.courts[courtId]
+		if (!court) return false
+
+		// Court isn't available at all
+		if (court.isAvailable === false) return false
+
+		// If we have a booking context with a date, use it for better conversion
+		const date = bookingContext.value?.date || new Date().toISOString().split('T')[0]
+
+		// IMPORTANT: timeSlot is in local time format (HH:MM), we need to convert it to UTC
+		// This is correct - we're converting from local display time to UTC for checking
+		const utcDateTime = toUTC(date, timeSlot)
+		const utcTimeSlot = dayjs(utcDateTime).format('HH:mm')
+
+		console.log(`Availability check for court ${courtId}:
+    - Local time: ${timeSlot}
+    - Date: ${date}
+    - Converted to UTC: ${utcTimeSlot}
+  `)
+
+		// Check if this specific timeslot is booked
+		if (court.bookedTimeSlots && court.bookedTimeSlots.includes(utcTimeSlot)) {
+			return false
+		}
+
+		return true
+	}
+
+	/**
 	 * Check if a court is available for an entire duration
 	 * With proper timezone handling
 	 */
@@ -217,81 +239,50 @@ export class AvailabilityCoordinator {
 		// If the court itself isn't available, return false immediately
 		if (court.isAvailable === false) return false
 
-		// Convert startTime to user's timezone
-		const localStart = toUserTimezone(startTime)
-		const localEnd = localStart.add(durationMinutes, 'minute')
+		// Get date from booking context
+		const date = bookingContext.value?.date
+		if (!date) return false
+
+		// startTime is already in UTC ISO format from the booking context
+		// Just use it directly without trying to convert it again
+
+		// For better debugging, show both UTC and local time
+		const localStartTime = toUserTimezone(startTime)
+
+		// Generate all 30-minute time slots in the range (in UTC)
+		const timeRange = createTimeRange(startTime, durationMinutes)
 
 		// Log for debugging
-		console.log(`Checking court ${courtId} availability for:`)
-		console.log(`- UTC Start: ${startTime}`)
-		console.log(`- Local Start: ${localStart.format('HH:mm')}`)
-		console.log(`- Local End: ${localEnd.format('HH:mm')}`)
+		console.log(`Checking duration availability for court ${courtId}:
+    - UTC Start: ${startTime}
+    - Local Start: ${localStartTime.format('HH:mm')}
+    - Duration: ${durationMinutes} minutes
+    - Checking UTC slots: ${timeRange.join(', ')}
+  `)
 
-		// Convert to 24-hour format strings for comparison
-		const startHour = localStart.hour()
-		const startMinute = localStart.minute()
-		const endHour = localEnd.hour()
-		const endMinute = localEnd.minute()
+		// Check if all slots in the range are available
+		for (const timeSlot of timeRange) {
+			// Check both data sources:
+			// 1. court.bookedTimeSlots (detailed court-specific bookings)
+			// 2. TimeSlot availability map (global availability)
 
-		// We need to check every 30-minute slot between start and end
-		// Special handling for the start slot if it starts at an odd time
-		for (let hour = startHour; hour <= endHour; hour++) {
-			// For the starting hour, we only check slots at or after the start time
-			if (hour === startHour) {
-				if (startMinute < 30) {
-					// Check the :00 slot
-					const timeKey = `${hour.toString().padStart(2, '0')}:00`
-					if (!this.isTimeSlotAvailableForCourt(data, timeKey, courtId)) return false
-				}
-
-				// Only check the :30 slot if our start time is before XX:30
-				if (startMinute < 30 || hour < endHour || (hour === endHour && endMinute > 30)) {
-					// Check the :30 slot
-					const timeKey = `${hour.toString().padStart(2, '0')}:30`
-					if (!this.isTimeSlotAvailableForCourt(data, timeKey, courtId)) return false
-				}
+			// Check court-specific availability
+			if (court.bookedTimeSlots && court.bookedTimeSlots.includes(timeSlot)) {
+				console.log(`Slot ${timeSlot} is already booked for court ${courtId}`)
+				return false
 			}
-			// For the ending hour
-			else if (hour === endHour) {
-				// Only check the :00 slot if our end time is after XX:00
-				if (endMinute > 0) {
-					const timeKey = `${hour.toString().padStart(2, '0')}:00`
-					if (!this.isTimeSlotAvailableForCourt(data, timeKey, courtId)) return false
-				}
 
-				// Only check the :30 slot if our end time is after XX:30
-				if (endMinute > 30) {
-					const timeKey = `${hour.toString().padStart(2, '0')}:30`
-					if (!this.isTimeSlotAvailableForCourt(data, timeKey, courtId)) return false
-				}
-			}
-			// For any hour in between
-			else {
-				// Check both :00 and :30 slots
-				const time00 = `${hour.toString().padStart(2, '0')}:00`
-				if (!this.isTimeSlotAvailableForCourt(data, time00, courtId)) return false
-
-				const time30 = `${hour.toString().padStart(2, '0')}:30`
-				if (!this.isTimeSlotAvailableForCourt(data, time30, courtId)) return false
+			// Check global timeSlot availability
+			const globalTimeSlot = data.timeSlots[timeSlot]
+			if (globalTimeSlot && globalTimeSlot.courts && globalTimeSlot.courts[courtId] === false) {
+				console.log(`Slot ${timeSlot} is marked unavailable in global timeSlot data`)
+				return false
 			}
 		}
 
-		// If we've checked all slots and they're all available, return true
+		// All slots are available
 		return true
 	}
-
-	/**
-	 * Helper method to check if a specific time slot is available for a court
-	 */
-	private isTimeSlotAvailableForCourt(data: any, timeKey: string, courtId: string): boolean {
-		// Check if the time slot exists in the data
-		if (!data.timeSlots[timeKey]) return false
-
-		// Check if the court is specifically marked as available in this time slot
-		const timeSlot = data.timeSlots[timeKey]
-		return timeSlot.courts?.[courtId] === true
-	}
-
 	/**
 	 * Get available durations for a court at a specific start time
 	 * With proper timezone handling

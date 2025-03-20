@@ -10,6 +10,7 @@ import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, filter, startWith, takeUntil, tap } from 'rxjs'
 import { availabilityCoordinator } from 'src/bookingServices/availability-coordinator'
+import { toUTC } from 'src/utils/timezone'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { TimeSlot } from '../../types'
 
@@ -213,13 +214,8 @@ export class TimeSelectionStep extends $LitElement(css`
 				const minute = slot.value % 60
 				const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
 
-				// Check court-specific availability
+				// Important: Use consistent timezone conversion when checking availability
 				const isAvailable = slot.available && availabilityCoordinator.isCourtAvailable(courtId, timeString)
-
-				// For debugging
-				if (!isAvailable && slot.available) {
-					console.log(`Time ${timeString} is globally available but not for court ${courtId}`)
-				}
 
 				return {
 					...slot,
@@ -377,23 +373,21 @@ export class TimeSelectionStep extends $LitElement(css`
 		if (!slot.available) return
 
 		try {
-			// Update booking context with the new time
-			const userTimezone = getUserTimezone()
-			const selectedDate = dayjs(this.booking.date).tz(userTimezone)
+			// Convert selected time to UTC ISO string using our utility
 			const hour = Math.floor(slot.value / 60)
 			const minute = slot.value % 60
+			const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
 
-			// Create a local datetime in the user's timezone, then convert to UTC for storage
-			const selectedLocalTime = selectedDate.hour(hour).minute(minute)
-			const newStartTime = selectedLocalTime.toISOString()
+			// Use the utility to convert to UTC
+			const newStartTime = toUTC(this.booking.date, timeString)
 
 			// Log for debugging
-			console.log(`Selected time: ${hour}:${minute} (${slot.label})`)
-			console.log(`User timezone: ${userTimezone}`)
-			console.log(`Local datetime: ${selectedLocalTime.format('YYYY-MM-DD HH:mm:ss')}`)
-			console.log(`UTC ISO string: ${newStartTime}`)
+			console.log(`Selected time:
+        - Local: ${timeString}
+        - UTC ISO: ${newStartTime}
+      `)
 
-			// First update the booking context to show selection
+			// Update booking context with the UTC time
 			bookingContext.set({
 				...this.booking,
 				startTime: newStartTime,

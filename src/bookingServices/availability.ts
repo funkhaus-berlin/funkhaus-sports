@@ -300,6 +300,9 @@ export class AvailabilityService {
 
 			// Remove duplicates
 			response.courts[courtId].bookedTimeSlots = [...new Set(response.courts[courtId].bookedTimeSlots)]
+
+			// Log for debugging
+			console.log(`Marked time slot ${timeKey} as booked for court ${courtId}`)
 		}
 	}
 

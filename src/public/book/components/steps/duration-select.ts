@@ -293,8 +293,21 @@ export class DurationSelectionStep extends $LitElement(css`
 	private handleDurationSelect(duration: Duration): void {
 		// Update booking context
 		if (this.booking && this.booking.startTime) {
-			const startTime = dayjs(this.booking.startTime)
-			const endTime = startTime.add(duration.value, 'minute').toISOString()
+			// Convert from UTC to local, add duration, then back to UTC
+			const localStartTime = toUserTimezone(this.booking.startTime)
+			const localEndTime = localStartTime.add(duration.value, 'minute')
+
+			// Convert back to UTC for storage
+			const endTime = localEndTime.utc().toISOString()
+
+			// Log for debugging
+			console.log(`Duration selection:
+        - Start time (UTC): ${this.booking.startTime}
+        - Start time (local): ${localStartTime.format('YYYY-MM-DD HH:mm')}
+        - Duration: ${duration.value} minutes
+        - End time (local): ${localEndTime.format('YYYY-MM-DD HH:mm')}
+        - End time (UTC): ${endTime}
+      `)
 
 			bookingContext.set(
 				{
