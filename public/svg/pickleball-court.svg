@@ -1,26 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
-  <!-- Background using CSS variable -->
-  <rect width="400" height="200" fill="var(--schmancy-sys-color-primary-default)" opacity="0.2" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 240">
+  <!-- Brazilian flag background - softened green -->
+  <rect width="440" height="240" fill="#38A86B"/>
   
-  <!-- Outer court boundary -->
-  <rect x="20" y="20" width="360" height="160" fill="none" stroke="white" stroke-width="2" />
+  <!-- Brazilian flag outer court sections - softened blue -->
+  <rect x="30" y="30" width="140" height="180" fill="#235789"/>
+  <rect x="270" y="30" width="140" height="180" fill="#235789"/>
   
-  <!-- Center line -->
-  <line x1="200" y1="20" x2="200" y2="180" stroke="white" stroke-width="2" stroke-dasharray="5,5" />
+  <!-- Brazilian flag squares around the net - softened yellow -->
+  <rect x="170" y="30" width="50" height="180" fill="#F1C232"/>
+  <rect x="220" y="30" width="50" height="180" fill="#F1C232"/>
   
-  <!-- Non-volley zone (kitchen) lines -->
-  <rect x="77" y="20" width="246" height="44" fill="none" stroke="white" stroke-width="2" />
-  <rect x="77" y="136" width="246" height="44" fill="none" stroke="white" stroke-width="2" />
-  
-  <!-- Service lines (middle of court) -->
-  <line x1="20" y1="100" x2="380" y2="100" stroke="white" stroke-width="2" />
-  
-  <!-- Service boxes -->
-  <rect x="77" y="64" width="123" height="36" fill="none" stroke="white" stroke-width="2" stroke-dasharray="5,5" />
-  <rect x="200" y="64" width="123" height="36" fill="none" stroke="white" stroke-width="2" stroke-dasharray="5,5" />
-  <rect x="77" y="100" width="123" height="36" fill="none" stroke="white" stroke-width="2" stroke-dasharray="5,5" />
-  <rect x="200" y="100" width="123" height="36" fill="none" stroke="white" stroke-width="2" stroke-dasharray="5,5" />
+  <!-- Court outline -->
+  <rect x="30" y="30" width="380" height="180" fill="none" stroke="white" stroke-width="2"/>
   
   <!-- Net -->
-  <line x1="20" y1="100" x2="380" y2="100" stroke="white" stroke-width="3" />
+  <line x1="220" y1="30" x2="220" y2="210" stroke="white" stroke-width="2"/>
+  
+  <!-- Non-volley zone lines (kitchen) -->
+  <line x1="170" y1="30" x2="170" y2="210" stroke="white" stroke-width="1.5"/>
+  <line x1="270" y1="30" x2="270" y2="210" stroke="white" stroke-width="1.5"/>
+  
+  <!-- Court dividing lines (horizontal mid-court lines) -->
+  <line x1="30" y1="120" x2="170" y2="120" stroke="white" stroke-width="1.5"/>
+  <line x1="270" y1="120" x2="410" y2="120" stroke="white" stroke-width="1.5"/>
 </svg>

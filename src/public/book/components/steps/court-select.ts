@@ -794,7 +794,7 @@ export class CourtSelectStep extends $LitElement() {
 					`,
 				)}
 				<div
-					class="flex flex-wrap justify-between gap-3 ${classMap(this.getContainerClasses())}"
+					class="grid grid-cols-2 md:grid-cols-3  justify-between gap-3 ${classMap(this.getContainerClasses())}"
 					role="listbox"
 					aria-label="Available Courts"
 					aria-multiselectable="false"

@@ -1,29 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">
-  <!-- Background using CSS variable -->
-  <rect width="400" height="240" fill="var(--schmancy-sys-color-primary-default)" opacity="0.2" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 80">
+  <!-- Beach Volleyball Court with standard dimensions (16m x 8m) -->
   
-  <!-- Court boundary -->
-  <rect x="20" y="20" width="360" height="200" fill="none" stroke="white" stroke-width="3" />
+  <!-- Sand area (court only) -->
+  <rect width="160" height="80" fill="#F5DEB3"/>
   
-  <!-- Center line (net) -->
-  <line x1="20" y1="120" x2="380" y2="120" stroke="white" stroke-width="4" />
+  <!-- Court outline -->
+  <rect x="0" y="0" width="160" height="80" fill="none" stroke="#000" stroke-width="1"/>
   
-  <!-- Attack line (3-meter/10-foot line) -->
-  <line x1="20" y1="70" x2="380" y2="70" stroke="white" stroke-width="2" stroke-dasharray="5,3" />
-  <line x1="20" y1="170" x2="380" y2="170" stroke="white" stroke-width="2" stroke-dasharray="5,3" />
+  <!-- Net -->
+  <line x1="80" y1="0" x2="80" y2="80" stroke="#000" stroke-width="2"/>
   
-  <!-- Service zones -->
-  <rect x="290" y="20" width="90" height="100" fill="none" stroke="white" stroke-width="1" stroke-dasharray="3,2" />
-  <rect x="290" y="120" width="90" height="100" fill="none" stroke="white" stroke-width="1" stroke-dasharray="3,2" />
+  <!-- Center line (not typically marked on beach volleyball courts, but included for reference) -->
+  <line x1="0" y1="40" x2="160" y2="40" stroke="#000" stroke-width="0.5" stroke-dasharray="2,2"/>
   
-  <!-- Net posts representation -->
-  <circle cx="20" cy="120" r="5" fill="white" />
-  <circle cx="380" cy="120" r="5" fill="white" />
-  
-  <!-- Net representation -->
-  <rect x="19" y="100" width="362" height="40" fill="none" stroke="white" stroke-width="1" stroke-dasharray="2,2" />
-  <line x1="20" y1="120" x2="380" y2="120" stroke="white" stroke-width="2" />
-  
-  <!-- Center mark on net line -->
-  <line x1="200" y1="115" x2="200" y2="125" stroke="white" stroke-width="2" />
+  <!-- Attack lines (3m from net) -->
+  <line x1="50" y1="0" x2="50" y2="80" stroke="#000" stroke-width="0.5" stroke-dasharray="2,2"/>
+  <line x1="110" y1="0" x2="110" y2="80" stroke="#000" stroke-width="0.5" stroke-dasharray="2,2"/>
 </svg>
