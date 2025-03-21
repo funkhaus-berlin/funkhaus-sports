@@ -278,7 +278,7 @@ export class CourtBookingSystem extends $LitElement() {
 	private renderProcessingOverlay() {
 		return html`
 			<div
-				class="fixed inset-0 z-50 bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300"
+				class="fixed inset-0 z-50 bg-opacity-70 backdrop-blur-sm duration-300 transition-opacity flex items-center justify-center "
 			>
 				<schmancy-flex class="px-4" justify="center" flow="row" gap="md" align="center">
 					<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
@@ -334,13 +334,14 @@ export class CourtBookingSystem extends $LitElement() {
 					}}
 					justify="stretch"
 					align="stretch"
+					gap="lg"
 				>
-					<section class="w-full align-self-end">
+					<section class="w-full justify-end flex">
 						<schmancy-grid
 							rows="auto auto 1fr"
 							${fullHeight()}
 							flow="row"
-							class="max-w-lg w-full mx-auto pt-2 justify-self-end"
+							class="max-w-lg w-full pt-2 justify-self-end"
 						>
 							${this.renderProgressSteps()}
 

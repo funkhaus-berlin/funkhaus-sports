@@ -2,6 +2,7 @@
 import { Handler } from '@netlify/functions'
 import admin from 'firebase-admin'
 
+import { resolve } from 'path'
 import PDFDocument from 'pdfkit'
 import QRCode from 'qrcode'
 import { corsHeaders } from './_shared/cors'
@@ -148,8 +149,12 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	doc.on('data', chunk => buffers.push(chunk))
 
 	// Define styled text helpers
-	const normalFont = 'Helvetica'
-	const boldFont = 'Helvetica-Bold'
+	const normalFont = 'JosefinSans-Regular.ttf'
+	const boldFont = 'JosefinSans-Bold.ttf'
+	const fontPath = resolve(__dirname, './_shared/assets/')
+
+	doc.registerFont('Regular', `${fontPath}/JosefinSans-Regular.ttf`)
+	doc.registerFont('Bold', `${fontPath}/JosefinSans-Bold.ttf`)
 
 	// Header - Invoice title
 	let y = 90

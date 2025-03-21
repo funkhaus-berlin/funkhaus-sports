@@ -289,7 +289,9 @@ export class CourtSelectStep extends $LitElement() {
 
 		return html`
 			<div class="absolute bottom-0 left-0 right-0 z-10">
-				<div class="text-center text-xs py-1 bg-slate-50 text-slate-700 border-t border-slate-200">
+				<div
+					class="text-center text-2xs py-1 bg-opacity-70 backdrop-blur-sm duration-300 text-surface-on border-t border-slate-200"
+				>
 					${availabilityInfo}
 				</div>
 			</div>
@@ -512,12 +514,13 @@ export class CourtSelectStep extends $LitElement() {
 		const availabilityStatus = this.getCourtAvailabilityStatus(courtId)
 
 		return {
+			relative: true,
+			'inset-0': true,
 			flex: true,
 			'justify-center': true,
 			'items-center': true,
 			'transition-all': true,
 			'duration-300': true,
-			relative: true, // For availability indicator
 			'opacity-50': availabilityStatus === 'none',
 			'p-1': availabilityStatus === 'partial', // Add slight padding
 			'overflow-visible': true,
@@ -730,14 +733,13 @@ export class CourtSelectStep extends $LitElement() {
 			<div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
 				<div class="bg-surface-default rounded-lg p-6 max-w-md w-full shadow-xl text-center">
 					<div class="mb-4">
-						<schmancy-icon size="48px" class="text-warning-default">warning</schmancy-icon>
+						<schmancy-icon size="48px" class="text-warning-default flex justify-center">warning</schmancy-icon>
 						<h3 class="text-xl font-bold text-primary-default mt-2">Limited Availability</h3>
 					</div>
 
 					<p class="text-lg mb-6">
 						<strong>${court.name}</strong> is only available for
 						<strong class="text-success-default">${timeInfo.duration}</strong>
-						<br />from ${timeInfo.from} to ${timeInfo.to}
 					</p>
 
 					<p class="mb-8 text-surface-on">You requested: <strong>${this.formatTimeRange()}</strong></p>
@@ -820,7 +822,7 @@ export class CourtSelectStep extends $LitElement() {
 								${this.renderLimitedRibbon(court.id)}
 
 								<!-- Visual availability indicator for partial availability -->
-								${this.renderCourtAvailabilityIndicator(court.id)}
+								<!-- ${this.renderCourtAvailabilityIndicator(court.id)} -->
 
 								<sport-court-card
 									id="${court.id}"
