@@ -164,7 +164,7 @@ export class SportCourtCard extends $LitElement(css`
 				</div>
 
 				<!-- Court Visualization -->
-				<div class="flex items-center justify-center flex-shrink overflow-hidden relative bg-gray-100 p-2">
+				<div class="flex items-center justify-center overflow-hidden relative ">
 					<div class="svg-wrapper">${unsafeSVG(this.getCourtSVG(this.type))}</div>
 				</div>
 

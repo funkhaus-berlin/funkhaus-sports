@@ -27,6 +27,7 @@ export default class FunkhausVenueCard extends $LitElement() {
 		merge(mutationObserver(this), fromEvent(window, 'resize'))
 			.pipe(startWith(1), delay(100), takeUntil(this.disconnecting))
 			.subscribe(() => {
+				if (!this.card) return
 				this.card.removeAttribute('hidden')
 				// Set fixed height to match event card
 				this.card.style.height = '400px'
