@@ -1,133 +1,141 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { css, html, nothing } from 'lit'
+import { css, html } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { when } from 'lit/directives/when.js'
 
 /**
- * A unified selection tile component
- * Matches styling and behavior of time-selection-step component
- * Enhanced for better state visibility and usability
- * Uses a standard aspect ratio (Golden Ratio ~1.618:1)
+ * Reusable selection tile component for displaying time slots, durations, etc.
+ * Used by time selection and duration selection components
  */
 @customElement('selection-tile')
 export class SelectionTile extends $LitElement(css`
 	:host {
 		display: block;
 	}
-	.selection-tile {
-		transform-origin: center;
-		transition: all 0.3s ease-in-out;
-		position: relative;
-		/* More balanced aspect ratio - slightly taller than wide */
-		aspect-ratio: 0.85 / 1;
-		width: 100%;
-		max-width: 7rem; /* Balanced maximum width */
+
+	/* Add pulse animation */
+	@keyframes pulse {
+		0% {
+			transform: scale(1);
+		}
+		50% {
+			transform: scale(1.05);
+		}
+		100% {
+			transform: scale(1);
+		}
 	}
 
-	.status-indicator {
-		position: absolute;
-		top: 0;
-		right: 0;
-		border-radius: 0 0.5rem 0 0.5rem;
-		width: 1rem;
-		height: 1rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 0.6rem;
-	}
-
-	.unavailable-overlay {
-		position: absolute;
-		top: 0;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		border-radius: 0.5rem;
-		background: repeating-linear-gradient(
-			45deg,
-			rgba(244, 67, 54, 0.1),
-			rgba(244, 67, 54, 0.1) 10px,
-			rgba(244, 67, 54, 0.05) 10px,
-			rgba(244, 67, 54, 0.05) 20px
-		);
-		pointer-events: none;
-	}
-
-	/* Compact variation */
-	.selection-tile.compact {
-		aspect-ratio: 0.85 / 1;
-		max-width: 5rem;
-	}
-
-	/* Content container for better spacing */
-	.content-container {
-		height: 100%;
-		width: 100%;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: 0.5rem;
-		box-sizing: border-box;
+	.pulse {
+		animation: pulse 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 	}
 `) {
-	@property({ type: Boolean }) selected = false
-	@property({ type: Boolean }) compact = false
-	@property({ type: String }) icon = ''
-	@property({ type: String }) label = ''
-	@property({ type: Number }) price = 0
-	@property({ type: Boolean }) showPrice = false
-	@property({ type: String }) dataValue = ''
-	@property({ type: Boolean }) available = true
-	@property({ type: String }) subLabel = ''
+	/**
+	 * Whether this tile is selected
+	 */
+	@property({ type: Boolean, reflect: true })
+	selected = false
+
+	/**
+	 * Whether this tile is disabled
+	 */
+	@property({ type: Boolean, reflect: true })
+	disabled = false
+
+	/**
+	 * Whether to render in compact mode
+	 */
+	@property({ type: Boolean, reflect: true })
+	compact = false
+
+	/**
+	 * Type of selection (time, duration, etc.)
+	 */
+	@property({ type: String })
+	type = 'time'
+
+	/**
+	 * Icon name to display
+	 */
+	@property({ type: String })
+	icon = 'schedule'
+
+	/**
+	 * Primary label text
+	 */
+	@property({ type: String })
+	label = ''
+
+	/**
+	 * Secondary description (e.g. 'Available')
+	 */
+	@property({ type: String })
+	description = ''
+
+	/**
+	 * Data value for identifying this tile
+	 */
+	@property({ type: String })
+	dataValue = ''
 
 	render() {
-		// Base classes for the tile
+		// Size classes based on compact mode
+		const sizeClasses = {
+			// Normal size
+			'w-24': !this.compact && this.type === 'time',
+			'h-24': !this.compact && this.type === 'time',
+			'w-28': !this.compact && this.type === 'duration',
+			'h-28': !this.compact && this.type === 'duration',
+			// Compact size
+			'w-16': this.compact && this.type === 'time',
+			'h-16': this.compact && this.type === 'time',
+			'w-20': this.compact && this.type === 'duration',
+			'h-20': this.compact && this.type === 'duration',
+		}
+
+		// Classes for the tile
 		const tileClasses = {
 			// Basic layout
-			'selection-tile': true,
 			'flex-none': true,
 			'rounded-lg': true,
-			relative: true,
+			flex: true,
+			'flex-col': true,
+			'items-center': true,
+			'justify-center': true,
+			border: true,
 
-			// Compact state
-			compact: this.compact,
+			// Sizes based on type and compact state
+			...sizeClasses,
 
-			// Border styles - thicker for better visibility
-			'border-2': true,
-
-			// Transitions - matching time-selection-step
+			// Transitions for smooth animations
 			'transition-all': true,
 			'duration-300': true,
 			transform: true,
 			'ease-in-out': true,
 
 			// Interaction states
-			'cursor-pointer': this.available,
-			'cursor-not-allowed': !this.available,
-			'hover:scale-105': this.available && !this.selected,
-			'hover:shadow-md': this.available && !this.selected,
-			'active:scale-95': this.available && !this.selected,
+			'cursor-pointer': !this.disabled,
+			'cursor-not-allowed': this.disabled,
+			'hover:scale-105': !this.disabled && !this.selected,
+			'hover:shadow-md': !this.disabled && !this.selected,
+			'active:scale-95': !this.disabled && !this.selected, // Add press animation
 
 			// Selected animation
-			'scale-105': this.selected,
-			'shadow-lg': this.selected,
-			'ring-2': this.selected,
-			'ring-primary-default': this.selected,
+			'scale-105': this.selected, // Make selected items slightly larger
+			'shadow-md': this.selected, // Add shadow to selected items
 
-			// Visual states
+			// Visual states based on selection and disabled state
 			'bg-primary-default': this.selected,
 			'text-primary-on': this.selected,
 			'border-primary-default': this.selected,
-			'bg-success-container/10': !this.selected && this.available,
-			'border-outlineVariant': !this.selected && this.available,
-			'text-surface-on': !this.selected && this.available,
-			'bg-error-container/10': !this.available,
-			'border-error-container': !this.available,
-			'text-error-default': !this.available,
-			'opacity-75': !this.available,
+			'bg-success-container/10': !this.selected && !this.disabled,
+			'border-outlineVariant': !this.selected && !this.disabled,
+			'text-surface-on': !this.selected && !this.disabled,
+			'bg-error-container/10': this.disabled,
+			'border-error-container': this.disabled,
+			'text-error-default': this.disabled,
+			'opacity-60': this.disabled,
 		}
 
 		// Icon animation classes
@@ -136,41 +144,28 @@ export class SelectionTile extends $LitElement(css`
 			'duration-300': true,
 			transform: true,
 			'text-primary-on': this.selected,
-			'text-primary-default': !this.selected && this.available,
-			'text-error-default': !this.available,
-			'scale-125': this.selected, // Slightly reduced for better proportions
-			'mb-1': true,
+			'text-primary-default': !this.selected && !this.disabled,
+			'text-error-default': this.disabled,
+			'scale-125': this.selected, // Enlarge icon when selected
+		}
+
+		// Label classes
+		const labelClasses = {
 			'font-bold': true,
-		}
-
-		// Text animation classes - adjusted for better flow
-		const textClasses = {
-			'font-bold': this.selected,
-			'font-medium': !this.selected,
-			'transition-all': true,
-			'duration-300': true,
-			'text-md': !this.selected,
-			'text-center': true, // Ensure text is centered
-			'tracking-wide': this.selected,
-			'w-full': true, // Full width to prevent text overflow
-			'overflow-hidden': true, // Prevent overflow
-			'text-ellipsis': true, // Add ellipsis for long text
-		}
-
-		// Price classes - adjusted for better proportions
-		const priceClasses = {
-			'font-bold': this.selected,
-			'font-medium': !this.selected,
 			'mt-1': true,
 			'transition-all': true,
 			'duration-300': true,
-			'text-md': !this.compact && this.selected,
+			'text-base': !this.compact && this.selected, // Keep text readable even in compact mode when selected
 			'text-sm': this.compact || !this.selected,
-			'px-2': true,
-			'py-0.5': true,
-			rounded: true,
-			'bg-opacity-20': true,
-			'bg-primary-default': this.selected,
+		}
+
+		// Status text classes
+		const statusClasses = {
+			'transition-all': true,
+			'duration-300': true,
+			...(this.compact ? { 'text-2xs': true, 'mt-0.5': true } : { 'text-xs': true, 'mt-1': true }),
+			'text-success-default': !this.disabled,
+			'text-error-default': this.disabled,
 		}
 
 		return html`
@@ -179,69 +174,31 @@ export class SelectionTile extends $LitElement(css`
 				data-value=${this.dataValue}
 				role="option"
 				aria-selected="${this.selected ? 'true' : 'false'}"
-				aria-disabled="${!this.available ? 'true' : 'false'}"
+				aria-disabled="${this.disabled ? 'true' : 'false'}"
 			>
-				<!-- Selected status indicator -->
-				${this.selected
-					? html`
-							<div class="status-indicator bg-primary-on text-primary-default">
-								<schmancy-icon size="10px">check</schmancy-icon>
-							</div>
-					  `
-					: nothing}
+				<!-- Icon with animation -->
+				<schmancy-icon class=${classMap(iconClasses)} size=${this.compact ? '14px' : '16px'}>
+					${this.icon}
+				</schmancy-icon>
 
-				<!-- Unavailable pattern overlay -->
-				${!this.available ? html`<div class="unavailable-overlay"></div>` : nothing}
+				<!-- Primary label -->
+				<div class=${classMap(labelClasses)}>${this.label}</div>
 
-				<!-- Content container for better spacing -->
-				<div class="content-container">
-					<!-- Status icon with enhanced animation -->
-					${when(
-						!this.showPrice,
-						() => html`<schmancy-icon class=${classMap(iconClasses)} size=${this.compact ? '16px' : '20px'}>
-							${this.available ? this.icon : 'block'}
-						</schmancy-icon>`,
-					)}
-
-					<!-- Label display with enhanced animation -->
-					<div class=${classMap(textClasses)}>${this.label}</div>
-
-					<!-- Price (only shown when showPrice is true) -->
-					${this.showPrice && this.available
-						? html` <div class=${classMap(priceClasses)}>€${this.price.toFixed(2)}</div> `
-						: nothing}
-
-					<!-- Sub label or availability label -->
-					${this.available && !this.selected && this.subLabel
-						? html`
-								<div
-									class="transition-all duration-300 ${this.compact
-										? 'text-2xs mt-0.5'
-										: 'text-xs mt-1'} text-success-default font-medium px-1 rounded bg-success-container/20"
-								>
-									${this.compact ? '' : this.subLabel}
-								</div>
-						  `
-						: nothing}
-					${!this.available
-						? html`
-								<div
-									class="transition-all duration-300 ${this.compact
-										? 'text-2xs mt-0.5'
-										: 'text-xs mt-1'} text-error-default font-medium px-1 py-0.5 rounded bg-error-container/20"
-								>
-									<schmancy-typography type="label" token="sm">
-										${this.compact ? '' : 'Unavailable'}
-									</schmancy-typography>
-								</div>
-						  `
-						: nothing}
-				</div>
+				<!-- Status/description (optional) -->
+				${when(
+					this.description && (!this.compact || this.disabled),
+					() => html`
+						<div class=${classMap(statusClasses)}>
+							<schmancy-typography type="label" token="sm"> ${this.description} </schmancy-typography>
+						</div>
+					`,
+				)}
 			</div>
 		`
 	}
 }
 
+// Register element in global namespace
 declare global {
 	interface HTMLElementTagNameMap {
 		'selection-tile': SelectionTile

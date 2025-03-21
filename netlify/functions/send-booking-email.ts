@@ -144,33 +144,37 @@ async function sendEmail(data: any, pdfBuffer: Buffer): Promise<boolean> {
  */
 async function generateBookingPDF(data: any): Promise<Buffer> {
 	// Create a new PDF document
-	const doc = new PDFDocument({ size: 'A4', margin: 50 })
+	const doc = new PDFDocument({
+		size: 'A4',
+		margin: 50,
+	})
 	let buffers: Array<Buffer> = []
 	doc.on('data', chunk => buffers.push(chunk))
 
-	// Define styled text helpers
-	const normalFont = 'JosefinSans-Regular.ttf'
-	const boldFont = 'JosefinSans-Bold.ttf'
+	// Define font paths
 	const fontPath = resolve(__dirname, './_shared/assets/')
+	const normalFont = `${fontPath}/JosefinSans-Regular.ttf`
+	const boldFont = `${fontPath}/JosefinSans-Bold.ttf`
 
-	doc.registerFont('Regular', `${fontPath}/JosefinSans-Regular.ttf`)
-	doc.registerFont('Bold', `${fontPath}/JosefinSans-Bold.ttf`)
+	// Register custom fonts
+	doc.registerFont('Regular', normalFont)
+	doc.registerFont('Bold', boldFont)
 
 	// Header - Invoice title
 	let y = 90
-	doc.font(boldFont).fontSize(24).fillColor('#5e808e').text('INVOICE', 50, 65)
+	doc.font('Bold').fontSize(24).fillColor('#5e808e').text('INVOICE', 50, 65)
 	doc.fillColor('#000000')
 
 	// invoice number - using booking ID
 	doc
-		.font(boldFont)
+		.font('Bold')
 		.fontSize(12)
 		.text('Invoice Number:', 50, (y += 4))
-	doc.font(normalFont).text(`FBB-${data.bookingId.substring(0, 6)}`, 150, y)
+	doc.font('Regular').text(`FBB-${data.bookingId.substring(0, 6)}`, 150, y)
 
 	// invoice date
-	doc.font(boldFont).text('Date of Issue:', 50, (y += 15))
-	doc.font(normalFont).text(
+	doc.font('Bold').text('Date of Issue:', 50, (y += 15))
+	doc.font('Regular').text(
 		new Date().toLocaleDateString('en-US', {
 			year: 'numeric',
 			month: 'long',
@@ -181,8 +185,8 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	)
 
 	// Service date
-	doc.font(boldFont).text('Service Date:', 50, (y += 15))
-	doc.font(normalFont).text(data.bookingDetails.date, 150, y)
+	doc.font('Bold').text('Service Date:', 50, (y += 15))
+	doc.font('Regular').text(data.bookingDetails.date, 150, y)
 
 	// Try to add QR code
 	try {
@@ -209,9 +213,9 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	y += 40
 
 	// Buyer Information (left side)
-	doc.font(boldFont).fontSize(14).text('Bill To:', 50, y)
+	doc.font('Bold').fontSize(14).text('Bill To:', 50, y)
 	y += 20
-	doc.font(normalFont).fontSize(12)
+	doc.font('Regular').fontSize(12)
 	doc.text(data.customerName, 50, y)
 	y += 15
 
@@ -248,9 +252,9 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 
 	// Seller Information (Right side)
 	y = 165 // Reset Y position for right column
-	doc.font(boldFont).fontSize(14).text('Bill From:', 300, y)
+	doc.font('Bold').fontSize(14).text('Bill From:', 300, y)
 	y += 20
-	doc.font(normalFont).fontSize(12)
+	doc.font('Regular').fontSize(12)
 	doc.text('Funkhaus Sports GmbH', 300, y)
 	y += 15
 	doc.text('Nalepastrasse 18', 300, y)
@@ -267,7 +271,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	y = 300
 
 	// Section title
-	doc.font(boldFont).fontSize(14).fillColor('#5e808e').text('BOOKING DETAILS', 50, y)
+	doc.font('Bold').fontSize(14).fillColor('#5e808e').text('BOOKING DETAILS', 50, y)
 	doc.fillColor('#000000')
 	y += 20
 
@@ -276,7 +280,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	doc.fillColor('#000000')
 
 	// Table headers
-	doc.font(boldFont).fontSize(12)
+	doc.font('Bold').fontSize(12)
 	doc.text('Description', 60, y + 8)
 	doc.text('Duration', 310, y + 8)
 	doc.text('Rate', 390, y + 8)
@@ -295,7 +299,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	const duration = `${data.bookingDetails.startTime} - ${data.bookingDetails.endTime}`
 
 	// Invoice item
-	doc.font(normalFont).fontSize(12)
+	doc.font('Regular').fontSize(12)
 	doc.text(description, 60, y + 8, { width: 240 })
 	doc.text(duration, 310, y + 8)
 	doc.text(`€${netAmount.toFixed(2)}`, 390, y + 8)
@@ -310,7 +314,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 
 	// Summary section
 	// Net total
-	doc.font(normalFont).text('Net Total:', 390, y)
+	doc.font('Regular').text('Net Total:', 390, y)
 	doc.text(`€${netAmount.toFixed(2)}`, 470, y)
 
 	y += 20
@@ -332,7 +336,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	y += 15
 
 	// Total
-	doc.font(boldFont).fillColor('#5e808e').text('TOTAL:', 390, y)
+	doc.font('Bold').fillColor('#5e808e').text('TOTAL:', 390, y)
 	doc.text(`€${totalAmount.toFixed(2)}`, 470, y)
 	doc.fillColor('#000000')
 
@@ -340,8 +344,8 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	const footerY = 600
 
 	// Payment Information
-	doc.font(boldFont).fontSize(12).text('Payment Information:', 50, footerY)
-	doc.font(normalFont).fontSize(12)
+	doc.font('Bold').fontSize(12).text('Payment Information:', 50, footerY)
+	doc.font('Regular').fontSize(12)
 	doc.text('Funkhaus Berlin Sports GmbH', 50, footerY + 15)
 	doc.text('IBAN: DE39 1002 0890 0037 4687 11', 50, footerY + 30)
 	doc.text('BIC: HYVEDEMM488', 50, footerY + 45)

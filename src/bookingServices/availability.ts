@@ -145,9 +145,6 @@ export class AvailabilityService {
 				bookings.forEach(booking => {
 					const { courtId, startTime, endTime } = booking
 
-					// Skip if this court isn't in our result set
-					if (!courtIds.includes(courtId)) return
-
 					// Calculate time range
 					const start = dayjs(startTime)
 					const end = dayjs(endTime)
@@ -156,15 +153,15 @@ export class AvailabilityService {
 					const endHour = end.hour()
 					const endMinute = end.minute()
 
-					// Mark all slots in the range as unavailable
+					// Mark all affected time slots as unavailable
 					for (let hour = startHour; hour <= endHour; hour++) {
-						// Check full hour slot
-						if ((hour > startHour || startMinute === 0) && (hour < endHour || endMinute === 0)) {
+						// For the whole-hour slot (:00)
+						if ((hour > startHour || startMinute === 0) && (hour < endHour || endMinute > 0)) {
 							const timeKey = `${hour.toString().padStart(2, '0')}:00`
 							this.markSlotAsBooked(result, timeKey, courtId)
 						}
 
-						// Check half-hour slot
+						// For the half-hour slot (:30)
 						if ((hour > startHour || startMinute <= 30) && (hour < endHour || endMinute > 30)) {
 							const timeKey = `${hour.toString().padStart(2, '0')}:30`
 							this.markSlotAsBooked(result, timeKey, courtId)
