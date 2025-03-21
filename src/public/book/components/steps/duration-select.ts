@@ -997,15 +997,22 @@ export class DurationSelectionStep extends $LitElement(css`
 				${this.shouldUseGridView ? this.renderGridLayout(displayDurations) : this.renderListLayout(displayDurations)}
 
 				<!-- Hint text with estimated price warning if needed -->
-				<div class="mt-2 text-center text-xs pb-2">
+				${when(
+					!this.isCompact,
+					() => html`
+          <div class="text-center text-xs pb-2">
 					<p class="text-surface-on-variant">All prices include VAT</p>
-					${showingEstimatedPrices
-						? html`<p class="text-warning-default mt-1">
-								<schmancy-icon class="mr-1" size="12px">info</schmancy-icon>
-								Estimated prices. Actual price may vary.
-						  </p>`
-						: nothing}
+					${
+						showingEstimatedPrices
+							? html`<p class="text-warning-default mt-1">
+									<schmancy-icon class="mr-1" size="12px">info</schmancy-icon>
+									Estimated prices. Actual price may vary.
+							  </p>`
+							: nothing
+					}
 				</div>
+			</div>`,
+				)}
 			</div>
 		`
 	}

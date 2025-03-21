@@ -818,7 +818,7 @@ export class TimeSelectionStep extends $LitElement() {
 
 				<!-- Title section with view toggle -->
 				${when(
-					this.active,
+					!this.isCompact,
 					() => html`
 						<div class="flex items-center justify-between">
 							<div>

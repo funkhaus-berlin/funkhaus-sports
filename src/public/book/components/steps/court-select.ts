@@ -791,9 +791,6 @@ export class CourtSelectStep extends $LitElement() {
 						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
 							Select Court
 						</schmancy-typography>
-						<div class="text-xs text-surface-on-variant mt-1 mb-2">
-							Select a court for your ${this.booking?.startTime ? 'selected time slot' : 'booking'}
-						</div>
 					`,
 				)}
 				<div
