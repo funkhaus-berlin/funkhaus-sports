@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore'
 import { from, Observable, throwError } from 'rxjs'
 import { catchError, map, take } from 'rxjs/operators'
+import { v4 as uuidv4 } from 'uuid'
 import { db } from './firebase'
 
 export interface FirebaseServiceQuery {
@@ -140,11 +141,15 @@ export class FirestoreService<T extends DocumentData> {
 	 * Create or update a document
 	 */
 	upsert(data: Partial<T>, id?: string, merge: boolean = true): Observable<T> {
-		const documentId = id || doc(collection(this.db, this.collectionName)).id
-		const docRef = doc(this.db, this.collectionName, documentId)
+		let documentId = id
+		if (!id) {
+			documentId = uuidv4()
+		}
+		const docRef = doc(this.db, this.collectionName, documentId!)
 
 		const timestamp = new Date().toISOString()
 		const docData = {
+			id: documentId,
 			...data,
 			updatedAt: timestamp,
 		} as any

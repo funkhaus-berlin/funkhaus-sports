@@ -4,7 +4,6 @@ import {
 	schmancyCheckBoxChangeEvent,
 	SchmancyInputChangeEvent,
 	SchmancySelectChangeEvent,
-	select,
 	sheet,
 } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
@@ -14,7 +13,6 @@ import { takeUntil } from 'rxjs'
 import { FacilityEnum, OperatingHours, Venue, VenuesDB, VenueTypeEnum } from 'src/db/venue-collection'
 import { auth } from 'src/firebase/firebase'
 import { confirm } from 'src/schmancy'
-import { venueContext } from '../venue-context'
 // Import the venue card component (add this import)
 import './venue-info-card'
 
@@ -27,30 +25,22 @@ export const formatEnum = (value: string): string =>
 
 @customElement('venue-form')
 export class VenueForm extends $LitElement() {
-	@select(venueContext, undefined, {})
-	venue!: Venue
 	@state() busy = false
 	@state() formErrors: Record<string, string> = {}
 
-	constructor(private editingVenue?: Venue) {
+	@state() venue!: Venue
+	constructor(initialData?: Venue) {
 		super()
-		if (editingVenue) {
+		if (initialData) {
+			this.venue = initialData
 			// Create deep copy to avoid mutation issues
-			this.venue = this.deepCopyVenue(editingVenue)
-			// Ensure ID is preserved for editing
-			this.venue.id = editingVenue.id
-			console.log('Editing venue with ID:', this.venue.id)
 		} else {
 			// Initialize new venue with default values
 			this.initializeNewVenue()
 		}
 
+		console.log(initialData)
 		this.dispatchEvent(new CustomEvent('fullscreen', { bubbles: true, composed: true, detail: true }))
-	}
-
-	// Deep copy to avoid mutation issues
-	private deepCopyVenue(venue: Venue): Venue {
-		return JSON.parse(JSON.stringify(venue)) as Venue
 	}
 
 	// Initialize new venue with default values
@@ -73,13 +63,13 @@ export class VenueForm extends $LitElement() {
 				logo: 'light',
 			},
 			operatingHours: {
-				monday: { open: '09:00', close: '22:00' },
-				tuesday: { open: '09:00', close: '22:00' },
-				wednesday: { open: '09:00', close: '22:00' },
-				thursday: { open: '09:00', close: '22:00' },
-				friday: { open: '09:00', close: '22:00' },
-				saturday: { open: '09:00', close: '22:00' },
-				sunday: { open: '09:00', close: '22:00' },
+				monday: { open: '11:00', close: '22:00' },
+				tuesday: { open: '11:00', close: '22:00' },
+				wednesday: { open: '11:00', close: '22:00' },
+				thursday: { open: '11:00', close: '22:00' },
+				friday: { open: '11:00', close: '22:00' },
+				saturday: { open: '11:00', close: '22:00' },
+				sunday: { open: '11:00', close: '22:00' },
 			},
 			venueType: Object.values(VenueTypeEnum)[0],
 			facilities: [],
@@ -104,7 +94,6 @@ export class VenueForm extends $LitElement() {
 								required
 								.value="${this.venue?.name || ''}"
 								.error=${Boolean(this.formErrors.name)}
-								.errorMessage=${this.formErrors.name}
 								@change=${(e: SchmancyInputChangeEvent) => this.updateProps('name', e.detail.value)}
 							></schmancy-input>
 
@@ -119,8 +108,6 @@ export class VenueForm extends $LitElement() {
 								label="Venue Type"
 								required
 								.value=${this.venue?.venueType || ''}
-								.error=${Boolean(this.formErrors.venueType)}
-								.errorMessage=${this.formErrors.venueType}
 								@change=${(e: SchmancySelectChangeEvent) => this.updateProps('venueType', e.detail.value as string)}
 							>
 								${Object.values(VenueTypeEnum).map(
@@ -181,7 +168,6 @@ export class VenueForm extends $LitElement() {
 								required
 								.value="${this.venue?.address?.street || ''}"
 								.error=${Boolean(this.formErrors['address.street'])}
-								.errorMessage=${this.formErrors['address.street']}
 								@change=${(e: SchmancyInputChangeEvent) => this.updateAddress('street', e.detail.value)}
 							></schmancy-input>
 
@@ -190,7 +176,6 @@ export class VenueForm extends $LitElement() {
 								required
 								.value="${this.venue?.address?.city || ''}"
 								.error=${Boolean(this.formErrors['address.city'])}
-								.errorMessage=${this.formErrors['address.city']}
 								@change=${(e: SchmancyInputChangeEvent) => this.updateAddress('city', e.detail.value)}
 							></schmancy-input>
 
@@ -199,7 +184,6 @@ export class VenueForm extends $LitElement() {
 								required
 								.value="${this.venue?.address?.postalCode || ''}"
 								.error=${Boolean(this.formErrors['address.postalCode'])}
-								.errorMessage=${this.formErrors['address.postalCode']}
 								@change=${(e: SchmancyInputChangeEvent) => this.updateAddress('postalCode', e.detail.value)}
 							></schmancy-input>
 
@@ -208,7 +192,6 @@ export class VenueForm extends $LitElement() {
 								required
 								.value="${this.venue?.address?.country || ''}"
 								.error=${Boolean(this.formErrors['address.country'])}
-								.errorMessage=${this.formErrors['address.country']}
 								@change=${(e: SchmancyInputChangeEvent) => this.updateAddress('country', e.detail.value)}
 							></schmancy-input>
 						</div>
@@ -257,7 +240,6 @@ export class VenueForm extends $LitElement() {
 								type="email"
 								.value="${this.venue?.contactEmail || ''}"
 								.error=${Boolean(this.formErrors.contactEmail)}
-								.errorMessage=${this.formErrors.contactEmail}
 								@change=${(e: SchmancyInputChangeEvent) => this.updateProps('contactEmail', e.detail.value)}
 							></schmancy-input>
 
@@ -294,7 +276,7 @@ export class VenueForm extends $LitElement() {
 
 						<!-- Actions -->
 						<div class="flex gap-4 justify-between">
-							${this.editingVenue
+							${this.venue.id
 								? html`
 										<schmancy-button @click=${this.handleDeleteClick} .disabled=${this.busy} type="button">
 											<span class="text-error-default flex gap-2">
@@ -309,7 +291,7 @@ export class VenueForm extends $LitElement() {
 									>Cancel</schmancy-button
 								>
 								<schmancy-button variant="filled" type="submit" .disabled=${this.busy}>
-									${this.editingVenue ? 'Update' : 'Save'}
+									${this.venue.id ? 'Update' : 'Save'}
 								</schmancy-button>
 							</div>
 						</div>
@@ -528,8 +510,8 @@ export class VenueForm extends $LitElement() {
 
 	// Handle delete button click
 	handleDeleteClick = () => {
-		if (this.editingVenue?.id) {
-			this.confirmDelete(this.editingVenue.id)
+		if (this.venue?.id) {
+			this.confirmDelete(this.venue.id)
 		}
 	}
 
@@ -547,16 +529,16 @@ export class VenueForm extends $LitElement() {
 
 		// Log current venue state for debugging
 		console.log('Current venue state:', JSON.stringify(this.venue))
-		console.log('Editing venue?', this.editingVenue ? this.editingVenue.id : 'No')
+		console.log('Editing venue?', this.venue ? this.venue.id : 'No')
 
 		// Prepare venue data for saving
 		let venue: Venue
 
-		if (this.editingVenue) {
+		if (this.venue.id) {
 			// Update existing venue - explicitly preserve ID
 			venue = {
 				...this.venue,
-				id: this.editingVenue.id, // Force ID to match original
+				id: this.venue.id, // Force ID to match original
 				updatedAt: new Date().toISOString(),
 			} as Venue
 			console.log('Updating venue with ID:', venue.id)
@@ -574,10 +556,11 @@ export class VenueForm extends $LitElement() {
 		// Save to database with explicit handling for updates vs. creates
 		let saveOperation
 
-		if (this.editingVenue) {
+		if (this.venue.id) {
 			// For updates, explicitly pass the original ID as second parameter
-			console.log(`Updating venue ${this.editingVenue.id} with data:`, venue)
-			saveOperation = VenuesDB.upsert(venue, this.editingVenue.id, true)
+			console.log(`Updating venue ${this.venue.id} with data:`, venue)
+			alert('Updating venue' + this.venue.id)
+			saveOperation = VenuesDB.upsert(venue, this.venue.id)
 		} else {
 			// For new venues, let the service generate an ID
 			console.log('Creating new venue with data:', venue)
@@ -586,13 +569,13 @@ export class VenueForm extends $LitElement() {
 
 		saveOperation.pipe(takeUntil(this.disconnecting)).subscribe({
 			next: () => {
-				$notify.success(`Venue ${this.editingVenue ? 'updated' : 'added'} successfully`)
+				$notify.success(`Venue ${this.venue ? 'updated' : 'added'} successfully`)
 				this.busy = false
 				sheet.dismiss(this.tagName)
 			},
 			error: err => {
 				console.error('Error saving venue:', err)
-				$notify.error(`Failed to ${this.editingVenue ? 'update' : 'add'} venue: ${err.message || 'Unknown error'}`)
+				$notify.error(`Failed to ${this.venue ? 'update' : 'add'} venue: ${err.message || 'Unknown error'}`)
 				this.busy = false
 			},
 		})

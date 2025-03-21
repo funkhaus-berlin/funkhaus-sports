@@ -98,9 +98,6 @@ export class VenueCourts extends $LitElement() {
 	// If venueId is provided, use it as the filter
 	connectedCallback() {
 		super.connectedCallback()
-		if (this.venueId) {
-			this.selectedVenueId = this.venueId
-		}
 
 		selectMyCourts.pipe(takeUntil(this.disconnecting)).subscribe(courts => {
 			console.log('selected', courts)

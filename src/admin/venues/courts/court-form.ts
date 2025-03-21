@@ -5,10 +5,9 @@ import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { takeUntil } from 'rxjs'
-import { Court, CourtsDB, CourtTypeEnum, Pricing, SportTypeEnum } from 'src/db/courts.collection'
-import { Venue } from 'src/db/venue-collection'
+import { Court, CourtsDB, CourtTypeEnum, Pricing } from 'src/db/courts.collection'
 import { confirm } from 'src/schmancy'
-import { venuesContext } from '../venue-context'
+import { venueContext, venuesContext } from '../venue-context'
 
 // Format enum values to display labels
 export const formatEnum = (value: string): string =>
@@ -21,24 +20,35 @@ export const formatEnum = (value: string): string =>
 export class CourtForm extends $LitElement() {
 	@state() court: Partial<Court> = {
 		name: '',
-		sportTypes: ['pickleball'],
 		courtType: 'indoor',
 		pricing: { baseHourlyRate: 0 },
 		status: 'active',
-		venueId: '', // Added venueId property
 	}
 
-	@property({ type: Boolean }) venueSelectionDisabled = false
-
-	@select(venuesContext, (venues: Map<string, Venue>) => Array.from(venues.values()))
-	venues: Venue[] = []
+	@select(venuesContext) venues!: Map<string, any>
 
 	@state() busy = false
+	@state() isCloning = false
 
 	constructor(private editingCourt?: Court) {
 		super()
 		if (editingCourt) {
 			this.court = { ...editingCourt }
+		}
+	}
+
+	connectedCallback() {
+		super.connectedCallback()
+
+		// If we're not editing a court, set the venueId from context
+		if (!this.editingCourt && this.venues?.size > 0) {
+			const currentVenueId = venuesContext.value.values().next().value?.id
+			if (currentVenueId) {
+				this.court = {
+					...this.court,
+					venueId: currentVenueId,
+				}
+			}
 		}
 	}
 
@@ -49,22 +59,11 @@ export class CourtForm extends $LitElement() {
 					<!-- Basic Information -->
 					<div class="grid gap-3 mb-4">
 						<sch-grid>
-							<schmancy-typography type="title">Basic Information</schmancy-typography>
+							<schmancy-typography type="title"
+								>${this.isCloning ? 'Clone Court' : this.editingCourt ? 'Edit Court' : 'Add Court'}</schmancy-typography
+							>
 							<schmancy-divider></schmancy-divider>
 						</sch-grid>
-
-						<!-- Venue Selection -->
-						<schmancy-select
-							label="Venue"
-							required
-							?disabled=${this.venueSelectionDisabled}
-							.value=${this.court.venueId || ''}
-							@change=${(e: SchmancySelectChangeEvent) => this.updateProps('venueId', e.detail.value as string)}
-						>
-							${this.venues.map(
-								venue => html`<schmancy-option .value=${venue.id} .label=${venue.name}>${venue.name}</schmancy-option>`,
-							)}
-						</schmancy-select>
 
 						<sch-input
 							label="Court Name"
@@ -80,21 +79,6 @@ export class CourtForm extends $LitElement() {
 							@change=${(e: SchmancySelectChangeEvent) => this.updateProps('courtType', e.detail.value as string)}
 						>
 							${Object.values(CourtTypeEnum).map(
-								type =>
-									html`<schmancy-option .value=${type} .label=${formatEnum(type)}
-										>${formatEnum(type)}</schmancy-option
-									>`,
-							)}
-						</schmancy-select>
-
-						<schmancy-select
-							label="Primary Sport"
-							required
-							multi
-							.value=${this.court.sportTypes ?? []}
-							@change=${(e: SchmancySelectChangeEvent) => this.updateProps('sportTypes', e.detail.value as string[])}
-						>
-							${Object.values(SportTypeEnum).map(
 								type =>
 									html`<schmancy-option .value=${type} .label=${formatEnum(type)}
 										>${formatEnum(type)}</schmancy-option
@@ -159,18 +143,32 @@ export class CourtForm extends $LitElement() {
 
 					<!-- Actions -->
 					<div class="flex gap-4 justify-between">
-						${this.editingCourt
-							? html`
-									<schmancy-button @click=${() => this.confirmDelete(this.editingCourt!.id)}>
-										<span class="text-error-default flex gap-2">
-											<schmancy-icon>delete</schmancy-icon>
-											Delete
-										</span>
-									</schmancy-button>
-							  `
-							: ''}
-						<schmancy-button variant="outlined" @click=${() => sheet.dismiss(this.tagName)}>Cancel</schmancy-button>
-						<schmancy-button variant="filled" type="submit">Save</schmancy-button>
+						<div>
+							${this.editingCourt && !this.isCloning
+								? html`
+										<schmancy-button @click=${() => this.confirmDelete(this.editingCourt!.id)}>
+											<span class="text-error-default flex gap-2">
+												<schmancy-icon>delete</schmancy-icon>
+												Delete
+											</span>
+										</schmancy-button>
+								  `
+								: html``}
+						</div>
+						<div class="flex gap-2">
+							<schmancy-button variant="outlined" @click=${() => sheet.dismiss(this.tagName)}>Cancel</schmancy-button>
+							${this.editingCourt && !this.isCloning
+								? html`
+										<schmancy-button variant="outlined" @click=${this.cloneCourt}>
+											<span class="flex gap-2 items-center">
+												<schmancy-icon>content_copy</schmancy-icon>
+												Clone
+											</span>
+										</schmancy-button>
+								  `
+								: html``}
+							<schmancy-button variant="filled" type="submit">Save</schmancy-button>
+						</div>
 					</div>
 				</schmancy-form>
 			</schmancy-surface>
@@ -190,40 +188,84 @@ export class CourtForm extends $LitElement() {
 		}
 	}
 
+	cloneCourt = () => {
+		this.isCloning = true
+
+		// Update the court object to create a new one based on the existing one
+		this.court = {
+			...this.court,
+			name: `${this.court.name} (Copy)`,
+			id: undefined, // Remove the ID so a new one will be created
+		}
+
+		// Force a re-render
+		this.requestUpdate()
+	}
+
 	onSave = () => {
 		this.busy = true
 		// Basic validation
 		if (!this.court.name?.trim()) {
 			$notify.error('Court name is required')
+			this.busy = false
 			return
 		}
 
 		if (!this.court.venueId) {
-			$notify.error('Please select a venue for this court')
-			return
+			// Get venue ID from context if missing
+			const currentVenueId = venueContext.value.id
+			if (!currentVenueId) {
+				$notify.error('Venue information is missing')
+				this.busy = false
+				return
+			}
+			this.court.venueId = currentVenueId
 		}
 
 		if (!this.court.pricing || this.court.pricing.baseHourlyRate <= 0) {
 			$notify.error('Base hourly rate must be greater than zero')
+			this.busy = false
 			return
+		}
+
+		// Ensure sportTypes array exists (default to pickleball)
+		if (!this.court.sportTypes || !Array.isArray(this.court.sportTypes) || this.court.sportTypes.length === 0) {
+			this.court.sportTypes = ['pickleball']
 		}
 
 		// Prepare court data for saving
 		const court = {
 			...this.court,
 			updatedAt: new Date().toISOString(),
-			...(this.editingCourt ? {} : { createdAt: new Date().toISOString() }),
+			...(this.isCloning || !this.editingCourt ? { createdAt: new Date().toISOString() } : {}),
 		}
 
+		// Determine if we're creating a new court (either adding or cloning)
+		const isNewCourt = this.isCloning || !this.editingCourt
+
 		// Save to database
-		const saveOperation = this.editingCourt ? CourtsDB.upsert(court, this.editingCourt.id) : CourtsDB.upsert(court)
+		const saveOperation = isNewCourt ? CourtsDB.upsert(court) : CourtsDB.upsert(court, this.editingCourt!.id)
 
 		saveOperation.pipe(takeUntil(this.disconnecting)).subscribe({
 			next: () => {
-				$notify.success(`Court ${this.editingCourt ? 'updated' : 'added'} successfully`)
+				let action = 'added'
+				if (this.isCloning) {
+					action = 'cloned'
+				} else if (this.editingCourt) {
+					action = 'updated'
+				}
+
+				$notify.success(`Court ${action} successfully`)
 				sheet.dismiss(this.tagName)
 			},
-			error: () => $notify.error(`Failed to ${this.editingCourt ? 'update' : 'add'} court.`),
+			error: err => {
+				console.error('Error saving court:', err)
+				$notify.error(`Failed to save court. Please try again.`)
+				this.busy = false
+			},
+			complete: () => {
+				this.busy = false
+			},
 		})
 	}
 
@@ -238,11 +280,21 @@ export class CourtForm extends $LitElement() {
 		})
 
 		if (confirmed) {
+			this.busy = true
 			CourtsDB.delete(id)
 				.pipe(takeUntil(this.disconnecting))
 				.subscribe({
-					next: () => $notify.success('Court deleted successfully'),
-					error: () => $notify.error('Failed to delete court'),
+					next: () => {
+						$notify.success('Court deleted successfully')
+						sheet.dismiss(this.tagName)
+					},
+					error: () => {
+						$notify.error('Failed to delete court')
+						this.busy = false
+					},
+					complete: () => {
+						this.busy = false
+					},
 				})
 		}
 	}

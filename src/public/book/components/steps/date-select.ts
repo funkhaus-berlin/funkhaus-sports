@@ -11,6 +11,38 @@ import { bookingContext, BookingProgressContext, BookingStep } from '../../conte
 // Define golden ratio constant
 const GOLDEN_RATIO = 1.618
 
+// Animation presets
+const ANIMATIONS: {
+	[key: string]: {
+		keyframes: Keyframe[]
+		options: AnimationKeyFrame[] | KeyframeAnimationOptions
+	}
+} = {
+	fadeIn: {
+		keyframes: [{ opacity: 0 }, { opacity: 1 }],
+		options: {
+			duration: 300,
+			easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+			fill: 'forwards',
+		},
+	},
+	fadeOut: {
+		keyframes: [{ opacity: 1 }, { opacity: 0 }],
+		options: {
+			duration: 300,
+			easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+			fill: 'forwards',
+		},
+	},
+	pulse: {
+		keyframes: [{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }],
+		options: {
+			duration: 400,
+			easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+		},
+	},
+}
+
 /**
  * Date Selection component with zero layout shifts
  * Uses fixed dimensions and absolute positioning to prevent any layout shifts
@@ -34,6 +66,7 @@ export class DateSelectionStep extends $LitElement(css`
 	private _compactHeight = 0
 	private _animationInProgress = false
 	private _transitionActive = false
+	private _firstDayOfWeek: number
 
 	// Query selectors for animation targets and measurements
 	@query('.calendar-container') calendarContainer!: HTMLElement
@@ -45,8 +78,7 @@ export class DateSelectionStep extends $LitElement(css`
 	private _resizeObserver: ResizeObserver | null = null
 
 	// Add a property to control whether the step is active
-	@state()
-	active = true
+	@state() active = true
 
 	// Track viewport size to determine layout
 	@state() private isMobile = window.innerWidth < 640
@@ -54,52 +86,37 @@ export class DateSelectionStep extends $LitElement(css`
 	@state() currentMonth = ''
 	@state() currentYear = ''
 	@state() private contentHeight = 0
-
 	@state() value: string = ''
-	// Animation keyframes and options
-	private animations: {
-		[key: string]: {
-			keyframes: Keyframe[]
-			options: AnimationEffectTiming
+
+	constructor() {
+		super()
+		// Get first day of week from system locale (0 for Sunday, 1 for Monday)
+		// Default to Monday (1) if locale info is unavailable
+		try {
+			const locale = navigator.language || 'en-US'
+			const sampleDate = new Date(2023, 0, 1) // January 1, 2023 (arbitrary date)
+			this._firstDayOfWeek = new Intl.DateTimeFormat(locale, { weekday: 'long' })
+				.formatToParts(sampleDate)
+				.find(part => part.type === 'weekday')
+				? 1 // Default to Monday if we can't determine
+				: 1
+		} catch (e) {
+			this._firstDayOfWeek = 1 // Default to Monday if there's an error
 		}
-	} = {
-		fadeIn: {
-			keyframes: [{ opacity: 0 }, { opacity: 1 }],
-			options: {
-				duration: 300,
-				easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
-				fill: 'forwards',
-			},
-		},
-		fadeOut: {
-			keyframes: [{ opacity: 1 }, { opacity: 0 }],
-			options: {
-				duration: 300,
-				easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
-				fill: 'forwards',
-			},
-		},
-		pulse: {
-			keyframes: [{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }],
-			options: {
-				duration: 400,
-				easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
-			},
-		},
 	}
 
 	connectedCallback(): void {
 		super.connectedCallback()
 
 		merge(
+			// Handle window resize events
 			fromEvent(window, 'resize').pipe(
 				debounceTime(100),
 				startWith(window.innerWidth),
-				tap(() => {
-					this._handleResize()
-				}),
+				tap(() => this._handleResize()),
 			),
 
+			// Handle booking progress changes
 			BookingProgressContext.$.pipe(
 				startWith(BookingProgressContext.value),
 				tap(b => {
@@ -107,6 +124,7 @@ export class DateSelectionStep extends $LitElement(css`
 				}),
 			),
 
+			// Handle booking context changes
 			bookingContext.$.pipe(
 				startWith(bookingContext.value),
 				filter(() => bookingContext.ready),
@@ -137,21 +155,6 @@ export class DateSelectionStep extends $LitElement(css`
 			.subscribe()
 	}
 
-	// Handle window resize events
-	private _handleResize = (): void => {
-		const wasMobile = this.isMobile
-		this.isMobile = window.innerWidth < 640
-
-		if (wasMobile !== this.isMobile) {
-			this.requestUpdate()
-		}
-
-		// Measure heights again after resize
-		this.updateComplete.then(() => {
-			this._measureHeights()
-		})
-	}
-
 	firstUpdated(): void {
 		// Set default value to today if not provided
 		if (!this.value) {
@@ -179,6 +182,32 @@ export class DateSelectionStep extends $LitElement(css`
 			next: () => {
 				this._scrollToSelectedDate()
 			},
+		})
+	}
+
+	disconnectedCallback(): void {
+		super.disconnectedCallback()
+		// Cleanup resize observer
+		if (this._resizeObserver) {
+			this._resizeObserver.disconnect()
+			this._resizeObserver = null
+		}
+	}
+
+	/**
+	 * Handle window resize events
+	 */
+	private _handleResize = (): void => {
+		const wasMobile = this.isMobile
+		this.isMobile = window.innerWidth < 640
+
+		if (wasMobile !== this.isMobile) {
+			this.requestUpdate()
+		}
+
+		// Measure heights again after resize
+		this.updateComplete.then(() => {
+			this._measureHeights()
 		})
 	}
 
@@ -281,11 +310,11 @@ export class DateSelectionStep extends $LitElement(css`
 		if (this.active) {
 			// Fade in active view
 			this.activeView.style.display = 'block'
-			const activeAnim = this.activeView.animate(this.animations.fadeIn.keyframes, this.animations.fadeIn.options)
+			const activeAnim = this.activeView.animate(ANIMATIONS.fadeIn.keyframes, 200)
 
 			// Fade out compact view
 			this.compactView.style.display = 'block'
-			this.compactView.animate(this.animations.fadeOut.keyframes, this.animations.fadeOut.options)
+			this.compactView.animate(ANIMATIONS.fadeOut.keyframes, 200)
 
 			// When animations complete, update final state
 			activeAnim.onfinish = () => {
@@ -297,11 +326,11 @@ export class DateSelectionStep extends $LitElement(css`
 		} else {
 			// Fade in compact view
 			this.compactView.style.display = 'block'
-			const compactAnim = this.compactView.animate(this.animations.fadeIn.keyframes, this.animations.fadeIn.options)
+			const compactAnim = this.compactView.animate(ANIMATIONS.fadeIn.keyframes, 200)
 
 			// Fade out active view
 			this.activeView.style.display = 'block'
-			this.activeView.animate(this.animations.fadeOut.keyframes, this.animations.fadeOut.options)
+			this.activeView.animate(ANIMATIONS.fadeOut.keyframes, 200)
 
 			// When animations complete, update final state
 			compactAnim.onfinish = () => {
@@ -313,7 +342,9 @@ export class DateSelectionStep extends $LitElement(css`
 		}
 	}
 
-	// Setup resize observer for container width changes
+	/**
+	 * Setup resize observer for container width changes
+	 */
 	private _setupResizeObserver(): void {
 		if (typeof ResizeObserver !== 'undefined') {
 			this._resizeObserver = new ResizeObserver(entries => {
@@ -352,7 +383,9 @@ export class DateSelectionStep extends $LitElement(css`
 		}
 	}
 
-	// Generate dates for the calendar (28 days from today)
+	/**
+	 * Generate dates for the calendar (28 days from today)
+	 */
 	private getNext28Days(): Date[] {
 		// Use cached value if available
 		if (this._cachedDates !== null) {
@@ -369,7 +402,10 @@ export class DateSelectionStep extends $LitElement(css`
 		return this._cachedDates
 	}
 
-	// Group days into weeks for the calendar
+	/**
+	 * Group days into weeks for the calendar
+	 * Adjusted to start from Monday (or locale first day)
+	 */
 	private groupIntoWeeks(dates: Date[]): Date[][] {
 		// Use cached value if available
 		if (this._cachedWeeks !== null) {
@@ -378,7 +414,17 @@ export class DateSelectionStep extends $LitElement(css`
 
 		// Start with the first date
 		const startDate = new Date(dates[0])
-		const startDayOfWeek = startDate.getDay() // 0 = Sunday
+		// Adjust day of week - in JS, 0 = Sunday, 1 = Monday, etc.
+		// If _firstDayOfWeek is 1 (Monday), we need to adjust our calculations
+		let startDayOfWeek = startDate.getDay()
+
+		// Adjust for Monday as first day of week (or locale setting)
+		if (this._firstDayOfWeek === 1) {
+			// Convert Sunday from 0 to 7
+			startDayOfWeek = startDayOfWeek === 0 ? 7 : startDayOfWeek
+			// Subtract 1 to make Monday = 1, Tuesday = 2, etc.
+			startDayOfWeek -= 1
+		}
 
 		// Create week groups
 		const weeks: Date[][] = []
@@ -386,7 +432,7 @@ export class DateSelectionStep extends $LitElement(css`
 
 		// Fill the first week with placeholder days if needed
 		if (startDayOfWeek !== 0) {
-			// If not starting on Sunday
+			// If not starting on first day of week
 			for (let i = 0; i < startDayOfWeek; i++) {
 				const placeholderDate = new Date(startDate)
 				placeholderDate.setDate(startDate.getDate() - (startDayOfWeek - i))
@@ -396,10 +442,20 @@ export class DateSelectionStep extends $LitElement(css`
 
 		// Add all dates to appropriate weeks
 		for (const date of dates) {
+			let dayOfWeek = date.getDay()
+
+			// Adjust for Monday as first day of week (or locale setting)
+			if (this._firstDayOfWeek === 1) {
+				// Convert Sunday from 0 to 7
+				dayOfWeek = dayOfWeek === 0 ? 7 : dayOfWeek
+				// Subtract 1 to make Monday = 1, Tuesday = 2, etc. and Sunday = 7
+				dayOfWeek -= 1
+			}
+
 			currentWeek.push(date)
 
-			// If we've reached the end of the week (Saturday)
-			if (date.getDay() === 6) {
+			// If we've reached the end of the week (6 = Saturday or Sunday depending on firstDayOfWeek)
+			if (dayOfWeek === 6) {
 				weeks.push([...currentWeek])
 				currentWeek = []
 			}
@@ -414,7 +470,34 @@ export class DateSelectionStep extends $LitElement(css`
 		return weeks
 	}
 
-	// Handle date selection
+	/**
+	 * Get the ordered days of week based on locale setting
+	 */
+	private getDaysOfWeek(): string[] {
+		// Default days starting with Sunday
+		const allDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+		// If first day is Monday, rotate the array
+		if (this._firstDayOfWeek === 1) {
+			return [...allDays.slice(1), allDays[0]]
+		}
+
+		return allDays
+	}
+
+	/**
+	 * Check if a date is a weekend
+	 * Adjusted to handle different first day of week settings
+	 */
+	private isWeekend(date: Date): boolean {
+		const day = date.getDay()
+		// Sunday (0) and Saturday (6) are weekend days
+		return day === 0 || day === 6
+	}
+
+	/**
+	 * Handle date selection
+	 */
 	private _handleDateClick(date: Date): void {
 		// Don't allow selection of dates before today
 		const clickedDay = dayjs(date)
@@ -423,18 +506,17 @@ export class DateSelectionStep extends $LitElement(css`
 		}
 
 		// Update value and dispatch event
+		const dateString = clickedDay.format('YYYY-MM-DD')
 		const newValue = date.toISOString()
-		this.value = newValue
 
 		// Add pulse animation to the selected date element
 		setTimeout(() => {
-			const dateValue = clickedDay.format('YYYY-MM-DD')
-			const selectedEl = this.shadowRoot?.querySelector(`[data-date="${dateValue}"]`)
-
+			const selectedEl = this.shadowRoot?.querySelector(`[data-date="${dateString}"]`)
 			if (selectedEl) {
-				selectedEl.animate(this.animations.pulse.keyframes, this.animations.pulse.options)
+				selectedEl.animate(ANIMATIONS.pulse.keyframes, 200)
 			}
 		}, 50)
+
 		bookingContext.set({
 			date: newValue,
 			courtId: '',
@@ -442,7 +524,7 @@ export class DateSelectionStep extends $LitElement(css`
 			endTime: '',
 		})
 
-		// Change: Navigate to Time step instead of Court step
+		// Navigate to Time step
 		BookingProgressContext.set({
 			currentStep: BookingStep.Time,
 		})
@@ -450,15 +532,19 @@ export class DateSelectionStep extends $LitElement(css`
 		this.dispatchEvent(new CustomEvent('change', { detail: newValue }))
 	}
 
-	// Scroll to selected date
+	/**
+	 * Scroll to selected date
+	 */
 	private _scrollToSelectedDate(): void {
-		if (this.value === undefined) return
+		if (!this.value) return
 
 		try {
 			const dateValue = dayjs(this.value).format('YYYY-MM-DD')
-			const activeEl = this.active
-				? this.shadowRoot?.querySelector(`.active-view [data-date="${dateValue}"]`)
-				: this.shadowRoot?.querySelector(`.compact-view [data-date="${dateValue}"]`)
+			const selector = this.active
+				? `.active-view [data-date="${dateValue}"]`
+				: `.compact-view [data-date="${dateValue}"]`
+
+			const activeEl = this.shadowRoot?.querySelector(selector)
 
 			if (activeEl && activeEl instanceof HTMLElement) {
 				// Smooth scroll with options to minimize layout impact
@@ -473,97 +559,14 @@ export class DateSelectionStep extends $LitElement(css`
 		}
 	}
 
-	render() {
-		// Get all dates
-		const dates = this.getNext28Days()
-
-		// Group into weeks for desktop view
-		const weeks = this.groupIntoWeeks(dates)
-
-		// Days of week for header
-		const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
-		// Date range for display
-		// const startDateDisplay = dayjs(dates[0]).format('MMM D')
-		// const endDateDisplay = dayjs(dates[dates.length - 1]).format('MMM D')
-
-		// Calculate padding using golden ratio
-		Math.round(16 * (this.active ? GOLDEN_RATIO : 1))
-
-		// Container classes with proper Tailwind utilities
-		const containerClasses = {
-			'px-1': true,
-			'w-full': true,
-			'max-w-full': true,
-			'bg-surface-low': true,
-			'rounded-lg': true,
-			'transition-all': true,
-			'duration-300': true,
-			'overflow-hidden': true,
-			relative: true,
-		}
-
-		// Wrapper style with fixed height to prevent layout shifts
-		const wrapperStyle = {
-			height: `${this.contentHeight}px`,
-			transition: 'height 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-			position: 'relative',
-			overflow: 'hidden',
-		}
-
-		return html`
-			<div class=${classMap(containerClasses)} class="calendar-container">
-				<!-- Fixed height wrapper for smooth transitions -->
-				<div class="calendar-wrapper" style=${styleMap(wrapperStyle)}>
-					<!-- Active (Expanded) View -->
-					<div class="active-view p-4">
-						<!-- Days of week header -->
-						<div class="grid grid-cols-7 gap-2 mb-3 pb-2 border-b border-outlineVariant">
-							${daysOfWeek.map(
-								day => html` <div class="text-center text-xs font-semibold text-primary-default">${day}</div> `,
-							)}
-						</div>
-
-						<!-- Week-based grid for active view -->
-						<div class="overflow-visible pb-4">
-							${repeat(
-								weeks,
-								(_week, i) => `week-${i}`, // Use index as key
-								week => html`
-									<div class="grid grid-cols-7 gap-2 mb-2">
-										${repeat(
-											week,
-											date => date.toISOString(), // Use ISO string as key
-											date => this.renderDateTile(date, false),
-										)}
-									</div>
-								`,
-							)}
-						</div>
-					</div>
-
-					<!-- Compact View -->
-					<div class="compact-view">
-						<!-- Horizontal scroll for compact view -->
-						<div class="flex gap-0 overflow-x-auto scrollbar-hide snap-x py-1">
-							${repeat(
-								dates,
-								date => date.toISOString(),
-								date => this.renderDateTile(date, true),
-							)}
-						</div>
-					</div>
-				</div>
-			</div>
-		`
-	}
-
-	// Render date tile with Tailwind classes
+	/**
+	 * Render date tile with Tailwind classes
+	 */
 	private renderDateTile(date: Date, isCompact = false) {
 		const dateDay = dayjs(date)
 		const isSelected = dayjs(this.value).isSame(dateDay, 'day')
 		const isToday = dateDay.isSame(this._today, 'day')
-		const isWeekend = date.getDay() === 0 || date.getDay() === 6
+		const isWeekend = this.isWeekend(date)
 		const isPastDate = dateDay.isBefore(this._today, 'day')
 		const dateValue = dateDay.format('YYYY-MM-DD')
 
@@ -572,6 +575,11 @@ export class DateSelectionStep extends $LitElement(css`
 		const compactHeight = `h-${Math.round(14 * GOLDEN_RATIO)}`
 		const activeWidth = 'w-full'
 		const activeHeight = isCompact ? compactHeight : 'h-20'
+
+		// ARIA attributes for accessibility
+		const ariaSelected = isSelected ? 'true' : 'false'
+		const ariaDisabled = isPastDate ? 'true' : 'false'
+		const ariaLabel = `${dateDay.format('dddd, MMMM D, YYYY')}${isToday ? ', Today' : ''}`
 
 		// Tailwind classes for date tile
 		const tileClasses = {
@@ -618,12 +626,107 @@ export class DateSelectionStep extends $LitElement(css`
 		}
 
 		return html`
-			<div class=${classMap(tileClasses)} @click=${() => this._handleDateClick(date)} data-date=${dateValue}>
+			<div
+				class=${classMap(tileClasses)}
+				@click=${() => this._handleDateClick(date)}
+				data-date=${dateValue}
+				role="button"
+				tabindex=${isPastDate ? '-1' : '0'}
+				aria-selected=${ariaSelected}
+				aria-disabled=${ariaDisabled}
+				aria-label=${ariaLabel}
+			>
 				<div class="text-xs font-medium ${isWeekend && !isSelected ? 'text-primary-default' : ''}">
 					${dateDay.format('ddd')}
 				</div>
 				<div class="text-${isCompact ? 'base' : 'lg'} font-bold">${date.getDate()}</div>
 				<div class="text-xs">${dateDay.format('MMM')}</div>
+			</div>
+		`
+	}
+
+	render() {
+		// Get all dates
+		const dates = this.getNext28Days()
+
+		// Group into weeks for desktop view
+		const weeks = this.groupIntoWeeks(dates)
+
+		// Days of week for header - adjusted for locale
+		const daysOfWeek = this.getDaysOfWeek()
+
+		// Container classes with proper Tailwind utilities
+		const containerClasses = {
+			'px-1': true,
+			'w-full': true,
+			'max-w-full': true,
+			'bg-surface-low': true,
+			'rounded-lg': true,
+			'transition-all': true,
+			'duration-300': true,
+			'overflow-hidden': true,
+			relative: true,
+		}
+
+		// Wrapper style with fixed height to prevent layout shifts
+		const wrapperStyle = {
+			height: `${this.contentHeight}px`,
+			transition: 'height 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+			position: 'relative',
+			overflow: 'hidden',
+		}
+
+		return html`
+			<div
+				class=${classMap(containerClasses)}
+				class="calendar-container"
+				role="region"
+				aria-label="Date selection calendar"
+			>
+				<!-- Fixed height wrapper for smooth transitions -->
+				<div class="calendar-wrapper" style=${styleMap(wrapperStyle)}>
+					<!-- Active (Expanded) View -->
+					<div class="active-view p-4" role="grid">
+						<!-- Days of week header -->
+						<div class="grid grid-cols-7 gap-2 mb-3 pb-2 border-b border-outlineVariant" role="row">
+							${daysOfWeek.map(
+								day =>
+									html`<div class="text-center text-xs font-semibold text-primary-default" role="columnheader">
+										${day}
+									</div>`,
+							)}
+						</div>
+
+						<!-- Week-based grid for active view -->
+						<div class="overflow-visible pb-4">
+							${repeat(
+								weeks,
+								(_week, i) => `week-${i}`, // Use index as key
+								(week, index) => html`
+									<div class="grid grid-cols-7 gap-2 mb-2" role="row" aria-rowindex=${index + 2}>
+										${repeat(
+											week,
+											date => date.toISOString(), // Use ISO string as key
+											date => this.renderDateTile(date, false),
+										)}
+									</div>
+								`,
+							)}
+						</div>
+					</div>
+
+					<!-- Compact View -->
+					<div class="compact-view" role="grid">
+						<!-- Horizontal scroll for compact view -->
+						<div class="flex gap-0 overflow-x-auto scrollbar-hide snap-x py-1" role="row">
+							${repeat(
+								dates,
+								date => date.toISOString(),
+								date => this.renderDateTile(date, true),
+							)}
+						</div>
+					</div>
+				</div>
 			</div>
 		`
 	}
