@@ -278,32 +278,20 @@ export class CourtSelectStep extends $LitElement() {
 
 	/**
 	 * Render availability indicator for partial availability
-	 * Shows a visual progress bar of how much time is available
 	 */
 	private renderCourtAvailabilityIndicator(courtId: string): unknown {
 		const status = this.getCourtAvailabilityStatus(courtId)
 
 		if (status !== 'partial') return null
 
-		// Calculate ratio of available time
-		const ratio = this.getAvailabilityRatio(courtId)
-		const percentage = Math.round(ratio * 100)
-
 		// Get the actual available duration info
 		const availabilityInfo = this.getPartialAvailabilityInfo(courtId)
 
 		return html`
-			<div class="absolute bottom-0 left-0 right-0">
-				<!-- Progress bar -->
-				<div class="h-2 bg-surface-dim">
-					<div
-						class="h-full ${percentage >= 50 ? 'bg-success-container' : 'bg-warning-default'}"
-						style="width: ${percentage}%"
-					></div>
+			<div class="absolute bottom-0 left-0 right-0 z-10">
+				<div class="text-center text-xs py-1 bg-slate-50 text-slate-700 border-t border-slate-200">
+					${availabilityInfo}
 				</div>
-
-				<!-- Text label -->
-				<div class="text-center text-xs font-medium py-1 bg-surface-container bg-opacity-75">${availabilityInfo}</div>
 			</div>
 		`
 	}
@@ -531,25 +519,23 @@ export class CourtSelectStep extends $LitElement() {
 			'duration-300': true,
 			relative: true, // For availability indicator
 			'opacity-50': availabilityStatus === 'none',
-			'p-1': availabilityStatus === 'partial', // Add padding for the glow effect
-			'overflow-visible': availabilityStatus === 'partial', // Allow glow to extend beyond
+			'p-1': availabilityStatus === 'partial', // Add slight padding
+			'overflow-visible': true,
 		}
 	}
 
 	/**
-	 * Get inline styles for the court card container
-	 * Used for effects that can't be done with Tailwind classes
+	 * Get court card container style for partially available courts
 	 */
 	private getCourtCardContainerStyle(courtId: string): string {
 		const status = this.getCourtAvailabilityStatus(courtId)
 
 		if (status === 'partial') {
-			// Create a vibrant yellow glow effect with a gradient background
+			// Very subtle styling that's professional and understated
 			return `
-				background: linear-gradient(rgba(255, 236, 153, 0.5), rgba(255, 193, 7, 0.3));
-				box-shadow: 0 0 15px rgba(255, 193, 7, 0.6), inset 0 0 8px rgba(255, 193, 7, 0.4);
-				border: 2px solid #FFC107;
+				border: 1px solid #F0F0F0;
 				border-radius: 8px;
+				background-color: white;
 			`
 		}
 
@@ -557,17 +543,11 @@ export class CourtSelectStep extends $LitElement() {
 	}
 
 	/**
-	 * Get styles for the yellow overlay effect
+	 * Get styles for the yellow overlay effect - simplified to match screenshot
 	 */
 	private getYellowOverlayStyle(): string {
 		return `
-			position: absolute;
-			inset: 0;
-			background: linear-gradient(135deg, rgba(255, 235, 59, 0.15), rgba(255, 193, 7, 0.3));
-			backdrop-filter: saturate(180%) blur(2px);
-			z-index: 1;
-			border-radius: 6px;
-			pointer-events: none;
+			display: none; /* Hide the overlay to match screenshot */
 		`
 	}
 
@@ -623,28 +603,21 @@ export class CourtSelectStep extends $LitElement() {
 		if (status === 'full') {
 			return html`
 				<div
-					class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-success-default text-success-on rounded-full text-xs font-medium"
+					class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-sm text-xs border border-emerald-200"
 				>
 					Available
 				</div>
 			`
 		}
 
+		// Don't show redundant badge for partial availability (handled by the Limited ribbon)
 		if (status === 'partial') {
-			const info = this.getPartialAvailabilityInfo(courtId)
-			return html`
-				<div
-					class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-warning-default text-warning-on rounded-full text-xs font-medium flex items-center"
-				>
-					<schmancy-icon size="12px" class="mr-1">schedule</schmancy-icon>
-					<span>${info}</span>
-				</div>
-			`
+			return null
 		}
 
 		return html`
 			<div
-				class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-error-container text-error-on-container rounded-full text-xs font-medium flex items-center"
+				class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-slate-100 text-slate-500 rounded-sm text-xs border border-slate-200 flex items-center"
 			>
 				<schmancy-icon size="12px" class="mr-1">block</schmancy-icon>
 				<span>Unavailable</span>
@@ -653,39 +626,19 @@ export class CourtSelectStep extends $LitElement() {
 	}
 
 	/**
-	 * Render a diagonal "Limited" ribbon for partially available courts
-	 * With enhanced styling and animation
+	 * Render a subtle badge for partially available courts
 	 */
 	private renderLimitedRibbon(courtId: string): unknown {
 		const status = this.getCourtAvailabilityStatus(courtId)
 
 		if (status !== 'partial') return null
 
+		// Simple, professional badge
 		return html`
-			<div class="absolute inset-0 overflow-hidden pointer-events-none z-10">
-				<div
-					class="absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 rotate-45 
-					bg-gradient-to-r from-yellow-500 to-orange-500 text-xs font-bold py-1 px-12 text-white 
-					shadow-lg limited-ribbon"
-				>
-					LIMITED
+			<div class="absolute top-0 left-0 z-10">
+				<div class="bg-amber-50 text-amber-800 text-xs px-2 py-0.5 m-1 rounded-sm border border-amber-200">
+					Limited availability
 				</div>
-
-				<!-- Add animation -->
-				<style>
-					.limited-ribbon {
-						animation: shimmer 2s infinite linear;
-						background-size: 200% 100%;
-					}
-					@keyframes shimmer {
-						0% {
-							background-position: 100% 0;
-						}
-						100% {
-							background-position: 0 0;
-						}
-					}
-				</style>
 			</div>
 		`
 	}
