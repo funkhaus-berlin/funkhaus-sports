@@ -6,17 +6,30 @@ import { customElement, property, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import { distinctUntilChanged, filter, map, startWith, takeUntil, tap } from 'rxjs'
+import {
+	BehaviorSubject,
+	combineLatest,
+	distinctUntilChanged,
+	filter,
+	fromEvent,
+	map,
+	Observable,
+	shareReplay,
+	startWith,
+	take,
+	takeUntil,
+	tap,
+} from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { enhancedAvailabilityCoordinator } from 'src/bookingServices/enhanced-availability-coordinator'
 import { Court } from 'src/db/courts.collection'
+import { toUserTimezone } from 'src/utils/timezone'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { Duration } from '../../types'
-import { getUserTimezone, toUserTimezone } from 'src/utils/timezone'
 
 /**
  * Duration selection component that matches the time selection component design
- * Horizontally scrollable, responsive and with consistent animations
+ * Grid view by default on desktop, switching to list view on selection or small screens
  * Uses the enhanced availability coordinator to show durations for all courts
  */
 @customElement('duration-selection-step')
@@ -28,6 +41,31 @@ export class DurationSelectionStep extends $LitElement(css`
 	.scrollbar-hide::-webkit-scrollbar {
 		display: none; /* Chrome, Safari, and Opera */
 	}
+
+	/* Prevent overflow clipping issues with scaling */
+	.options-scroll-container {
+		padding: 10px;
+		margin: -10px;
+	}
+
+	.duration-tile {
+		transform-origin: center;
+		transition: all 0.3s ease;
+	}
+
+	.duration-tile.selected {
+		transform: scale(1.05);
+		box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+	}
+
+	.duration-tile:hover:not(.selected) {
+		transform: scale(1.05);
+		box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+	}
+
+	.duration-tile:active:not(.selected) {
+		transform: scale(0.95);
+	}
 `) {
 	@property({ type: Boolean }) active = true
 	@property({ type: Boolean }) hidden = false
@@ -37,24 +75,291 @@ export class DurationSelectionStep extends $LitElement(css`
 	@select(courtsContext) courts!: Map<string, Court>
 	@select(BookingProgressContext) bookingProgress!: BookingProgress
 
-	// State properties
-	@state() durations: Duration[] = []
-	@state() loading = true
-	@state() error: string | null = null
-	@state() selectedCourt?: Court
-	@state() showingEstimatedPrices = false
-	@state() autoScrollAttempted = false
-	@state() availableCourtsCount = 0 // Added to show count of available courts
+	// Core state streams
+	private state$ = new BehaviorSubject<{
+		durations: Duration[]
+		loading: boolean
+		error: string | null
+		autoScrollAttempted: boolean
+		viewMode: 'grid' | 'list'
+		showingEstimatedPrices: boolean
+		availableCourtsCount: number
+	}>({
+		durations: [],
+		loading: true,
+		error: null,
+		autoScrollAttempted: false,
+		viewMode: 'grid',
+		showingEstimatedPrices: false,
+		availableCourtsCount: 0,
+	})
 
-	// Track the last successful durations data for better UX during errors
+	// State properties derived from observables
+	@state() private isActive = false
+	@state() private isCompact = false
+	@state() private isDesktopOrTablet = window.innerWidth >= 384
+	@state() private shouldUseGridView = false
+
+	// Observables for reactive state management
+	private isActive$!: Observable<boolean>
+	private isCompact$!: Observable<boolean>
+	private isDesktopOrTablet$!: Observable<boolean>
+	private shouldUseGridView$!: Observable<boolean>
+
+	// Store references for cleanup
+	private resizeObserver: ResizeObserver | null = null
+
+	// Last successful data for fallback
 	private lastSuccessfulData: { durations: Duration[] } | null = null
 
+	// Connection lifecycle methods
+	connectedCallback(): void {
+		super.connectedCallback()
+
+		// Initialize derived streams
+		this.setupStateStreams()
+
+		// Set up resize observer for responsive layout
+		this.setupResizeObserver()
+
+		// Subscribe to external data sources
+		this.subscribeToBookingContext()
+		this.subscribeToProgressContext()
+		this.subscribeToAvailabilityCoordinator()
+	}
+
+	disconnectedCallback(): void {
+		super.disconnectedCallback()
+
+		// Clean up observers
+		if (this.resizeObserver) {
+			this.resizeObserver.disconnect()
+			this.resizeObserver = null
+		}
+	}
+
+	// Stream setup methods
+	private setupStateStreams(): void {
+		// Screen size stream
+		this.isDesktopOrTablet$ = fromEvent(window, 'resize').pipe(
+			startWith(null),
+			map(() => window.innerWidth >= 384),
+			distinctUntilChanged(),
+			shareReplay(1),
+		)
+
+		// Active state from properties and context
+		this.isActive$ = BookingProgressContext.$.pipe(
+			map(progress => progress.currentStep === BookingStep.Duration),
+			startWith(this.active),
+			distinctUntilChanged(),
+			shareReplay(1),
+		)
+
+		// Compact mode stream
+		this.isCompact$ = BookingProgressContext.$.pipe(
+			map(progress => progress.currentStep !== BookingStep.Duration),
+			distinctUntilChanged(),
+			shareReplay(1),
+		)
+
+		// Calculate view mode based on screen size, active state, and selection
+		combineLatest([this.isDesktopOrTablet$, this.isActive$, bookingContext.$.pipe(map(booking => !!booking?.endTime))])
+			.pipe(
+				map(([isDesktop, isActive, hasSelection]) => {
+					const currentMode = this.state$.value.viewMode
+					// If not active, always use list view
+					if (!isActive) return 'list'
+					// If selection is made, switch to list view
+					if (hasSelection) return 'list'
+					// If switching to mobile, always use list
+					if (!isDesktop) return 'list'
+					// If switching from inactive to active on desktop, use grid
+					if (isActive && isDesktop && currentMode === 'list' && !hasSelection) return 'grid'
+					// Otherwise keep current mode
+					return currentMode
+				}),
+				distinctUntilChanged(),
+				takeUntil(this.disconnecting),
+			)
+			.subscribe(viewMode => {
+				this.updateState({ viewMode })
+
+				// If switching to list mode, try to scroll after a brief delay
+				if (viewMode === 'list') {
+					setTimeout(() => {
+						if (this.booking.endTime) {
+							this.scrollToSelectedDuration()
+						} else if (!this.state$.value.autoScrollAttempted) {
+							this.updateState({ autoScrollAttempted: true })
+							this.scrollToFirstDuration()
+						}
+					}, 150)
+				}
+			})
+
+		// Should use grid view - derived from other streams
+		this.shouldUseGridView$ = combineLatest([
+			this.isActive$,
+			this.isDesktopOrTablet$,
+			this.state$.pipe(map(state => state.viewMode)),
+		]).pipe(
+			map(([isActive, isDesktop, viewMode]) => isActive && isDesktop && viewMode === 'grid'),
+			distinctUntilChanged(),
+			shareReplay(1),
+		)
+
+		// Subscribe to all observables and update component properties
+		this.isActive$.pipe(takeUntil(this.disconnecting)).subscribe(isActive => {
+			this.isActive = isActive
+			this.requestUpdate()
+		})
+
+		this.isCompact$.pipe(takeUntil(this.disconnecting)).subscribe(isCompact => {
+			this.isCompact = isCompact
+			this.requestUpdate()
+		})
+
+		this.isDesktopOrTablet$.pipe(takeUntil(this.disconnecting)).subscribe(isDesktopOrTablet => {
+			this.isDesktopOrTablet = isDesktopOrTablet
+			this.requestUpdate()
+		})
+
+		this.shouldUseGridView$.pipe(takeUntil(this.disconnecting)).subscribe(shouldUseGridView => {
+			this.shouldUseGridView = shouldUseGridView
+			this.requestUpdate()
+		})
+	}
+
+	private setupResizeObserver(): void {
+		this.resizeObserver = new ResizeObserver(() => {
+			const isDesktopOrTablet = window.innerWidth >= 384
+			this.isDesktopOrTablet$
+				.pipe(
+					takeUntil(this.disconnecting),
+					filter(current => current !== isDesktopOrTablet),
+					take(1),
+				)
+				.subscribe()
+		})
+
+		// Observe document body for size changes
+		this.resizeObserver.observe(document.body)
+	}
+
+	// State management helper
+	private updateState(partialState: Partial<typeof this.state$.value>): void {
+		this.state$.next({
+			...this.state$.value,
+			...partialState,
+		})
+		this.requestUpdate()
+	}
+
+	// External subscriptions
+	private subscribeToBookingContext(): void {
+		bookingContext.$.pipe(
+			startWith(bookingContext.value),
+			takeUntil(this.disconnecting),
+			filter(booking => {
+				// Ensure booking exists and has required properties
+				if (!booking) return false
+				return !!booking.date && !!booking.startTime
+			}),
+			map(booking => ({
+				date: booking.date,
+				startTime: booking.startTime,
+				endTime: booking.endTime,
+			})),
+			// Important: reload when time selection changes
+			// Using distinctUntilChanged to avoid unnecessary reloads
+			filter((booking, index) => {
+				// Always load on first emission
+				if (index === 0) return true
+				// Only reload if start time or date changed
+				return booking.startTime !== this.booking?.startTime || booking.date !== this.booking?.date
+			}),
+			tap(booking => {
+				console.log('Booking context changed, reloading durations:', booking)
+				this.updateState({
+					loading: true,
+					autoScrollAttempted: false,
+					durations: [],
+				})
+
+				// Load durations with a short delay to ensure availability data is up to date
+				setTimeout(() => this.loadDurations(), 100)
+			}),
+		).subscribe({
+			error: err => {
+				console.error('Error in booking subscription:', err)
+				this.updateState({
+					error: 'Failed to load duration options',
+					loading: false,
+				})
+
+				// Fallback to estimated prices on error
+				this.setEstimatedPrices()
+			},
+		})
+	}
+
+	private subscribeToProgressContext(): void {
+		BookingProgressContext.$.pipe(takeUntil(this.disconnecting)).subscribe(progress => {
+			this.isActive = progress.currentStep === BookingStep.Duration
+			this.requestUpdate()
+
+			// Reset auto-scroll flag when this step becomes active
+			if (progress.currentStep === BookingStep.Duration) {
+				this.updateState({ autoScrollAttempted: false })
+
+				// Try to scroll to selected duration after a brief delay to ensure DOM is ready
+				setTimeout(() => {
+					if (this.state$.value.viewMode === 'list') {
+						this.scrollToSelectedDuration()
+					}
+				}, 100)
+			}
+		})
+	}
+
+	private subscribeToAvailabilityCoordinator(): void {
+		// Subscribe to enhanced availability coordinator errors
+		enhancedAvailabilityCoordinator.error$
+			.pipe(
+				takeUntil(this.disconnecting),
+				filter(error => !!error),
+			)
+			.subscribe(error => {
+				this.updateState({ error })
+			})
+
+		// Subscribe to enhanced availability coordinator loading state
+		enhancedAvailabilityCoordinator.loading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
+			this.updateState({ loading })
+		})
+	}
+
 	/**
-	 * Determine if compact view should be used based on booking progress context
-	 * Matches the pattern used in time-selection-step
+	 * Toggle between grid and list view
 	 */
-	get isCompact(): boolean {
-		return this.bookingProgress?.currentStep !== BookingStep.Duration
+	private toggleView(mode: 'grid' | 'list'): void {
+		if (this.state$.value.viewMode !== mode) {
+			this.updateState({ viewMode: mode })
+
+			// If switching to list mode, enable scrolling behavior
+			if (mode === 'list') {
+				setTimeout(() => {
+					const currentDuration = this.getCurrentDuration()
+					if (currentDuration) {
+						this.scrollToSelectedDuration()
+					} else if (!this.state$.value.autoScrollAttempted) {
+						this.updateState({ autoScrollAttempted: true })
+						this.scrollToFirstDuration()
+					}
+				}, 150)
+			}
+		}
 	}
 
 	/**
@@ -82,15 +387,16 @@ export class DurationSelectionStep extends $LitElement(css`
 	 */
 	private loadDurations(): void {
 		// Set initial loading state
-		this.loading = true
-		this.error = null
-		this.requestUpdate()
+		this.updateState({
+			loading: true,
+			error: null,
+		})
 
 		// Safety check to make sure booking object exists
 		if (!this.booking) {
 			console.warn('Booking object not available, using estimated prices')
 			this.setEstimatedPrices()
-			this.loading = false
+			this.updateState({ loading: false })
 			return
 		}
 
@@ -112,10 +418,13 @@ export class DurationSelectionStep extends $LitElement(css`
 
 					// Track available courts count
 					const maxAvailableCourts = Math.max(...allDurations.map(d => d.availableCourts.length))
-					this.availableCourtsCount = maxAvailableCourts
 
-					this.durations = durations
-					this.showingEstimatedPrices = false
+					this.updateState({
+						durations,
+						showingEstimatedPrices: false,
+						availableCourtsCount: maxAvailableCourts,
+					})
+
 					this.lastSuccessfulData = { durations }
 					this.announceForScreenReader(`${durations.length} duration options available`)
 					console.log('Loaded durations:', durations)
@@ -123,19 +432,27 @@ export class DurationSelectionStep extends $LitElement(css`
 					// No valid durations available - check if it's a data issue or truly no availability
 					if (enhancedAvailabilityCoordinator.error$.value) {
 						// There was an error fetching availability data
-						this.error = 'Could not determine available durations. Using estimates instead.'
+						this.updateState({
+							error: 'Could not determine available durations. Using estimates instead.',
+							durations: [],
+						})
 						this.setEstimatedPrices()
 						console.warn('Using estimated prices due to error:', enhancedAvailabilityCoordinator.error$.value)
 					} else {
 						// No error, but still no available durations - truly unavailable
-						this.error = 'No valid duration options available for this time slot. Please select a different time.'
-						this.durations = []
+						this.updateState({
+							error: 'No valid duration options available for this time slot. Please select a different time.',
+							durations: [],
+						})
 						console.warn('No durations available for this time slot')
 					}
 				}
 			} catch (error) {
 				console.error('Error getting available durations:', error)
-				this.error = 'Error determining available durations. Using estimates instead.'
+				this.updateState({
+					error: 'Error determining available durations. Using estimates instead.',
+					durations: [],
+				})
 				this.setEstimatedPrices()
 			}
 		} else {
@@ -144,93 +461,18 @@ export class DurationSelectionStep extends $LitElement(css`
 			this.setEstimatedPrices()
 		}
 
-		this.loading = false
-		this.requestUpdate()
+		this.updateState({ loading: false })
 
 		// After data is loaded, try to scroll to the appropriate position
 		this.updateComplete.then(() => {
-			if (this.booking.endTime) {
-				setTimeout(() => this.scrollToSelectedDuration(), 150)
-			} else if (!this.autoScrollAttempted) {
-				this.autoScrollAttempted = true
-				setTimeout(() => this.scrollToFirstDuration(), 150)
+			if (this.state$.value.viewMode === 'list') {
+				if (this.booking.endTime) {
+					setTimeout(() => this.scrollToSelectedDuration(), 150)
+				} else if (!this.state$.value.autoScrollAttempted) {
+					this.updateState({ autoScrollAttempted: true })
+					setTimeout(() => this.scrollToFirstDuration(), 150)
+				}
 			}
-		})
-	}
-
-	// Add a reactive subscription to the BookingProgress context
-	connectedCallback(): void {
-		super.connectedCallback()
-
-		// Subscribe to BookingProgressContext changes to track compact state
-		BookingProgressContext.$.pipe(takeUntil(this.disconnecting)).subscribe(progress => {
-			this.active = progress.currentStep === BookingStep.Duration
-			this.requestUpdate()
-
-			// Reset auto-scroll flag when this step becomes active
-			if (progress.currentStep === BookingStep.Duration) {
-				this.autoScrollAttempted = false
-				// Try to scroll to selected duration after a brief delay to ensure DOM is ready
-				setTimeout(() => this.scrollToSelectedDuration(), 100)
-			}
-		})
-
-		// Subscribe to enhanced availability coordinator errors
-		enhancedAvailabilityCoordinator.error$
-			.pipe(
-				takeUntil(this.disconnecting),
-				filter(error => !!error),
-			)
-			.subscribe(error => {
-				this.error = error
-				this.requestUpdate()
-			})
-
-		// Subscribe to enhanced availability coordinator loading state
-		enhancedAvailabilityCoordinator.loading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
-			this.loading = loading
-			this.requestUpdate()
-		})
-
-		// Set up reactive subscription to booking context
-		// Enhanced to respond immediately to time selection changes
-		bookingContext.$.pipe(
-			startWith(bookingContext.value),
-			takeUntil(this.disconnecting),
-			filter(booking => {
-				// Ensure booking exists and has required properties
-				if (!booking) return false
-				return !!booking.date && !!booking.startTime
-			}),
-			map(booking => ({
-				date: booking.date,
-				startTime: booking.startTime,
-				endTime: booking.endTime,
-			})),
-			// Important: reload when time selection changes (courtId is no longer important here)
-			distinctUntilChanged((prev, curr) => prev.startTime === curr.startTime && prev.date === curr.date),
-			tap(booking => {
-				console.log('Booking context changed, reloading durations:', booking)
-				this.loading = true
-				this.autoScrollAttempted = false // Reset auto-scroll flag when data changes
-
-				// Clear durations to show loading state properly
-				this.durations = []
-				this.requestUpdate()
-
-				// Load durations with a short delay to ensure availability data is up to date
-				setTimeout(() => this.loadDurations(), 100)
-			}),
-		).subscribe({
-			error: err => {
-				console.error('Error in booking subscription:', err)
-				this.error = 'Failed to load duration options'
-				this.loading = false
-				this.requestUpdate()
-
-				// Fallback to estimated prices on error
-				this.setEstimatedPrices()
-			},
 		})
 	}
 
@@ -254,9 +496,6 @@ export class DurationSelectionStep extends $LitElement(css`
 			}
 		}
 
-		// Set a flag that these are estimated prices
-		this.showingEstimatedPrices = true
-
 		// Create estimated durations based on the baseline rate
 		const estimatedDurations = [
 			{ label: '30m', value: 30, price: Math.round(baseHourlyRate / 2) },
@@ -265,12 +504,20 @@ export class DurationSelectionStep extends $LitElement(css`
 			{ label: '2h', value: 120, price: baseHourlyRate * 2 },
 			{ label: '2.5h', value: 150, price: Math.round(baseHourlyRate * 2.5) },
 			{ label: '3h', value: 180, price: baseHourlyRate * 3 },
+			{ label: '3.5h', value: 210, price: Math.round(baseHourlyRate * 3.5) },
+			{ label: '4h', value: 240, price: baseHourlyRate * 4 },
+			{ label: '4.5h', value: 270, price: Math.round(baseHourlyRate * 4.5) },
+			{ label: '5h', value: 300, price: baseHourlyRate * 5 },
 		]
 
 		// Apply time constraints to estimated durations
 		const filteredDurations = this.filterEstimatedDurations(estimatedDurations)
 
-		this.durations = filteredDurations
+		this.updateState({
+			durations: filteredDurations,
+			showingEstimatedPrices: true,
+		})
+
 		this.lastSuccessfulData = { durations: filteredDurations }
 		this.announceForScreenReader('Showing estimated duration options')
 	}
@@ -319,6 +566,9 @@ export class DurationSelectionStep extends $LitElement(css`
 			)
 		}
 
+		// Always switch to list view after selection
+		this.updateState({ viewMode: 'list' })
+
 		// Ensure the selected duration is properly centered after selection
 		setTimeout(() => this.scrollToSelectedDuration(), 150)
 
@@ -350,22 +600,25 @@ export class DurationSelectionStep extends $LitElement(css`
 			120: '2 hours',
 			150: '2.5 hours',
 			180: '3 hours',
+			210: '3.5h',
+			240: '4h',
+			270: '4.5h',
+			300: '5h',
 		}
 
 		return map[duration.value] || `${duration.value} minutes`
 	}
 
 	/**
-	 * Scroll to selected duration
-	 * Only scrolls if the element is not already visible in the viewport
+	 * Scroll to selected duration with improved positioning
 	 */
 	private scrollToSelectedDuration(): void {
 		const currentDuration = this.getCurrentDuration()
-		if (!currentDuration) return
+		if (!currentDuration || this.state$.value.viewMode !== 'list') return
 
 		try {
 			// Get the scrollable container
-			const scrollContainer = this.shadowRoot?.querySelector('div.overflow-x-auto') as HTMLElement
+			const scrollContainer = this.shadowRoot?.querySelector('.options-scroll-container') as HTMLElement
 			if (!scrollContainer) return
 
 			// Find the selected duration element
@@ -376,27 +629,11 @@ export class DurationSelectionStep extends $LitElement(css`
 			const containerRect = scrollContainer.getBoundingClientRect()
 			const elementRect = durationEl.getBoundingClientRect()
 
-			// Element is fully visible if its left and right edges are within the container's viewport
+			// Calculate if element is fully visible
 			const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
 
-			// Element is partially visible if at least some part of it is in the viewport
-			const isPartiallyVisible = elementRect.left < containerRect.right && elementRect.right > containerRect.left
-
 			// If the element is already fully visible, don't scroll
-			if (isFullyVisible) {
-				return
-			}
-
-			// If partially visible but more than half is visible, don't scroll either
-			if (isPartiallyVisible) {
-				const visibleWidth =
-					Math.min(elementRect.right, containerRect.right) - Math.max(elementRect.left, containerRect.left)
-				const elementVisiblePercentage = visibleWidth / elementRect.width
-
-				if (elementVisiblePercentage > 0.5) {
-					return
-				}
-			}
+			if (isFullyVisible) return
 
 			// Calculate the center position
 			const containerWidth = scrollContainer.clientWidth
@@ -418,19 +655,18 @@ export class DurationSelectionStep extends $LitElement(css`
 
 	/**
 	 * Scroll to first duration option
-	 * Only scrolls if the element is not already visible in the viewport
 	 */
 	private scrollToFirstDuration(): void {
-		if (this.durations.length === 0) return
+		if (this.state$.value.durations.length === 0 || this.state$.value.viewMode !== 'list') return
 
 		try {
 			// Get the scrollable container
-			const scrollContainer = this.shadowRoot?.querySelector('div.overflow-x-auto') as HTMLElement
+			const scrollContainer = this.shadowRoot?.querySelector('.options-scroll-container') as HTMLElement
 			if (!scrollContainer) return
 
 			// Find the first duration element
 			const durationEl = this.shadowRoot?.querySelector(
-				`[data-duration-value="${this.durations[0].value}"]`,
+				`[data-duration-value="${this.state$.value.durations[0].value}"]`,
 			) as HTMLElement
 			if (!durationEl) return
 
@@ -441,27 +677,10 @@ export class DurationSelectionStep extends $LitElement(css`
 			// Element is fully visible if its left and right edges are within the container's viewport
 			const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
 
-			// Element is partially visible if at least some part of it is in the viewport
-			const isPartiallyVisible = elementRect.left < containerRect.right && elementRect.right > containerRect.left
-
-			// If the element is already fully visible, don't scroll
+			// If the element is already fully visible, just highlight it
 			if (isFullyVisible) {
-				// Just highlight the element
 				this.highlightDurationOption(durationEl)
 				return
-			}
-
-			// If partially visible but more than half is visible, don't scroll either
-			if (isPartiallyVisible) {
-				const visibleWidth =
-					Math.min(elementRect.right, containerRect.right) - Math.max(elementRect.left, containerRect.left)
-				const elementVisiblePercentage = visibleWidth / elementRect.width
-
-				if (elementVisiblePercentage > 0.5) {
-					// Just highlight the element
-					this.highlightDurationOption(durationEl)
-					return
-				}
 			}
 
 			// Calculate the center position
@@ -523,13 +742,45 @@ export class DurationSelectionStep extends $LitElement(css`
 	}
 
 	/**
+	 * Render view toggle buttons
+	 */
+	private renderViewToggle(): unknown {
+		if (!this.isDesktopOrTablet || !this.isActive) return nothing
+
+		const viewMode = this.state$.value.viewMode
+
+		return html`
+			<div class="flex items-center p-1 rounded-lg bg-surface-variant">
+				<button
+					class="px-2 py-1 rounded-md flex items-center justify-center transition-all duration-200 
+						${viewMode === 'grid' ? 'bg-primary-container text-primary-default' : ''}"
+					@click=${() => this.toggleView('grid')}
+					aria-label="Grid view"
+					title="Grid view"
+				>
+					<schmancy-icon size="18px">grid_view</schmancy-icon>
+				</button>
+				<button
+					class="px-2 py-1 rounded-md flex items-center justify-center transition-all duration-200
+						${viewMode === 'list' ? 'bg-primary-container text-primary-default' : ''}"
+					@click=${() => this.toggleView('list')}
+					aria-label="List view"
+					title="List view"
+				>
+					<schmancy-icon size="18px">view_list</schmancy-icon>
+				</button>
+			</div>
+		`
+	}
+
+	/**
 	 * Render error state
 	 */
 	private renderErrorState(): unknown {
 		return html`
 			<div class="p-6 bg-error-container rounded-lg text-center">
 				<schmancy-icon size="32px" class="text-error-default mb-2">error_outline</schmancy-icon>
-				<p class="text-error-on-container mb-2">${this.error}</p>
+				<p class="text-error-on-container mb-2">${this.state$.value.error}</p>
 				<button @click=${() => this.retryLoading()} class="px-4 py-2 bg-error-default text-error-on rounded-md mt-2">
 					Try Again
 				</button>
@@ -566,205 +817,65 @@ export class DurationSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Main render method
+	 * Render grid layout for durations
 	 */
-	render() {
-		if (this.hidden) return nothing
-
-		// Show loading state
-		if (this.loading && !this.lastSuccessfulData) {
-			return this.renderLoadingState()
-		}
-
-		// Show error message if present
-		if (this.error && !this.lastSuccessfulData) {
-			return this.renderErrorState()
-		}
-
-		// Show empty state if no durations
-		if (this.durations.length === 0) {
-			return this.renderEmptyState()
-		}
-
-		// Define class objects for animated transitions
-		const containerClasses = {
-			'px-2': true,
-			'w-full': true,
-			'bg-surface-low': true,
-			'rounded-lg': true,
-			'transition-all': true,
-			'duration-300': true,
-			'mt-3': true, // Match time select spacing
-			transform: true,
-			'ease-in-out': true,
-			'scale-100': this.active,
-			'scale-95': !this.active && !this.isCompact,
-		}
-
-		// Render main content
+	private renderGridLayout(durations: Duration[]): unknown {
 		return html`
-			<div class=${classMap(containerClasses)}>
-				<!-- Error message if present while still showing content -->
-				${this.error
-					? html`
-							<div class="bg-error-container p-2 rounded-t-lg text-error-on-container text-sm text-center mb-3">
-								${this.error}
-								<button @click=${() => this.retryLoading()} class="ml-2 underline font-medium">Refresh</button>
-							</div>
-					  `
-					: nothing}
-
-				<!-- Title section with animations aligned with time-select -->
-				${when(
-					this.active,
-					() => html`
-						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
-							Select Duration
-						</schmancy-typography>
-						<div class="text-xs text-surface-on-variant mt-1 flex items-center justify-between">
-							<span>Choose how long you'd like to play</span>
-							${this.availableCourtsCount > 0
-								? html`
-										<span class="text-success-default"
-											>${this.availableCourtsCount} ${this.availableCourtsCount === 1 ? 'court' : 'courts'}
-											available</span
-										>
-								  `
-								: ''}
-						</div>
-					`,
+			<div
+				class="grid grid-cols-5 gap-2 py-4"
+				role="listbox"
+				aria-label="Available Duration Options"
+				aria-multiselectable="false"
+			>
+				${repeat(
+					durations,
+					duration => duration.value,
+					duration => this.renderDurationOption(duration),
 				)}
-
-				<!-- Duration options scrollable container with animation -->
-				<div
-					class="flex py-2 overflow-x-auto scrollbar-hide transition-all duration-300 ${this.isCompact
-						? 'gap-2'
-						: 'gap-3'}"
-					role="listbox"
-					aria-label="Available Duration Options"
-					aria-multiselectable="false"
-				>
-					${repeat(
-						this.durations,
-						duration => duration.value,
-						duration => this.renderDurationOption(duration),
-					)}
-				</div>
-
-				<!-- Hint text with estimated price warning if needed -->
-				<div class="mt-2 text-center text-xs pb-2">
-					<p class="text-surface-on-variant">All prices include VAT</p>
-					${this.showingEstimatedPrices
-						? html`<p class="text-warning-default mt-1">
-								<schmancy-icon class="mr-1" size="12px">info</schmancy-icon>
-								Estimated prices. Actual price may vary.
-						  </p>`
-						: nothing}
-				</div>
 			</div>
 		`
 	}
 
 	/**
-	 * Render a duration option with animations
+	 * Render list layout for durations
+	 */
+	private renderListLayout(durations: Duration[]): unknown {
+		return html`
+			<div
+				class="options-scroll-container flex py-2 overflow-x-auto scrollbar-hide transition-all duration-300 
+					${this.isCompact ? 'gap-2' : 'gap-3'}"
+				role="listbox"
+				aria-label="Available Duration Options"
+				aria-multiselectable="false"
+			>
+				${repeat(
+					durations,
+					duration => duration.value,
+					duration => this.renderDurationOption(duration),
+				)}
+			</div>
+		`
+	}
+
+	/**
+	 * Render a duration option with consistent styling
 	 */
 	private renderDurationOption(duration: Duration) {
 		const currentDuration = this.getCurrentDuration()
 		const isSelected = currentDuration === duration.value
 
-		// Size and spacing classes based on compact state
-		const sizeClasses = {
-			// Normal size
-			'w-28': !this.isCompact,
-			'h-28': !this.isCompact,
-			// Compact size
-			'w-20': this.isCompact,
-			'h-20': this.isCompact,
-		}
-
-		// Classes for the duration option
-		const optionClasses = {
-			// Basic layout
-			'flex-none': true,
-			'rounded-lg': true,
-			flex: true,
-			'flex-col': true,
-			'items-center': true,
-			'justify-center': true,
-			border: true,
-
-			// Sizes with animation
-			...sizeClasses,
-
-			// Transitions - enhanced to match time select motion
-			'transition-all': true,
-			'duration-300': true,
-			transform: true,
-			'ease-in-out': true,
-
-			// Interaction states - enhanced with time-like motion
-			'cursor-pointer': true,
-			'hover:scale-105': !isSelected,
-			'hover:shadow-md': !isSelected,
-			'active:scale-95': !isSelected, // Add press animation
-
-			// Selected animation
-			'scale-105': isSelected, // Make selected items slightly larger like in time select
-			'shadow-md': isSelected, // Add shadow to selected items
-
-			// Visual states
-			'bg-primary-default': isSelected,
-			'text-primary-on': isSelected,
-			'border-primary-default': isSelected,
-			'bg-success-container/10': !isSelected,
-			'border-outlineVariant': !isSelected,
-			'text-surface-on': !isSelected,
-		}
-
-		// Icon animation classes
-		const iconClasses = {
-			'transition-all': true,
-			'duration-300': true,
-			transform: true,
-			'text-primary-on': isSelected,
-			'text-primary-default': !isSelected,
-			'scale-125': isSelected, // Enlarge icon when selected
-		}
-
-		// Price class animation
-		const priceClasses = {
-			'font-bold': true,
-			'mt-2': true,
-			'transition-all': true,
-			'duration-300': true,
-			'text-lg': !this.isCompact && isSelected,
-			'text-base': this.isCompact || !isSelected,
-		}
-
 		return html`
-			<div
-				class=${classMap(optionClasses)}
+			<selection-tile
+				?selected=${isSelected}
+				?compact=${this.isCompact}
+				icon="timer"
+				label=${this.getCompactLabel(duration)}
+				dataValue=${duration.value}
+				.showPrice=${true}
+				price=${duration.price}
 				@click=${() => this.handleDurationSelect(duration)}
 				data-duration-value=${duration.value}
-				role="option"
-				aria-selected="${isSelected ? 'true' : 'false'}"
-			>
-				<!-- Duration icon with enhanced animation -->
-				<schmancy-icon class=${classMap(iconClasses)} size=${this.isCompact ? '16px' : '18px'}> timer </schmancy-icon>
-
-				<!-- Duration label with enhanced animation -->
-				<div class="${this.isCompact ? 'text-sm mt-1' : 'text-base mt-2'} font-medium">
-					${this.getCompactLabel(duration)}
-				</div>
-
-				<!-- Price with enhanced animation -->
-				<div class=${classMap(priceClasses)}>€${duration.price.toFixed(2)}</div>
-
-				<!-- Selected indicator -->
-				${isSelected && !this.isCompact
-					? html` <schmancy-icon size="14px" class="mt-1">check_circle</schmancy-icon> `
-					: nothing}
-			</div>
+			></selection-tile>
 		`
 	}
 
@@ -779,13 +890,126 @@ export class DurationSelectionStep extends $LitElement(css`
 			120: '2h',
 			150: '2.5h',
 			180: '3h',
+			210: '3.5h',
+			240: '4h',
+			270: '4.5h',
+			300: '5h',
 		}
 
 		return map[duration.value] || `${duration.value}m`
 	}
-}
 
-// Register the element in the global namespace
+	/**
+	 * Main render method
+	 */
+	render() {
+		if (this.hidden) return nothing
+
+		// Get current state values
+		const { durations, loading, error, viewMode, showingEstimatedPrices, availableCourtsCount } = this.state$.value
+
+		// Show loading state if loading and no saved data
+		if (loading && !this.lastSuccessfulData) {
+			return this.renderLoadingState()
+		}
+
+		// Show error message if present and no saved data
+		if (error && !this.lastSuccessfulData) {
+			return this.renderErrorState()
+		}
+
+		// Show empty state if no durations
+		if (durations.length === 0 && !this.lastSuccessfulData) {
+			return this.renderEmptyState()
+		}
+
+		// Use last successful data if available
+		const displayDurations =
+			durations.length > 0 ? durations : this.lastSuccessfulData ? this.lastSuccessfulData.durations : []
+
+		// Define class objects for animated transitions
+		const containerClasses = {
+			'w-full': true,
+			'bg-surface-low': true,
+			'rounded-lg': true,
+			'transition-all': true,
+			'duration-300': true,
+			'mt-3': true, // Match time select spacing
+			'px-2': true,
+			transform: true,
+			'ease-in-out': true,
+			'scale-100': this.isActive,
+			'scale-95': !this.isActive && !this.isCompact,
+		}
+
+		// Render main content
+		return html`
+			<div class=${classMap(containerClasses)}>
+				<!-- Error message if present while still showing content -->
+				${error
+					? html`
+							<div class="bg-error-container p-2 rounded-t-lg text-error-on-container text-sm text-center mb-3">
+								${error}
+								<button @click=${() => this.retryLoading()} class="ml-2 underline font-medium">Refresh</button>
+							</div>
+					  `
+					: nothing}
+
+				<!-- Loading indicator overlay if loading but showing existing data -->
+				${loading && displayDurations.length > 0
+					? html`
+							<div class="bg-surface-low bg-opacity-80 p-1 text-center text-xs flex justify-center items-center gap-2">
+								<div
+									class="inline-block w-4 h-4 border-2 border-t-primary-default border-r-outlineVariant border-b-outlineVariant border-l-outlineVariant rounded-full animate-spin"
+								></div>
+								<span>Updating...</span>
+							</div>
+					  `
+					: nothing}
+
+				<!-- Title section with view toggle -->
+				${when(
+					this.isActive,
+					() => html`
+						<div class="flex items-center justify-between">
+							<div>
+								<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
+									Select Duration
+								</schmancy-typography>
+								<div class="text-xs text-surface-on-variant mt-1">
+									<span>Choose how long you'd like to play</span>
+								</div>
+							</div>
+							${this.renderViewToggle()}
+						</div>
+
+						${availableCourtsCount > 0
+							? html`
+									<div class="text-xs text-success-default mt-1">
+										${availableCourtsCount} ${availableCourtsCount === 1 ? 'court' : 'courts'} available
+									</div>
+							  `
+							: nothing}
+					`,
+				)}
+
+				<!-- Duration options container - switching between grid and list -->
+				${this.shouldUseGridView ? this.renderGridLayout(displayDurations) : this.renderListLayout(displayDurations)}
+
+				<!-- Hint text with estimated price warning if needed -->
+				<div class="mt-2 text-center text-xs pb-2">
+					<p class="text-surface-on-variant">All prices include VAT</p>
+					${showingEstimatedPrices
+						? html`<p class="text-warning-default mt-1">
+								<schmancy-icon class="mr-1" size="12px">info</schmancy-icon>
+								Estimated prices. Actual price may vary.
+						  </p>`
+						: nothing}
+				</div>
+			</div>
+		`
+	}
+}
 declare global {
 	interface HTMLElementTagNameMap {
 		'duration-selection-step': DurationSelectionStep

@@ -271,16 +271,6 @@ export class CourtBookingSystem extends $LitElement() {
 		}
 	}
 
-	// HELPER METHODS
-
-	private getDuration(): number {
-		if (!this.booking.startTime || !this.booking.endTime) return 0
-
-		const startTime = new Date(this.booking.startTime).getTime()
-		const endTime = new Date(this.booking.endTime).getTime()
-		return (endTime - startTime) / (1000 * 60) // Convert to minutes
-	}
-
 	private renderProgressSteps() {
 		return html` <funkhaus-booking-steps></funkhaus-booking-steps> `
 	}
@@ -337,14 +327,35 @@ export class CourtBookingSystem extends $LitElement() {
 	render() {
 		return html`
 			<schmancy-surface ${fullHeight()} type="containerLow" rounded="all" elevation="1">
-				<schmancy-grid rows="auto auto 1fr" ${fullHeight()} flow="row" class="max-w-xl mx-auto pt-2">
-					${this.renderProgressSteps()}
+				<schmancy-grid
+					.rcols=${{
+						sm: '1fr',
+						md: '1.68fr 1fr',
+					}}
+					justify="stretch"
+					align="stretch"
+				>
+					<section class="w-full align-self-end">
+						<schmancy-grid
+							rows="auto auto 1fr"
+							${fullHeight()}
+							flow="row"
+							class="max-w-lg w-full mx-auto pt-2 justify-self-end"
+						>
+							${this.renderProgressSteps()}
 
-					<!-- Error display component - shows errors from BookingProgressContext -->
-					<booking-error-display showRecoverySuggestion language="en"></booking-error-display>
-					<schmancy-scroll hide>${this.renderCurrentStep()}</schmancy-scroll>
+							<!-- Error display component - shows errors from BookingProgressContext -->
+							<booking-error-display showRecoverySuggestion language="en"></booking-error-display>
+							<schmancy-scroll hide>${this.renderCurrentStep()}</schmancy-scroll>
+						</schmancy-grid>
+					</section>
+					<funkhaus-venue-card
+						class="block col-auto justify-self-start mt-4"
+						.venue=${this.venues.get(this.booking.venueId)!}
+						@click=${() => {}}
+						.theme=${this.venues.get(this.booking.venueId)?.theme!}
+					></funkhaus-venue-card>
 				</schmancy-grid>
-
 				${when(this.bookingInProgress, () => this.renderProcessingOverlay())}
 			</schmancy-surface>
 		`

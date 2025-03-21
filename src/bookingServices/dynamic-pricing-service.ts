@@ -72,6 +72,10 @@ export class PricingService {
 			{ label: '2h', value: 120 },
 			{ label: '2.5h', value: 150 },
 			{ label: '3h', value: 180 },
+			{ label: '3.5h', value: 210 },
+			{ label: '4h', value: 240 },
+			{ label: '4.5h', value: 270 },
+			{ label: '5h', value: 300 },
 		]
 
 		return durations.map(duration => {
