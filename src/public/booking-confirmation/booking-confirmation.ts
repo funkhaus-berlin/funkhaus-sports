@@ -115,9 +115,8 @@ export class BookingConfirmation extends $LitElement() {
 				<section class="mx-auto max-w-md">
 					<schmancy-grid gap="sm" justify="center" class="h-full mx-auto max-w-md">
 						<!-- Header/Logo Section -->
-						<div class="pt-4 md:pt-8 lg:pt-12 xl:pt-16 flex items-center justify-center gap-3">
-							<schmancy-icon size="48px" class="text-primary-default">check_circle</schmancy-icon>
-							<schmancy-typography type="headline" token="lg">Super!</schmancy-typography>
+						<div class="pt-4 md:pt-8 lg:pt-12 xl:pt-16 flex items-center justify-center">
+							<schmancy-icon size="56px" class="text-primary-default">check_circle</schmancy-icon>
 						</div>
 
 						<schmancy-grid gap="md" justify="stretch" class="px-6 py-2  md:py-6 max-w-4xl mx-auto w-full">
@@ -125,10 +124,10 @@ export class BookingConfirmation extends $LitElement() {
 							<div class="grid md:grid-cols-1 gap-2">
 								<div class="space-y-1">
 									<!-- Booking Information Text -->
-									<schmancy-typography align="center" type="label" token="md">
+									<schmancy-typography align="center" type="body" token="md">
 										A confirmation has been sent to
 									</schmancy-typography>
-									<schmancy-typography align="center" type="title" token="md">
+									<schmancy-typography align="center" type="title" token="lg">
 										${this.customerEmail}
 									</schmancy-typography>
 									<!-- QR Code Section -->

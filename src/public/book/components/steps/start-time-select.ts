@@ -534,11 +534,16 @@ export class TimeSelectionStep extends $LitElement(css`
 			const newStartTime = toUTC(this.booking.date, timeString)
 
 			// Update booking context
+			let newEndTime = undefined
+			if (!!this.booking.endTime) {
+				const oldDuration = dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute')
+				newEndTime = dayjs(newStartTime).add(oldDuration, 'minute').toISOString()
+			}
 			bookingContext.set(
 				{
 					startTime: newStartTime,
 					courtId: '', // Clear court selection
-					endTime: '', // Clear end time
+					endTime: newEndTime ?? '',
 				},
 				true,
 			)
@@ -550,9 +555,11 @@ export class TimeSelectionStep extends $LitElement(css`
 			}
 
 			// Go to duration selection step
-			BookingProgressContext.set({
-				currentStep: BookingStep.Duration,
-			})
+			if (this.bookingProgress.currentStep === BookingStep.Time) {
+				BookingProgressContext.set({
+					currentStep: BookingStep.Duration,
+				})
+			}
 
 			this.dispatchEvent(
 				new CustomEvent('next', {

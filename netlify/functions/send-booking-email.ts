@@ -25,6 +25,27 @@ const db = admin.firestore()
 /**
  * Email handler for sending booking confirmations
  */
+interface EmailBookingData {
+	bookingId: string
+	customerEmail: string
+	customerName: string
+	customerPhone: string
+	venueInfo: {
+		name: string
+		address: string
+		city: string
+		postalCode: string
+		country: string
+	}
+	bookingDetails: {
+		date: string
+		startTime: string
+		endTime: string
+		price: string
+		court: string
+		venue: string
+	}
+}
 const handler: Handler = async (event, context) => {
 	// Handle preflight request for CORS
 	if (event.httpMethod === 'OPTIONS') {
@@ -46,7 +67,7 @@ const handler: Handler = async (event, context) => {
 
 	try {
 		// Parse the request body
-		const data = JSON.parse(event.body || '{}')
+		const data: EmailBookingData = JSON.parse(event.body || '{}')
 
 		// Validate required fields
 		if (!data.bookingId || !data.customerEmail || !data.bookingDetails) {
@@ -104,7 +125,7 @@ const handler: Handler = async (event, context) => {
 /**
  * Send email with booking confirmation using Resend
  */
-async function sendEmail(data: any, pdfBuffer: Buffer): Promise<boolean> {
+async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boolean> {
 	try {
 		// Convert buffer to base64 for attachment
 		const pdfBase64 = pdfBuffer.toString('base64')
