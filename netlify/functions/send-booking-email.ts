@@ -274,8 +274,8 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	doc.text('Nalepastrasse 18', 300, y)
 	y += 15
 	doc.text('12459 Berlin, Germany', 300, y)
-	// y += 15
-	// doc.text('VAT: DE187992171', 300, y)
+	y += 15
+	doc.text('VAT: DE452192572', 300, y)
 	y += 15
 	doc.text('funkhaus-sports.com', 300, y)
 

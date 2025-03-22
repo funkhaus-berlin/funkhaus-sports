@@ -389,23 +389,45 @@ export function getAvailableDurations(startTime: string): Duration[] {
 /**
  * Get availability status for all courts at a specific time and duration
  */
+/**
+ * Determines availability status for all courts during a specific time period
+ *
+ * @param startTime ISO string for the requested start time
+ * @param durationMinutes Duration in minutes
+ * @returns Array of court availability statuses
+ */
 export function getAllCourtsAvailability(startTime?: string, durationMinutes?: number): CourtAvailabilityStatus[] {
-	const availability = availabilityContext.value
+	const DEBUG = true // Set to true for detailed logging
 
-	// Use current booking context if parameters not provided
+	// Get availability data from context
+	const availability = availabilityContext.value
 	const booking = bookingContext.value
+
+	// Use parameters or fall back to booking context
 	const effectiveStartTime = startTime || booking.startTime
 	const effectiveDuration = durationMinutes || calculateDuration(booking.startTime, booking.endTime)
 
+	if (DEBUG) {
+		console.log(`Checking availability for startTime=${effectiveStartTime}, duration=${effectiveDuration}min`)
+	}
+
 	// If missing required data, return empty array
-	if (!effectiveStartTime) return []
+	if (!effectiveStartTime || !effectiveDuration) {
+		if (DEBUG) console.log('Missing start time or duration, returning empty array')
+		return []
+	}
 
-	// Format time string
-	const formattedTime = dayjs(effectiveStartTime).format('HH:mm')
-	const [hours, minutes] = formattedTime.split(':').map(Number)
-	const startMinutes = hours * 60 + (minutes || 0)
-	const endMinutes = startMinutes + (effectiveDuration || 0)
+	// Convert start time to minutes since midnight for easier comparison
+	const timeObj = dayjs(effectiveStartTime)
+	const startMinutes = timeObj.hour() * 60 + timeObj.minute()
+	const endMinutes = startMinutes + effectiveDuration
 
+	if (DEBUG) {
+		console.log(`Time range: ${startMinutes}min to ${endMinutes}min`)
+		console.log(`Active courts: ${availability.activeCourtIds.length}`)
+	}
+
+	// Initialize result array
 	const result: CourtAvailabilityStatus[] = []
 
 	// Process each active court
@@ -413,61 +435,86 @@ export function getAllCourtsAvailability(startTime?: string, durationMinutes?: n
 		const court = courtsContext.value.get(courtId)
 		if (!court) return
 
-		// If no duration provided, just check if court is generally available
-		if (!effectiveDuration) {
-			result.push({
-				courtId,
-				courtName: court.name,
-				available: true,
-				availableTimeSlots: [],
-				unavailableTimeSlots: [],
-				fullyAvailable: true,
-			})
-			return
-		}
+		if (DEBUG) console.log(`Processing court: ${court.name} (${courtId})`)
 
-		// Check each time slot in the range
+		// Arrays to store slot information
 		const availableTimeSlots: string[] = []
 		const unavailableTimeSlots: string[] = []
 
-		availability.timeSlots.forEach(slot => {
-			if (slot.timeValue >= startMinutes && slot.timeValue < endMinutes) {
-				if (slot.courtAvailability[courtId]) {
-					availableTimeSlots.push(slot.time)
-				} else {
-					unavailableTimeSlots.push(slot.time)
-				}
+		// Track the total number of time slots we need to check
+		let totalSlotsNeeded = 0
+
+		// Check each 30-minute slot in our time range
+		for (let slotTime = startMinutes; slotTime < endMinutes; slotTime += 30) {
+			totalSlotsNeeded++
+
+			// Find the corresponding slot in availability data
+			const slot = availability.timeSlots.find(s => s.timeValue === slotTime)
+
+			if (!slot) {
+				if (DEBUG) console.log(`  No data for slot at ${slotTime}min`)
+				// No data for this slot - treat as unavailable
+				unavailableTimeSlots.push(formatMinutesToTime(slotTime))
+				continue
 			}
-		})
 
-		// Court is fully available if all time slots are available
-		const fullyAvailable = unavailableTimeSlots.length === 0
+			// Check if this court is available at this time
+			const isSlotAvailable = slot.courtAvailability[courtId] === true
 
-		result.push({
+			if (isSlotAvailable) {
+				if (DEBUG) console.log(`  Slot ${formatMinutesToTime(slotTime)} is AVAILABLE`)
+				availableTimeSlots.push(slot.time)
+			} else {
+				if (DEBUG) console.log(`  Slot ${formatMinutesToTime(slotTime)} is UNAVAILABLE`)
+				unavailableTimeSlots.push(slot.time)
+			}
+		}
+
+		// Determine availability status
+		const hasAvailableSlots = availableTimeSlots.length > 0
+		const allSlotsAvailable = availableTimeSlots.length === totalSlotsNeeded
+
+		const status: CourtAvailabilityStatus = {
 			courtId,
 			courtName: court.name,
-			available: availableTimeSlots.length > 0,
+			available: hasAvailableSlots,
+			fullyAvailable: allSlotsAvailable,
 			availableTimeSlots,
 			unavailableTimeSlots,
-			fullyAvailable,
-		})
+		}
+
+		if (DEBUG) {
+			console.log(`Court status: ${court.name}`)
+			console.log(`  Available: ${status.available}`)
+			console.log(`  Fully Available: ${status.fullyAvailable}`)
+			console.log(`  Available slots: ${status.availableTimeSlots.join(', ')}`)
+			console.log(`  Unavailable slots: ${status.unavailableTimeSlots.join(', ')}`)
+		}
+
+		result.push(status)
 	})
 
-	// Sort courts by availability (fully available first)
+	// Sort courts: fully available first, then by most available slots, then by name
 	return result.sort((a, b) => {
-		// First sort by full availability
 		if (a.fullyAvailable !== b.fullyAvailable) {
 			return a.fullyAvailable ? -1 : 1
 		}
 
-		// Then by number of available slots (most available first)
 		if (a.availableTimeSlots.length !== b.availableTimeSlots.length) {
 			return b.availableTimeSlots.length - a.availableTimeSlots.length
 		}
 
-		// Finally by name
 		return a.courtName.localeCompare(b.courtName)
 	})
+}
+
+/**
+ * Helper function to format minutes since midnight to HH:MM format
+ */
+function formatMinutesToTime(minutes: number): string {
+	const hours = Math.floor(minutes / 60)
+	const mins = minutes % 60
+	return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
 }
 
 /**

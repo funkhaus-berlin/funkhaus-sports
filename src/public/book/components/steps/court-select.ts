@@ -12,6 +12,7 @@ import { Court, SportTypeEnum } from 'src/db/courts.collection'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import './court-map-view'
 import './sport-court-card'
+import { takeUntil, filter, map, distinctUntilChanged } from 'rxjs'
 
 /**
  * View modes for court selection
@@ -132,17 +133,60 @@ export class CourtSelectStep extends $LitElement(css`
 	}
 
 	/**
-	 * Set up subscriptions to availability data
+	 * Set up subscriptions to booking and availability data
 	 */
 	private subscribeToAvailabilityUpdates(): void {
-		// Add implementation here to match the original component
+		// Subscribe to booking context changes
+		bookingContext.$.pipe(
+			takeUntil(this.disconnecting),
+			filter(booking => !!booking), // Ensure booking exists
+			// Listen for changes to start time, end time, or other relevant properties
+			map(booking => ({
+				startTime: booking.startTime,
+				endTime: booking.endTime,
+				date: booking.date,
+				venueId: booking.venueId,
+			})),
+			distinctUntilChanged(
+				(prev, curr) =>
+					prev.startTime === curr.startTime &&
+					prev.endTime === curr.endTime &&
+					prev.date === curr.date &&
+					prev.venueId === curr.venueId,
+			),
+		).subscribe(() => {
+			console.log('Booking changes detected, reloading court availability')
+			this.loadCourtsWithAvailability()
+		})
+
+		// Subscribe to availability context changes
+		availabilityContext.$.pipe(
+			takeUntil(this.disconnecting),
+			filter(availability => !!availability && !!this.booking?.date),
+			// Only reload when availability for our current date changes
+			filter(availability => availability.date === this.booking.date),
+		).subscribe(() => {
+			console.log('Availability context updated, reloading court availability')
+			this.loadCourtsWithAvailability()
+		})
+
+		// Initial load
 		this.loadCourtsWithAvailability()
 	}
 
-	// [All existing methods from the original court-select.ts component]
-	// loadCourtsWithAvailability, handleCourtSelect, canSelectCourt, etc.
-	// ...
-
+	/**
+	 * Update when relevant properties change
+	 */
+	updated(changedProperties: Map<string, unknown>): void {
+		// If booking data changed and we have necessary data, reload
+		if (
+			(changedProperties.has('booking') || changedProperties.has('bookingProgress')) &&
+			this.booking?.startTime &&
+			this.booking?.endTime
+		) {
+			this.loadCourtsWithAvailability()
+		}
+	}
 	/**
 	 * Get container classes based on compact mode
 	 */
