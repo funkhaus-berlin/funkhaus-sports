@@ -185,7 +185,7 @@ export class BookingUtils {
 	 */
 	static shareBooking(booking: Booking, courtName?: string): void {
 		const startTime = dayjs(booking.startTime)
-		const text = `I've booked a ${courtName || 'court'} at Funkhaus Berlin Sports on ${startTime.format(
+		const text = `I've booked Court ${courtName || 'court'} at Funkhaus Berlin Sports on ${startTime.format(
 			'MMMM D',
 		)} at ${startTime.format('h:mm A')}. Join me!`
 

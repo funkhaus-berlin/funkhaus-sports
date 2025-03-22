@@ -160,7 +160,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 
 	// Header - Invoice title
 	let y = 90
-	doc.font('Bold').fontSize(24).fillColor('#5e808e').text('INVOICE', 50, 65)
+	doc.font('Bold').fontSize(24).fillColor('#333333').text('INVOICE', 50, 65)
 	doc.fillColor('#000000')
 
 	// invoice number - using booking ID
@@ -189,12 +189,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	// Try to add QR code
 	try {
 		// Generate QR code
-		const qrCodeData = await QRCode.toDataURL(
-			JSON.stringify({
-				bookingId: data.bookingId,
-				date: data.bookingDetails.date,
-			}),
-		)
+		const qrCodeData = await QRCode.toDataURL(data.bookingId)
 		doc.image(qrCodeData, 450, 50, { width: 90 })
 	} catch (err) {
 		console.error('Error generating QR code:', err)
@@ -258,12 +253,10 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	doc.text('Nalepastrasse 18', 300, y)
 	y += 15
 	doc.text('12459 Berlin, Germany', 300, y)
+	// y += 15
+	// doc.text('VAT: DE187992171', 300, y)
 	y += 15
-	doc.text('VAT: DE187992171', 300, y)
-	y += 15
-	doc.text('booking@funkhaus-berlin.net', 300, y)
-	y += 15
-	doc.text('funkhaus-berlin.net', 300, y)
+	doc.text('funkhaus-sports.com', 300, y)
 
 	// Move to the invoice items section
 	y = 300
@@ -327,7 +320,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	y += 15
 
 	// Total
-	doc.font('Bold').fillColor('#5e808e').text('TOTAL:', 390, y)
+	doc.font('Bold').fillColor('#000000').text('TOTAL:', 390, y)
 	doc.text(`€${totalAmount.toFixed(2)}`, 470, y)
 	doc.fillColor('#000000')
 
@@ -337,9 +330,9 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	// Payment Information
 	doc.font('Bold').fontSize(12).text('Payment Information:', 50, footerY)
 	doc.font('Regular').fontSize(12)
-	doc.text('Funkhaus Berlin Sports GmbH', 50, footerY + 15)
-	doc.text('IBAN: DE39 1002 0890 0037 4687 11', 50, footerY + 30)
-	doc.text('BIC: HYVEDEMM488', 50, footerY + 45)
+	doc.text('Funkhaus Sports GmbH', 50, footerY + 15)
+	doc.text('IBAN: DE22 1009 0000 2999 2310 07', 50, footerY + 30)
+	doc.text('BIC: BEVODEBBXXX', 50, footerY + 45)
 
 	// Thank you note
 	doc.text('Thank you for your business!', 50, footerY + 75)
