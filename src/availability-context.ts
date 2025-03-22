@@ -510,7 +510,7 @@ export function filterPastTimeSlots(timeSlots: TimeSlot[], date?: string): TimeS
 		if (!slot.available) return slot
 
 		// Check if this time slot is in the past
-		const isPastSlot = isTimeSlotInPast(targetDate, slot.value)
+		const isPastSlot = isTimeSlotInPast(targetDate, slot.value, 10)
 
 		// Return the slot with updated availability
 		return {

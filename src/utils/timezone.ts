@@ -14,30 +14,23 @@ dayjs.extend(timezone)
  * @param timeValue - The time slot value in minutes (e.g., 8*60 for 8:00 AM)
  * @returns boolean - true if the time slot is in the past
  */
-export function isTimeSlotInPast(date: string, timeValue: number): boolean {
-	if (!date) return false
+export function isTimeSlotInPast(date: string, timeValue: number, graceMinutes: number = 10): boolean {
+	const userTimezone = getUserTimezone()
 
-	try {
-		// Get user's timezone
-		const userTz = getUserTimezone()
+	// Get current date and time in user's timezone
+	const now = dayjs().tz(userTimezone)
 
-		// Create date objects
-		const now = dayjs().tz(userTz)
-		const selectedDate = dayjs(date).tz(userTz)
+	// Convert the slot time value to a date object
+	const slotDate = dayjs(date).tz(userTimezone)
+	const slotHours = Math.floor(timeValue / 60)
+	const slotMinutes = timeValue % 60
+	const slotDateTime = slotDate.hour(slotHours).minute(slotMinutes)
 
-		// Calculate hours and minutes from time value
-		const hours = Math.floor(timeValue / 60)
-		const minutes = timeValue % 60
+	// Add grace period to slot time
+	const slotWithGrace = slotDateTime.add(graceMinutes, 'minute')
 
-		// Set the hours and minutes on the selected date
-		const slotDateTime = selectedDate.hour(hours).minute(minutes)
-
-		// Check if the slot is in the past
-		return slotDateTime.isBefore(now)
-	} catch (error) {
-		console.error('Error checking if time slot is in past:', error)
-		return false
-	}
+	// Check if current time is after the time slot (plus grace period)
+	return now.isAfter(slotWithGrace)
 }
 
 /**

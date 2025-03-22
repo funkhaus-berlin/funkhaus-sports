@@ -20,92 +20,10 @@ export interface CourtAvailabilityStatus {
 	unavailableTimeSlots: string[]
 }
 
-// Define Leaflet types with corrected definitions
-interface LeafletLatLng {
-	lat: number
-	lng: number
-}
-
-interface LeafletMapOptions {
-	zoomControl?: boolean
-	attributionControl?: boolean
-	[key: string]: any
-}
-
-interface LeafletTileLayerOptions {
-	maxZoom?: number
-	attribution?: string
-	[key: string]: any
-}
-
-interface LeafletMarkerOptions {
-	icon?: any
-	[key: string]: any
-}
-
-interface LeafletIconOptions {
-	className?: string
-	html?: string
-	iconSize?: [number, number]
-	iconAnchor?: [number, number]
-	[key: string]: any
-}
-
-interface LeafletPopupOptions {
-	closeButton?: boolean
-	className?: string
-	[key: string]: any
-}
-
-interface LeafletControlOptions {
-	position?: string
-	[key: string]: any
-}
-
-interface LeafletMap {
-	setView: (center: [number, number], zoom: number) => LeafletMap
-	remove: () => void
-	fitBounds: (bounds: any, options?: any) => LeafletMap
-	closePopup: () => LeafletMap
-	getZoom: () => number
-	invalidateSize: (animate?: boolean) => LeafletMap // Fixed: Added missing method
-	on: (event: string, callback: Function) => LeafletMap // Added event handler
-	off: (event: string, callback?: Function) => LeafletMap // Added event handler removal
-}
-
-interface LeafletMarker {
-	getLatLng: () => LeafletLatLng
-	remove: () => void
-	bindPopup: (popup: any) => LeafletMarker
-	openPopup: () => LeafletMarker
-	on: (event: string, handler: Function) => LeafletMarker
-	off: (event: string, handler?: Function) => LeafletMarker
-	addTo: (map: LeafletMap) => LeafletMarker // Fixed: Added missing method
-}
-
-interface LeafletControl {
-	addAttribution: (attribution: string) => LeafletControl
-	addTo: (map: LeafletMap) => LeafletControl
-}
-
-interface LeafletLayer {
-	addTo: (map: LeafletMap) => LeafletLayer
-}
-
-interface LeafletLatLngBounds {
-	extend: (latlng: [number, number]) => LeafletLatLngBounds
-	isValid: () => boolean // Added to check validity
-}
-
-interface LeafletStatic {
-	map: (container: HTMLElement | string, options?: LeafletMapOptions) => LeafletMap
-	tileLayer: (url: string, options?: LeafletTileLayerOptions) => LeafletLayer
-	marker: (latlng: [number, number], options?: LeafletMarkerOptions) => LeafletMarker
-	divIcon: (options: LeafletIconOptions) => any
-	popup: (options?: LeafletPopupOptions) => any
-	latLngBounds: (bounds?: any[]) => LeafletLatLngBounds
-	control: {
-		attribution: (options?: LeafletControlOptions) => LeafletControl
+// Define global Leaflet interface to handle dynamic loading
+declare global {
+	interface Window {
+		L: any
 	}
 }
 
@@ -141,6 +59,45 @@ export class CourtMapView extends $LitElement(css`
 		z-index: 0;
 	}
 
+	/* Map loading overlay */
+	.map-loading-overlay {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background-color: rgba(255, 255, 255, 0.8);
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		z-index: 1000;
+	}
+
+	/* Map error overlay */
+	.map-error-overlay {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background-color: rgba(255, 255, 255, 0.9);
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		z-index: 1000;
+	}
+
+	/* Retry button */
+	.retry-button {
+		margin-top: 12px;
+		padding: 8px 16px;
+		background-color: #3b82f6;
+		color: white;
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+
 	/* Force Leaflet container to respect boundaries */
 	.leaflet-container {
 		width: 100% !important;
@@ -167,7 +124,93 @@ export class CourtMapView extends $LitElement(css`
 		gap: 12px;
 	}
 
-	/* Rest of styles preserved... */
+	/* Legend dots */
+	.legend-item {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.legend-dot {
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		display: inline-block;
+	}
+
+	.dot-available {
+		background-color: #22c55e;
+	}
+
+	.dot-limited {
+		background-color: #f97316;
+	}
+
+	.dot-unavailable {
+		background-color: #ef4444;
+	}
+
+	/* Include essential Leaflet styles directly in component to prevent FOUC */
+	.leaflet-pane,
+	.leaflet-tile,
+	.leaflet-marker-icon,
+	.leaflet-marker-shadow,
+	.leaflet-tile-container,
+	.leaflet-pane > svg,
+	.leaflet-pane > canvas,
+	.leaflet-zoom-box,
+	.leaflet-image-layer,
+	.leaflet-layer {
+		position: absolute;
+		left: 0;
+		top: 0;
+	}
+
+	.leaflet-container {
+		overflow: hidden;
+	}
+
+	.leaflet-tile,
+	.leaflet-marker-icon,
+	.leaflet-marker-shadow {
+		-webkit-user-select: none;
+		-moz-user-select: none;
+		user-select: none;
+		-webkit-user-drag: none;
+	}
+
+	.leaflet-control {
+		position: relative;
+		z-index: 800;
+	}
+
+	.leaflet-pane {
+		z-index: 400;
+	}
+
+	.leaflet-tile-pane {
+		z-index: 200;
+	}
+
+	.leaflet-overlay-pane {
+		z-index: 400;
+	}
+
+	.leaflet-shadow-pane {
+		z-index: 500;
+	}
+
+	.leaflet-marker-pane {
+		z-index: 600;
+	}
+
+	.leaflet-tooltip-pane {
+		z-index: 650;
+	}
+
+	.leaflet-popup-pane {
+		z-index: 700;
+	}
 `) {
 	/**
 	 * Array of courts to display on the map
@@ -206,294 +249,90 @@ export class CourtMapView extends $LitElement(css`
 	mapContainer!: HTMLElement
 
 	// Private properties
-	private _map: LeafletMap | null = null
-	private _markers: Record<string, LeafletMarker> = {}
-	private _L: LeafletStatic | null = null
-	private _initialized: boolean = false
-	private _loadPromise: Promise<LeafletStatic> | null = null
-	private _initAttempts: number = 0
-	private _maxInitAttempts: number = 3
-	private _resizeObserver: ResizeObserver | null = null
-	private _mapResizeHandlerBound: (() => void) | null = null
-	private _initTimeoutId: number | null = null
-	private _leafletLoaded: boolean = false
-	private _popupEventHandlers: Map<string, Function> = new Map()
+	private map: any = null
+	private markers: Record<string, any> = {}
+	private leafletLoaded: boolean = false
+	private popupEventHandlers: Map<string, Function> = new Map()
 
 	/**
-	 * When component is first connected to DOM
+	 * When component is connected to DOM, load Leaflet
 	 */
 	connectedCallback(): void {
 		super.connectedCallback()
-		// Start preloading Leaflet as soon as possible
-		this._preloadLeaflet()
+		this._loadLeafletScript().then(() => {
+			this.leafletLoaded = true
+		})
 	}
 
 	/**
-	 * Pre-load Leaflet library to improve initial render time
+	 * Load Leaflet script and CSS
 	 */
-	private _preloadLeaflet(): void {
-		if (!this._loadPromise && !this._leafletLoaded) {
-			// Start loading but don't await - just kick off the process
-			this._loadPromise = this._loadLeaflet()
-			this._loadPromise
-				.then(() => {
-					this._leafletLoaded = true
-				})
-				.catch(error => {
-					console.error('Error preloading Leaflet:', error)
-				})
-				.finally(() => {
-					this._loadPromise = null
-				})
-		}
-	}
-
-	private _fixMapRendering(): void {
-		if (!this._map || !this.mapContainer) return
-
-		try {
-			// Force the map to take up the entire container
-			const mapElement = this.mapContainer.querySelector('.leaflet-container')
-			if (mapElement) {
-				// Force correct dimensions
-				;(mapElement as HTMLElement).style.width = '100%'
-				;(mapElement as HTMLElement).style.height = '100%'
-				;(mapElement as HTMLElement).style.position = 'absolute'
-				;(mapElement as HTMLElement).style.top = '0'
-				;(mapElement as HTMLElement).style.left = '0'
+	private async _loadLeafletScript(): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			// Check if Leaflet is already loaded
+			if (window.L) {
+				console.log('Leaflet already loaded')
+				resolve()
+				return
 			}
 
-			// Force a redraw of the map
-			this._map.invalidateSize(true)
+			console.log('Loading Leaflet script and CSS')
 
-			// Reset bounds to ensure map centers correctly
-			if (this.courts.length > 0) {
-				const bounds = this._createBoundsFromCourts()
-				if (bounds && bounds.isValid()) {
-					this._map.fitBounds(bounds, { padding: [35, 35] })
-				}
+			// Load CSS if not already present
+			if (!document.querySelector('link[href*="leaflet.css"]')) {
+				const link = document.createElement('link')
+				link.rel = 'stylesheet'
+				link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+				link.crossOrigin = 'anonymous'
+				document.head.appendChild(link)
 			}
-		} catch (e) {
-			console.error('Error fixing map rendering:', e)
-		}
+
+			// Load Leaflet JS
+			const leafletScript = document.createElement('script')
+			leafletScript.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+			leafletScript.crossOrigin = 'anonymous'
+
+			leafletScript.onload = () => {
+				resolve()
+			}
+
+			document.head.appendChild(leafletScript)
+		})
 	}
 
-	/**
-	 * Create proper bounds from court coordinates
-	 */
-	private _createBoundsFromCourts(): any {
-		if (!this._L) return null
-
-		try {
-			const bounds = this._L.latLngBounds()
-			this.courts.forEach((_court, index) => {
-				// Create location for the court (in production, use real coordinates)
-				const lat = 51.505 + Math.cos(index * 0.7) * 0.002
-				const lng = -0.09 + Math.sin(index * 0.7) * 0.002
-				bounds.extend([lat, lng])
-			})
-			return bounds
-		} catch (e) {
-			console.error('Error creating bounds:', e)
-			return null
-		}
-	}
 	/**
 	 * After first render, initialize the map
 	 */
-	async firstUpdated(): Promise<void> {
+	protected firstUpdated(): void {
 		this.loading = true
 		this.error = null
 
-		// Add initializing class to ensure container has dimensions
-		if (this.mapContainer) {
-			this.mapContainer.classList.add('initializing')
-		}
-
-		try {
-			// Load Leaflet if not already loaded
-			this._L = await this._getLeaflet()
-
-			// Initialize map with a delay to ensure container is ready
-			this._scheduleInitialization()
-		} catch (error) {
-			console.error('Error initializing map:', error)
-			this.error = 'Failed to load map library. Please try again.'
-			this.loading = false
-		}
-	}
-
-	/**
-	 * Schedule map initialization with multiple attempts if needed
-	 */
-	private _scheduleInitialization(delay: number = 100): void {
-		// Clear any existing timeout
-		if (this._initTimeoutId !== null) {
-			window.clearTimeout(this._initTimeoutId)
-		}
-
-		this._initTimeoutId = window.setTimeout(() => {
-			this._initTimeoutId = null
-			this._attemptInitializeMap()
-		}, delay)
-	}
-
-	/**
-	 * Attempt to initialize the map with retry logic
-	 */
-	private _attemptInitializeMap(): void {
-		// Increment attempt counter
-		this._initAttempts++
-
-		// Check if container is ready
-		if (!this.mapContainer || !this._L) {
-			if (this._initAttempts < this._maxInitAttempts) {
-				// Try again with increasing delay
-				const delay = Math.min(100 * Math.pow(2, this._initAttempts), 1000)
-				this._scheduleInitialization(delay)
-			} else {
-				this.error = 'Map container not found or Leaflet not loaded'
-				this.loading = false
-			}
-			return
-		}
-
-		// Check container dimensions
-		const hasValidDimensions = this.mapContainer.offsetWidth > 0 && this.mapContainer.offsetHeight > 0
-
-		if (!hasValidDimensions) {
-			if (this._initAttempts < this._maxInitAttempts) {
-				// Try again with increasing delay
-				const delay = Math.min(100 * Math.pow(2, this._initAttempts), 1000)
-				this._scheduleInitialization(delay)
-			} else {
-				// Force dimensions as last resort
-				this.mapContainer.style.width = '100%'
-				this.mapContainer.style.height = '400px'
-				this._initializeMap()
-			}
-			return
-		}
-
-		// Container looks good, try to initialize
-		if (this._initializeMap()) {
-			// Success - remove initializing class
-			this.mapContainer.classList.remove('initializing')
-
-			// Setup resize handling
-			this._setupResizeHandling()
-
-			// Update court markers
-			this._updateCourts()
-
-			// Complete loading
-			this.loading = false
-		} else if (this._initAttempts < this._maxInitAttempts) {
-			// Try again with increasing delay
-			const delay = Math.min(100 * Math.pow(2, this._initAttempts), 1000)
-			this._scheduleInitialization(delay)
+		if (this.leafletLoaded) {
+			this._initializeMap()
 		} else {
-			// Give up after max attempts
-			this.error = 'Failed to initialize map after multiple attempts'
-			this.loading = false
-		}
-	}
-
-	/**
-	 * Setup resize handling for the map
-	 */
-	private _setupResizeHandling(): void {
-		// Cleanup any existing handlers
-		this._cleanupResizeHandling()
-
-		if (!this._map) return
-
-		// Setup a handler function
-		this._mapResizeHandlerBound = () => {
-			if (this._map) {
-				try {
-					this._map.invalidateSize(true)
-				} catch (e) {
-					console.warn('Error invalidating map size:', e)
-				}
-			}
-		}
-
-		// Setup ResizeObserver for modern browsers
-		try {
-			this._resizeObserver = new ResizeObserver(() => {
-				if (this._mapResizeHandlerBound) {
-					this._mapResizeHandlerBound()
-				}
-			})
-			this._resizeObserver.observe(this.mapContainer)
-		} catch (e) {
-			console.warn('ResizeObserver not supported, falling back to window resize:', e)
-			// Fallback to window resize events
-			window.addEventListener('resize', this._mapResizeHandlerBound)
-		}
-
-		// Also listen for Leaflet's own events
-		if (this._map) {
-			this._map.on('resize', this._mapResizeHandlerBound)
-		}
-	}
-
-	/**
-	 * Cleanup resize handlers
-	 */
-	private _cleanupResizeHandling(): void {
-		// Remove ResizeObserver
-		if (this._resizeObserver) {
-			this._resizeObserver.disconnect()
-			this._resizeObserver = null
-		}
-
-		// Remove window event listener
-		if (this._mapResizeHandlerBound) {
-			window.removeEventListener('resize', this._mapResizeHandlerBound)
-
-			// Remove Leaflet event listener
-			if (this._map) {
-				this._map.off('resize', this._mapResizeHandlerBound)
-			}
-
-			this._mapResizeHandlerBound = null
+			this._loadLeafletScript()
+				.then(() => {
+					this.leafletLoaded = true
+					this._initializeMap()
+				})
+				.catch(error => {
+					console.error('Error loading Leaflet:', error)
+					this.error = 'Failed to load map library. Please try again.'
+					this.loading = false
+				})
 		}
 	}
 
 	/**
 	 * Update when relevant properties change
 	 */
-	updated(changedProperties: Map<string, unknown>): void {
+	protected updated(changedProperties: Map<string, unknown>): void {
 		super.updated(changedProperties)
 
-		// If the map exists but isn't fully initialized, try to complete initialization
-		if (this._map && this._initialized) {
-			// Wait for rendering to complete
-			requestAnimationFrame(() => {
-				this._fixMapRendering()
-			})
-		}
-
-		// Force map to recalculate dimensions on any update
-		if (this._map && this._initialized) {
-			// Use requestAnimationFrame to ensure DOM is fully updated
-			requestAnimationFrame(() => {
-				if (this._map) {
-					try {
-						this._map.invalidateSize(true)
-					} catch (e) {
-						console.warn('Error invalidating map size:', e)
-					}
-				}
-			})
-		}
-
-		// Update map when properties change and map is initialized
+		// Re-initialize map if coordinates change and Leaflet is loaded
 		if (
-			this._map &&
-			this._initialized &&
+			this.leafletLoaded &&
+			this.map &&
 			(changedProperties.has('courts') ||
 				changedProperties.has('selectedCourtId') ||
 				changedProperties.has('courtAvailability'))
@@ -508,236 +347,171 @@ export class CourtMapView extends $LitElement(css`
 	disconnectedCallback(): void {
 		super.disconnectedCallback()
 
-		// Clear any pending initialization timeout
-		if (this._initTimeoutId !== null) {
-			window.clearTimeout(this._initTimeoutId)
-			this._initTimeoutId = null
-		}
-
-		// Clean up resize handling
-		this._cleanupResizeHandling()
-
 		// Clean up map to prevent memory leaks
-		this._destroyMap()
-	}
-
-	/**
-	 * Get Leaflet library (with caching)
-	 */
-	private async _getLeaflet(): Promise<LeafletStatic> {
-		if (this._L) {
-			return this._L
-		}
-
-		// Reuse existing promise if loading is in progress
-		if (this._loadPromise) {
-			return this._loadPromise
-		}
-
-		this._loadPromise = this._loadLeaflet()
-
-		try {
-			const result = await this._loadPromise
-			return result
-		} finally {
-			this._loadPromise = null
+		if (this.map) {
+			this.map.remove()
+			this.map = null
 		}
 	}
 
 	/**
-	 * Load Leaflet library dynamically
+	 * Initialize the map
 	 */
-	private async _loadLeaflet(): Promise<LeafletStatic> {
-		// Add Leaflet CSS if not already added
-		if (!document.querySelector('link[href*="leaflet.css"]')) {
-			return new Promise<LeafletStatic>((resolve, reject) => {
-				// Create and add the CSS link
-				const link = document.createElement('link')
-				link.rel = 'stylesheet'
-				link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-				link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY='
-				link.crossOrigin = ''
+	private _initializeMap(): void {
+		// Log the status of Leaflet loading
+		console.log('Initializing map, Leaflet loaded:', !!window.L)
 
-				// Handle CSS loading errors
-				link.onerror = () => {
-					reject(new Error('Failed to load Leaflet CSS'))
-				}
-
-				// Wait for CSS to load before loading JS
-				link.onload = () => {
-					// Check if Leaflet is already loaded
-					if ((window as any).L) {
-						resolve((window as any).L)
-						return
-					}
-
-					// Load Leaflet JS
-					const script = document.createElement('script')
-					script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
-					script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo='
-					script.crossOrigin = ''
-					script.onload = () => resolve((window as any).L)
-					script.onerror = () => reject(new Error('Failed to load Leaflet JS'))
-					document.body.appendChild(script)
-				}
-
-				document.head.appendChild(link)
-			})
-		} else {
-			// CSS already loaded, just check for JS
-			// Check if Leaflet is already loaded
-			if ((window as any).L) {
-				return (window as any).L
+		// Wait for DOM to be ready
+		requestAnimationFrame(() => {
+			if (!this.mapContainer) {
+				console.error('Map container not found')
+				this.error = 'Map container not found'
+				this.loading = false
+				return
 			}
 
-			// Load Leaflet JS
-			return new Promise<LeafletStatic>((resolve, reject) => {
-				const script = document.createElement('script')
-				script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
-				script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo='
-				script.crossOrigin = ''
-				script.onload = () => resolve((window as any).L)
-				script.onerror = () => reject(new Error('Failed to load Leaflet JS'))
-				document.body.appendChild(script)
-			})
-		}
-	}
-
-	/**
-	 * Initialize Leaflet map
-	 * @returns boolean indicating whether initialization was successful
-	 */
-	private _initializeMap(): boolean {
-		if (!this.mapContainer || !this._L) {
-			console.error('Map container not found or Leaflet not loaded')
-			return false
-		}
-
-		try {
-			// Ensure container has explicit dimensions before initialization
-			this.mapContainer.style.width = '100%'
-			this.mapContainer.style.height = '400px'
-
-			// Ensure any previous map is fully removed
-			if (this._map) {
-				this._destroyMap()
+			if (!window.L) {
+				console.error('Leaflet not loaded properly')
+				this.error = 'Map library not loaded properly'
+				this.loading = false
+				return
 			}
 
-			// Create map instance with improved settings
-			this._map = this._L
-				.map(this.mapContainer, {
+			// Log container dimensions to help debug
+			console.log('Map container dimensions:', this.mapContainer.offsetWidth, this.mapContainer.offsetHeight)
+
+			// If a map already exists, remove it first
+			if (this.map) {
+				this.map.remove()
+				this.map = null
+			}
+
+			try {
+				const L = window.L
+
+				// Create map instance
+				this.map = L.map(this.mapContainer, {
+					center: [51.505, -0.09],
+					zoom: 15,
 					zoomControl: true,
 					attributionControl: false,
-					// Eliminate any animations that could cause layout issues
 					fadeAnimation: false,
 					markerZoomAnimation: false,
 					zoomAnimation: false,
-					// Use canvas renderer for better performance
 					preferCanvas: true,
-					// Prevent touch behaviors that might interfere with page scrolling
 					tap: false,
 				})
-				.setView([51.505, -0.09], 15)
 
-			// Add tile layer with error handling
-			try {
-				this._L
-					.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+				// Add tile layer with multiple fallback options
+				try {
+					// First try with standard OpenStreetMap tiles
+					L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 						maxZoom: 19,
+						subdomains: 'abc',
 						attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-					})
-					.addTo(this._map)
-			} catch (e) {
-				console.error('Error adding tile layer:', e)
-				// Try alternate tile source if main one fails
-				try {
-					this._L
-						.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
-							maxZoom: 19,
-							attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-						})
-						.addTo(this._map)
-				} catch (e2) {
-					console.error('Error adding alternate tile layer:', e2)
-				}
-			}
-
-			// Add attribution in a cleaner way
-			this._L.control
-				.attribution({
-					position: 'bottomleft',
-				})
-				.addAttribution('Map data &copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors')
-				.addTo(this._map)
-
-			// Apply immediate layout fixes
-			this._fixMapRendering()
-
-			// Apply additional fixes after small delay
-			setTimeout(() => this._fixMapRendering(), 100)
-
-			// And once more after a longer delay to catch any late layout shifts
-			setTimeout(() => this._fixMapRendering(), 500)
-
-			this._initialized = true
-			return true
-		} catch (error) {
-			console.error('Error initializing map:', error)
-			this.error = 'Failed to initialize map'
-			return false
-		}
-	}
-	/**
-	 * Clean up map resources
-	 */
-	private _destroyMap(): void {
-		// Clear popup event handlers
-		this._clearAllPopupEventHandlers()
-
-		// Clear markers
-		for (const key in this._markers) {
-			if (Object.prototype.hasOwnProperty.call(this._markers, key)) {
-				try {
-					this._markers[key].remove()
+					}).addTo(this.map)
 				} catch (e) {
-					console.warn('Error removing marker:', e)
+					console.error('Error adding primary tile layer:', e)
+					try {
+						// Second fallback to OSM HOT
+						L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+							maxZoom: 19,
+							subdomains: 'abc',
+							attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+						}).addTo(this.map)
+					} catch (e2) {
+						console.error('Error adding secondary tile layer:', e2)
+						try {
+							// Third fallback to CartoDB
+							L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+								maxZoom: 19,
+								subdomains: 'abcd',
+								attribution:
+									'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="https://carto.com/attributions">CARTO</a>',
+							}).addTo(this.map)
+						} catch (e3) {
+							console.error('All tile layers failed:', e3)
+						}
+					}
 				}
-			}
-		}
-		this._markers = {}
 
-		// Remove map
-		if (this._map) {
-			try {
-				this._map.remove()
-			} catch (e) {
-				console.warn('Error removing map:', e)
-			}
-			this._map = null
-		}
+				// Add attribution in a cleaner way
+				L.control
+					.attribution({
+						position: 'bottomleft',
+					})
+					.addAttribution('Map data &copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors')
+					.addTo(this.map)
 
-		this._initialized = false
-		this._initAttempts = 0
+				// Create court markers
+				this._updateCourts()
+
+				// Force multiple redraws of the map to ensure proper rendering
+				setTimeout(() => {
+					if (this.map) {
+						this.map.invalidateSize(true)
+					}
+				}, 100)
+
+				setTimeout(() => {
+					if (this.map) {
+						this.map.invalidateSize(true)
+
+						// Explicitly check and log the map container dimensions
+						if (this.mapContainer) {
+							console.log('Map container dimensions:', this.mapContainer.offsetWidth, this.mapContainer.offsetHeight)
+						}
+					}
+				}, 500)
+
+				this.loading = false
+			} catch (error) {
+				console.error('Error initializing map:', error)
+				this.error = 'Failed to initialize map'
+				this.loading = false
+			}
+		})
+	}
+
+	/**
+	 * Create proper bounds from court coordinates
+	 */
+	private _createBoundsFromCourts(): any {
+		if (!window.L || this.courts.length === 0) return null
+
+		try {
+			const bounds = window.L.latLngBounds()
+			this.courts.forEach((_court, index) => {
+				// Create location for the court (in production, use real coordinates)
+				const lat = 51.505 + Math.cos(index * 0.7) * 0.002
+				const lng = -0.09 + Math.sin(index * 0.7) * 0.002
+				bounds.extend([lat, lng])
+			})
+			return bounds
+		} catch (e) {
+			console.error('Error creating bounds:', e)
+			return null
+		}
 	}
 
 	/**
 	 * Clear all popup event handlers to prevent memory leaks
 	 */
 	private _clearAllPopupEventHandlers(): void {
-		this._popupEventHandlers.forEach((handler, id) => {
+		this.popupEventHandlers.forEach((handler, id) => {
 			const element = document.getElementById(id)
 			if (element) {
 				element.removeEventListener('click', handler as EventListener)
 			}
 		})
-		this._popupEventHandlers.clear()
+		this.popupEventHandlers.clear()
 	}
 
 	/**
 	 * Update court markers on the map
 	 */
 	private _updateCourts(): void {
-		if (!this._map || !this._L || !this._initialized) {
+		if (!this.map || !window.L || !this.mapContainer) {
 			console.warn('Cannot update courts: map not initialized')
 			return
 		}
@@ -747,17 +521,17 @@ export class CourtMapView extends $LitElement(css`
 			this._clearAllPopupEventHandlers()
 
 			// Clear existing markers
-			Object.values(this._markers).forEach(marker => {
+			Object.values(this.markers).forEach(marker => {
 				try {
 					marker.remove()
 				} catch (e) {
 					console.warn('Error removing marker:', e)
 				}
 			})
-			this._markers = {}
+			this.markers = {}
 
 			// Create bounds for map fitting
-			const bounds = this._L.latLngBounds()
+			const bounds = window.L.latLngBounds()
 			let hasValidCourts = false
 
 			// Create court markers
@@ -789,29 +563,27 @@ export class CourtMapView extends $LitElement(css`
 					const isSelected = this.selectedCourtId === court.id
 					const iconSize = isSelected ? 36 : 30
 					const iconHtml = `
-						<div style="
-							width: ${iconSize}px; 
-							height: ${iconSize}px; 
-							background-color: ${markerColor}; 
-							border-radius: 50%; 
-							display: flex; 
-							align-items: center; 
-							justify-content: center;
-							color: white;
-							font-weight: bold;
-							border: 2px solid white;
-							box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-							transition: all 0.3s ease;
-						">
-							${index + 1}
-						</div>
-					`
+            <div style="
+              width: ${iconSize}px; 
+              height: ${iconSize}px; 
+              background-color: ${markerColor}; 
+              border-radius: 50%; 
+              display: flex; 
+              align-items: center; 
+              justify-content: center;
+              color: white;
+              font-weight: bold;
+              border: 2px solid white;
+              box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+              transition: all 0.3s ease;
+            ">
+              ${index + 1}
+            </div>
+          `
 
-					if (!this._L || !this._map) {
-						throw new Error('Leaflet or map not initialized')
-					}
+					const L = window.L
 
-					const icon = this._L.divIcon({
+					const icon = L.divIcon({
 						className: 'court-marker',
 						html: iconHtml,
 						iconSize: [iconSize, iconSize],
@@ -819,10 +591,10 @@ export class CourtMapView extends $LitElement(css`
 					})
 
 					// Create marker
-					const marker = this._L.marker([lat, lng], { icon })
+					const marker = L.marker([lat, lng], { icon })
 
 					// Add to map safely
-					marker.addTo(this._map)
+					marker.addTo(this.map)
 
 					// Get court details for popup
 					const sportTypes =
@@ -835,52 +607,50 @@ export class CourtMapView extends $LitElement(css`
 
 					// Create popup content
 					const popupContent = `
-						<div style="text-align: center; padding: 5px;">
-							<h3 style="margin: 0; font-size: 16px; font-weight: bold;">${court.name}</h3>
-							<p style="margin: 5px 0; font-size: 12px;">${sportTypes}</p>
-							${
+            <div style="text-align: center; padding: 5px;">
+              <h3 style="margin: 0; font-size: 16px; font-weight: bold;">${court.name}</h3>
+              <p style="margin: 5px 0; font-size: 12px;">${sportTypes}</p>
+              ${
 								isAvailable
 									? `
-								<button 
-									id="${buttonId}" 
-									style="
-										background-color: ${isSelected ? '#9333ea' : '#3b82f6'};
-										color: white;
-										border: none;
-										border-radius: 4px;
-										padding: 6px 12px;
-										margin-top: 5px;
-										font-size: 13px;
-										cursor: pointer;
-										transition: background-color 0.2s;
-									"
-								>
-									${isSelected ? 'Selected' : 'Select Court'}
-								</button>
-							`
+                <button 
+                  id="${buttonId}" 
+                  style="
+                    background-color: ${isSelected ? '#9333ea' : '#3b82f6'};
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 6px 12px;
+                    margin-top: 5px;
+                    font-size: 13px;
+                    cursor: pointer;
+                    transition: background-color 0.2s;
+                  "
+                >
+                  ${isSelected ? 'Selected' : 'Select Court'}
+                </button>
+              `
 									: `
-								<div style="
-									background-color: #f3f4f6;
-									color: #6b7280;
-									border-radius: 4px;
-									padding: 6px 12px;
-									margin-top: 5px;
-									font-size: 13px;
-								">
-									Unavailable
-								</div>
-							`
+                <div style="
+                  background-color: #f3f4f6;
+                  color: #6b7280;
+                  border-radius: 4px;
+                  padding: 6px 12px;
+                  margin-top: 5px;
+                  font-size: 13px;
+                ">
+                  Unavailable
+                </div>
+              `
 							}
-						</div>
-					`
+            </div>
+          `
 
 					// Create popup
-					const popup = this._L
-						.popup({
-							closeButton: true,
-							className: 'court-popup',
-						})
-						.setContent(popupContent)
+					const popup = L.popup({
+						closeButton: true,
+						className: 'court-popup',
+					}).setContent(popupContent)
 
 					// Bind popup to marker
 					marker.bindPopup(popup)
@@ -888,8 +658,8 @@ export class CourtMapView extends $LitElement(css`
 					// Create handler function for the button
 					const handleCourtSelect = () => {
 						this._handleCourtSelect(court)
-						if (this._map) {
-							this._map.closePopup()
+						if (this.map) {
+							this.map.closePopup()
 						}
 					}
 
@@ -899,13 +669,13 @@ export class CourtMapView extends $LitElement(css`
 						const selectButton = document.getElementById(buttonId)
 						if (selectButton) {
 							// Store the handler to remove it later
-							this._popupEventHandlers.set(buttonId, handleCourtSelect)
+							this.popupEventHandlers.set(buttonId, handleCourtSelect)
 							selectButton.addEventListener('click', handleCourtSelect as EventListener)
 						}
 					})
 
 					// Store marker and extend bounds
-					this._markers[court.id] = marker
+					this.markers[court.id] = marker
 					bounds.extend([lat, lng])
 					hasValidCourts = true
 				} catch (e) {
@@ -914,30 +684,30 @@ export class CourtMapView extends $LitElement(css`
 			})
 
 			// Fit map to show all markers
-			if (hasValidCourts && this._map && bounds.isValid && bounds.isValid()) {
+			if (hasValidCourts && this.map) {
 				try {
-					this._map.fitBounds(bounds, { padding: [35, 35] })
+					this.map.fitBounds(bounds, { padding: [35, 35] })
 				} catch (e) {
 					console.warn('Error fitting bounds:', e)
 					// Fallback to default view
-					this._map.setView([51.505, -0.09], 15)
+					this.map.setView([51.505, -0.09], 15)
 				}
 			}
 
 			// Open popup for selected court
-			if (this.selectedCourtId && this._markers[this.selectedCourtId] && this._map) {
+			if (this.selectedCourtId && this.markers[this.selectedCourtId] && this.map) {
 				try {
 					// First make sure the map is at the right location
-					const marker = this._markers[this.selectedCourtId]
+					const marker = this.markers[this.selectedCourtId]
 					const latLng = marker.getLatLng()
 
 					// Center map on selected court
-					this._map.setView([latLng.lat, latLng.lng], this._map.getZoom())
+					this.map.setView([latLng.lat, latLng.lng], this.map.getZoom())
 
 					// Open the popup after a short delay to ensure the map is ready
 					setTimeout(() => {
-						if (this._markers[this.selectedCourtId]) {
-							this._markers[this.selectedCourtId].openPopup()
+						if (this.markers[this.selectedCourtId]) {
+							this.markers[this.selectedCourtId].openPopup()
 						}
 					}, 300)
 				} catch (e) {
@@ -989,16 +759,18 @@ export class CourtMapView extends $LitElement(css`
 	private _retryInitialization(): void {
 		this.loading = true
 		this.error = null
-		this._initAttempts = 0
 
 		// Destroy existing map if any
-		this._destroyMap()
+		if (this.map) {
+			this.map.remove()
+			this.map = null
+		}
 
 		// Attempt to reinitialize
-		this._getLeaflet()
-			.then(leaflet => {
-				this._L = leaflet
-				this._scheduleInitialization(100)
+		this._loadLeafletScript()
+			.then(() => {
+				this.leafletLoaded = true
+				this._initializeMap()
 			})
 			.catch(error => {
 				console.error('Error in retry initialization:', error)
