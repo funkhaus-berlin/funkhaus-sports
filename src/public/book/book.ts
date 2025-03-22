@@ -4,10 +4,11 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, PropertyValues } from 'lit'
 import { customElement, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { distinctUntilChanged, filter, takeUntil } from 'rxjs'
+import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { initializeAvailabilityContext } from 'src/availability-context'
+import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
@@ -101,11 +102,28 @@ export class CourtBookingSystem extends $LitElement() {
 		// Subscribe to booking context changes to update stripe amount
 		bookingContext.$.pipe(
 			filter(() => !!this.booking),
-			distinctUntilChanged((prev, curr) => prev.price === curr.price),
+			// calculate the price based on the booking object and ignore the price set in the context, calculate from the pricing service only when starttime, endtime and court is set
+			filter(booking => !!booking.startTime && !!booking.endTime && !!booking.courtId),
+			distinctUntilChanged((prev, curr) => {
+				return prev.startTime === curr.startTime && prev.endTime === curr.endTime && prev.courtId === curr.courtId
+			}),
+			// set the price based on the booking object
+			map(booking => {
+				bookingContext.set({
+					price: pricingService.calculatePrice(
+						this.availableCourts.get(booking.courtId)!,
+						booking.startTime,
+						booking.endTime,
+						booking.userId,
+					),
+				})
+				return booking.price
+			}),
+			distinctUntilChanged((prev, curr) => prev === curr),
 			takeUntil(this.disconnecting),
-		).subscribe(booking => {
-			if (booking.price) {
-				$stripe.next(booking.price)
+		).subscribe(price => {
+			if (price) {
+				$stripe.next(price)
 			}
 		})
 

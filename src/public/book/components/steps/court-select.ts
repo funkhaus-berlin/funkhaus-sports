@@ -444,7 +444,7 @@ export class CourtSelectStep extends $LitElement(css`
 				const priceRatio = newDuration / originalDuration
 
 				if (this.booking.price) {
-					bookingUpdate.price = Math.round(this.booking.price * priceRatio)
+					bookingUpdate.price = Math.round((this.booking.price * priceRatio + Number.EPSILON) * 100) / 100
 				}
 			}
 

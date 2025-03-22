@@ -376,7 +376,8 @@ export function getAvailableDurations(startTime: string): Duration[] {
 				}
 			})
 
-			const avgPrice = availableCourts.length > 0 ? Math.round(totalPrice / availableCourts.length) : 0
+			const avgPrice =
+				availableCourts.length > 0 ? Math.round((totalPrice / availableCourts.length + Number.EPSILON) * 100) / 100 : 0
 
 			return {
 				...duration,
