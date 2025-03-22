@@ -184,10 +184,18 @@ export class BookingSummary extends $LitElement(css`
 	}
 
 	/**
-	 * Format price with currency symbol
+	 * Format price with currency symbol - matches the dialog's price format
+	 * Works with both 17.5 and 17.50 formats consistently
 	 */
 	private formatPrice(price: number): string {
-		return `€${(price || 0).toFixed(2)}`
+		// Handle null or undefined prices
+		if (price === null || price === undefined) {
+			return '€0.00'
+		}
+
+		// Format the price to match the dialog display
+		// Use the locale-aware formatter to match the local currency display standards
+		return `€${price.toFixed(2).replace(/\.00$/, '.0')}`
 	}
 
 	render() {

@@ -1,5 +1,4 @@
-import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { css, html } from 'lit'
+import { css, html, LitElement } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 
@@ -36,182 +35,7 @@ type CourtAvailabilityType = 'full' | 'partial' | 'none'
  * Displays courts with availability indicators and selection capabilities
  */
 @customElement('court-map-view')
-export class CourtMapView extends $LitElement(css`
-	:host {
-		display: block;
-		width: 100%;
-		/* Contain everything properly */
-		contain: layout paint;
-	}
-
-	/* Core map container - critical fixes */
-	.map-container {
-		width: 100%;
-		height: 400px;
-		border-radius: 8px;
-		position: relative;
-		overflow: hidden;
-		/* Force a single layer to prevent fragmentation */
-		isolation: isolate;
-		/* Force containing block */
-		transform: translateZ(0);
-		/* Ensure the map stays together with a clear stacking context */
-		z-index: 0;
-	}
-
-	/* Map loading overlay */
-	.map-loading-overlay {
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 100%;
-		background-color: rgba(255, 255, 255, 0.8);
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		z-index: 1000;
-	}
-
-	/* Map error overlay */
-	.map-error-overlay {
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 100%;
-		background-color: rgba(255, 255, 255, 0.9);
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		z-index: 1000;
-	}
-
-	/* Retry button */
-	.retry-button {
-		margin-top: 12px;
-		padding: 8px 16px;
-		background-color: #3b82f6;
-		color: white;
-		border: none;
-		border-radius: 4px;
-		cursor: pointer;
-	}
-
-	/* Force Leaflet container to respect boundaries */
-	.leaflet-container {
-		width: 100% !important;
-		height: 100% !important;
-		position: absolute !important;
-		top: 0 !important;
-		left: 0 !important;
-		right: 0 !important;
-		bottom: 0 !important;
-	}
-
-	/* Fix for map legend - move to bottom of container */
-	.map-legend {
-		position: absolute;
-		bottom: 10px;
-		right: 10px;
-		background-color: white;
-		padding: 6px 10px;
-		border-radius: 4px;
-		box-shadow: 0 1px 5px rgba(0, 0, 0, 0.2);
-		z-index: 1000;
-		font-size: 12px;
-		display: flex;
-		gap: 12px;
-	}
-
-	/* Legend dots */
-	.legend-item {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-	}
-
-	.legend-dot {
-		width: 12px;
-		height: 12px;
-		border-radius: 50%;
-		display: inline-block;
-	}
-
-	.dot-available {
-		background-color: #22c55e;
-	}
-
-	.dot-limited {
-		background-color: #f97316;
-	}
-
-	.dot-unavailable {
-		background-color: #ef4444;
-	}
-
-	/* Include essential Leaflet styles directly in component to prevent FOUC */
-	.leaflet-pane,
-	.leaflet-tile,
-	.leaflet-marker-icon,
-	.leaflet-marker-shadow,
-	.leaflet-tile-container,
-	.leaflet-pane > svg,
-	.leaflet-pane > canvas,
-	.leaflet-zoom-box,
-	.leaflet-image-layer,
-	.leaflet-layer {
-		position: absolute;
-		left: 0;
-		top: 0;
-	}
-
-	.leaflet-container {
-		overflow: hidden;
-	}
-
-	.leaflet-tile,
-	.leaflet-marker-icon,
-	.leaflet-marker-shadow {
-		-webkit-user-select: none;
-		-moz-user-select: none;
-		user-select: none;
-		-webkit-user-drag: none;
-	}
-
-	.leaflet-control {
-		position: relative;
-		z-index: 800;
-	}
-
-	.leaflet-pane {
-		z-index: 400;
-	}
-
-	.leaflet-tile-pane {
-		z-index: 200;
-	}
-
-	.leaflet-overlay-pane {
-		z-index: 400;
-	}
-
-	.leaflet-shadow-pane {
-		z-index: 500;
-	}
-
-	.leaflet-marker-pane {
-		z-index: 600;
-	}
-
-	.leaflet-tooltip-pane {
-		z-index: 650;
-	}
-
-	.leaflet-popup-pane {
-		z-index: 700;
-	}
-`) {
+export class CourtMapView extends LitElement {
 	/**
 	 * Array of courts to display on the map
 	 */
@@ -254,6 +78,147 @@ export class CourtMapView extends $LitElement(css`
 	private leafletLoaded: boolean = false
 	private popupEventHandlers: Map<string, Function> = new Map()
 
+	static styles = css`
+		:host {
+			display: block;
+			width: 100%;
+			/* Contain everything properly */
+			contain: layout paint;
+		}
+
+		/* Core map container - critical fixes */
+		.map-container {
+			width: 100%;
+			height: 400px;
+			border-radius: 8px;
+			position: relative;
+			overflow: hidden;
+			/* Force a single layer to prevent fragmentation */
+			isolation: isolate;
+			/* Force containing block */
+			transform: translateZ(0);
+			/* Ensure the map stays together with a clear stacking context */
+			z-index: 0;
+		}
+
+		/* Map loading overlay */
+		.map-loading-overlay {
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background-color: rgba(255, 255, 255, 0.8);
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			z-index: 1000;
+		}
+
+		/* Map error overlay */
+		.map-error-overlay {
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background-color: rgba(255, 255, 255, 0.9);
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			z-index: 1000;
+		}
+
+		/* Retry button */
+		.retry-button {
+			margin-top: 12px;
+			padding: 8px 16px;
+			background-color: #3b82f6;
+			color: white;
+			border: none;
+			border-radius: 4px;
+			cursor: pointer;
+		}
+
+		/* Force Leaflet container to respect boundaries */
+		.leaflet-container {
+			width: 100% !important;
+			height: 100% !important;
+			position: absolute !important;
+			top: 0 !important;
+			left: 0 !important;
+			right: 0 !important;
+			bottom: 0 !important;
+		}
+
+		/* Fix for map legend - move to bottom of container */
+		.map-legend {
+			position: absolute;
+			bottom: 10px;
+			right: 10px;
+			background-color: white;
+			padding: 6px 10px;
+			border-radius: 4px;
+			box-shadow: 0 1px 5px rgba(0, 0, 0, 0.2);
+			z-index: 1000;
+			font-size: 12px;
+			display: flex;
+			gap: 12px;
+		}
+
+		/* Legend dots */
+		.legend-item {
+			display: flex;
+			align-items: center;
+			gap: 4px;
+		}
+
+		.legend-dot {
+			width: 12px;
+			height: 12px;
+			border-radius: 50%;
+			display: inline-block;
+		}
+
+		.dot-available {
+			background-color: #22c55e;
+		}
+
+		.dot-limited {
+			background-color: #f97316;
+		}
+
+		.dot-unavailable {
+			background-color: #ef4444;
+		}
+
+		/* Loading spinner */
+		.loading-spinner {
+			border: 4px solid rgba(0, 0, 0, 0.1);
+			width: 36px;
+			height: 36px;
+			border-radius: 50%;
+			border-left-color: #3b82f6;
+			animation: spin 1s linear infinite;
+		}
+
+		@keyframes spin {
+			0% {
+				transform: rotate(0deg);
+			}
+			100% {
+				transform: rotate(360deg);
+			}
+		}
+
+		/* Error icon */
+		.error-icon {
+			color: #ef4444;
+			font-size: 48px;
+			margin-bottom: 16px;
+		}
+	`
+
 	/**
 	 * When component is connected to DOM, load Leaflet
 	 */
@@ -294,6 +259,11 @@ export class CourtMapView extends $LitElement(css`
 
 			leafletScript.onload = () => {
 				resolve()
+			}
+
+			leafletScript.onerror = e => {
+				console.error('Failed to load Leaflet:', e)
+				reject(new Error('Failed to load Leaflet script'))
 			}
 
 			document.head.appendChild(leafletScript)
@@ -389,51 +359,19 @@ export class CourtMapView extends $LitElement(css`
 			try {
 				const L = window.L
 
-				// Create map instance
+				// Create map instance with simplified options
 				this.map = L.map(this.mapContainer, {
 					center: [51.505, -0.09],
 					zoom: 15,
 					zoomControl: true,
 					attributionControl: false,
-					fadeAnimation: false,
-					markerZoomAnimation: false,
-					zoomAnimation: false,
-					preferCanvas: true,
-					tap: false,
 				})
 
-				// Add tile layer with multiple fallback options
-				try {
-					// First try with standard OpenStreetMap tiles
-					L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-						maxZoom: 19,
-						subdomains: 'abc',
-						attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-					}).addTo(this.map)
-				} catch (e) {
-					console.error('Error adding primary tile layer:', e)
-					try {
-						// Second fallback to OSM HOT
-						L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
-							maxZoom: 19,
-							subdomains: 'abc',
-							attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-						}).addTo(this.map)
-					} catch (e2) {
-						console.error('Error adding secondary tile layer:', e2)
-						try {
-							// Third fallback to CartoDB
-							L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-								maxZoom: 19,
-								subdomains: 'abcd',
-								attribution:
-									'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="https://carto.com/attributions">CARTO</a>',
-							}).addTo(this.map)
-						} catch (e3) {
-							console.error('All tile layers failed:', e3)
-						}
-					}
-				}
+				// Add simple tile layer, reducing complexity
+				L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+					maxZoom: 19,
+					attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+				}).addTo(this.map)
 
 				// Add attribution in a cleaner way
 				L.control
@@ -456,11 +394,6 @@ export class CourtMapView extends $LitElement(css`
 				setTimeout(() => {
 					if (this.map) {
 						this.map.invalidateSize(true)
-
-						// Explicitly check and log the map container dimensions
-						if (this.mapContainer) {
-							console.log('Map container dimensions:', this.mapContainer.offsetWidth, this.mapContainer.offsetHeight)
-						}
 					}
 				}, 500)
 
@@ -789,9 +722,7 @@ export class CourtMapView extends $LitElement(css`
 					this.loading,
 					() => html`
 						<div class="map-loading-overlay">
-							<div class="flex justify-center items-center h-full">
-								<schmancy-spinner size="48px"></schmancy-spinner>
-							</div>
+							<div class="loading-spinner"></div>
 						</div>
 					`,
 					() => html`
@@ -799,9 +730,9 @@ export class CourtMapView extends $LitElement(css`
 							this.error,
 							() => html`
 								<div class="map-error-overlay">
-									<div class="text-center">
-										<schmancy-icon size="48px" class="text-error-default">error_outline</schmancy-icon>
-										<p class="mt-2">${this.error}</p>
+									<div style="text-align: center;">
+										<div class="error-icon">⚠️</div>
+										<p>${this.error}</p>
 										<button @click=${() => this._retryInitialization()} class="retry-button">Retry</button>
 									</div>
 								</div>

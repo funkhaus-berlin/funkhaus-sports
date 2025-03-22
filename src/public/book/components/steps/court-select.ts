@@ -6,13 +6,14 @@ import { customElement, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
+import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { availabilityContext, CourtAvailabilityStatus, getAllCourtsAvailability } from 'src/availability-context'
 import { Court, SportTypeEnum } from 'src/db/courts.collection'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
+import './court-availability-dialog'
 import './court-map-view'
 import './sport-court-card'
-import { takeUntil, filter, map, distinctUntilChanged } from 'rxjs'
 
 /**
  * View modes for court selection
@@ -227,74 +228,6 @@ export class CourtSelectStep extends $LitElement(css`
 	}
 
 	/**
-	 * Handle court selection
-	 */
-	private handleCourtSelect(court: Court): void {
-		// Don't allow selecting unavailable courts
-		if (!this.canSelectCourt(court.id)) {
-			return
-		}
-
-		// Check if court is partially available
-		const availabilityStatus = this.getCourtAvailabilityStatus(court.id)
-
-		if (availabilityStatus === 'partial') {
-			// Show confirmation dialog for partially available courts
-			this.pendingCourtSelection = court
-			this.showConfirmationDialog = true
-			return
-		}
-
-		// For fully available courts, proceed directly
-		this.confirmCourtSelection(court)
-	}
-
-	/**
-	 * Confirm court selection
-	 */
-	private confirmCourtSelection(court: Court): void {
-		// Update booking context with selected court
-		bookingContext.set({
-			...this.booking,
-			courtId: court.id,
-		})
-
-		// Reset dialog state
-		this.pendingCourtSelection = null
-		this.showConfirmationDialog = false
-
-		// Advance to Payment step
-		BookingProgressContext.set({
-			currentStep: BookingStep.Payment,
-		})
-
-		// Animate the selected court if in list view
-		if (this.viewMode === ViewMode.LIST) {
-			setTimeout(() => {
-				const selectedCourtElement = this.shadowRoot?.querySelector(`[data-court-id="${court.id}"]`)
-				if (selectedCourtElement) {
-					selectedCourtElement.classList.add('pulse-animation')
-				}
-			}, 50)
-		}
-
-		// Fire change event for parent components
-		this.dispatchEvent(
-			new CustomEvent('next', {
-				detail: { court },
-			}),
-		)
-	}
-
-	/**
-	 * Cancel court selection from confirmation dialog
-	 */
-	private cancelCourtSelection(): void {
-		this.pendingCourtSelection = null
-		this.showConfirmationDialog = false
-	}
-
-	/**
 	 * Retry loading courts
 	 */
 	private retryLoading(): void {
@@ -387,49 +320,184 @@ export class CourtSelectStep extends $LitElement(css`
 	}
 
 	/**
-	 * Render confirmation dialog for partial availability
+	 * Confirm court selection with chosen time option
 	 */
-	private renderConfirmationDialog(): unknown {
-		if (!this.showConfirmationDialog || !this.pendingCourtSelection) return null
+	private confirmCourtSelection(
+		court: Court,
+		option: 'partial' | 'alternative' | 'original' = 'original',
+		timeSlot?: { start: string; end: string },
+	): void {
+		// Create booking update object
+		const bookingUpdate = {
+			...this.booking,
+			courtId: court.id,
+		}
 
-		const court = this.pendingCourtSelection
-		const status = this.courtAvailability.get(court.id)
+		// If using an alternative time slot, adjust booking times
+		if (timeSlot && (option === 'partial' || option === 'alternative')) {
+			// Create Date objects for the start and end times
+			const bookingDate = dayjs(this.booking.date).format('YYYY-MM-DD')
+			const startTime = dayjs(`${bookingDate}T${timeSlot.start}:00`)
+			const endTime = dayjs(`${bookingDate}T${timeSlot.end}:00`)
 
-		// Get simplified availability info
-		const availableSlots = status?.availableTimeSlots.length || 0
-		const totalSlots = (status?.availableTimeSlots.length || 0) + (status?.unavailableTimeSlots.length || 0)
-		const percentAvailable = Math.round((availableSlots / totalSlots) * 100)
+			// Update booking with adjusted times
+			bookingUpdate.startTime = startTime.toISOString()
+			bookingUpdate.endTime = endTime.toISOString()
 
-		return html`
-			<div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-				<div class="bg-surface-default rounded-lg p-6 max-w-md w-full shadow-xl text-center">
-					<div class="mb-4">
-						<schmancy-icon size="48px" class="text-warning-default flex justify-center">warning</schmancy-icon>
-						<h3 class="text-xl font-bold text-primary-default mt-2">Limited Availability</h3>
-					</div>
+			// Log the time adjustment
+			console.log(`Adjusted booking time to ${option} slot: ${timeSlot.start} - ${timeSlot.end}`)
+		}
 
-					<p class="text-lg mb-3">
-						<strong>${court.name}</strong> is only available for
-						<strong class="text-success-default">${percentAvailable}%</strong> of your requested time
-					</p>
+		// Update booking context with selected court and adjusted times
+		bookingContext.set(bookingUpdate)
 
-					<p class="mb-6 text-surface-on">
-						This court has partial availability during your selected time period. Would you like to proceed anyway?
-					</p>
+		// Reset dialog state
+		this.pendingCourtSelection = null
+		this.showConfirmationDialog = false
 
-					<div class="flex justify-center gap-3 mt-4">
-						<schmancy-button variant="outlined" @click=${() => this.cancelCourtSelection()}>
-							Choose Another Court
-						</schmancy-button>
-						<schmancy-button variant="filled" @click=${() => this.confirmCourtSelection(court)}>
-							Book Anyway
-						</schmancy-button>
-					</div>
-				</div>
-			</div>
-		`
+		// Advance to Payment step
+		BookingProgressContext.set({
+			currentStep: BookingStep.Payment,
+		})
+
+		// Animate the selected court if in list view
+		if (this.viewMode === ViewMode.LIST) {
+			setTimeout(() => {
+				const selectedCourtElement = this.shadowRoot?.querySelector(`[data-court-id="${court.id}"]`)
+				if (selectedCourtElement) {
+					selectedCourtElement.classList.add('pulse-animation')
+				}
+			}, 50)
+		}
+
+		// Fire change event for parent components
+		this.dispatchEvent(
+			new CustomEvent('next', {
+				detail: {
+					court,
+					timeOption: option,
+					adjustedTimes: option !== 'original',
+				},
+			}),
+		)
 	}
 
+	/**
+	 * Handle court selection
+	 */
+	private handleCourtSelect(court: Court): void {
+		// Don't allow selecting unavailable courts
+		if (!this.canSelectCourt(court.id)) {
+			return
+		}
+
+		// Check if court is partially available
+		const availabilityStatus = this.getCourtAvailabilityStatus(court.id)
+
+		if (availabilityStatus === 'partial') {
+			// Show confirmation dialog for partially available courts
+			this.pendingCourtSelection = court
+			this.showConfirmationDialog = true
+			return
+		}
+
+		// For fully available courts, proceed directly
+		this.confirmCourtSelection(court)
+	}
+
+	/**
+	 * Handle dialog events
+	 */
+	/**
+	 * Update this method in your court-select-step.ts file to ensure correct handling of options
+	 */
+	private handleDialogConfirm(e: CustomEvent): void {
+		const { court, option, timeSlot } = e.detail
+		console.log('Confirm selection:', option, timeSlot)
+
+		if (!court || !option) {
+			console.error('Missing required confirmation details')
+			return
+		}
+
+		// Create booking update object
+		const bookingUpdate = {
+			...this.booking,
+			courtId: court.id,
+		}
+
+		// If using a time slot option, adjust booking times
+		if (timeSlot && (option === 'partial' || option === 'alternative' || option === 'extended')) {
+			// Create Date objects for the start and end times
+			const bookingDate = dayjs(this.booking.date).format('YYYY-MM-DD')
+			const startTime = dayjs(`${bookingDate}T${timeSlot.start}:00`)
+			const endTime = dayjs(`${bookingDate}T${timeSlot.end}:00`)
+
+			// Update booking with adjusted times
+			bookingUpdate.startTime = startTime.toISOString()
+			bookingUpdate.endTime = endTime.toISOString()
+
+			// Calculate new price based on duration ratio if using partial option
+			if (option === 'partial') {
+				const originalDuration = this.calculateDuration()
+				const newDuration = endTime.diff(startTime, 'minute')
+				const priceRatio = newDuration / originalDuration
+
+				if (this.booking.price) {
+					bookingUpdate.price = Math.round(this.booking.price * priceRatio)
+				}
+			}
+
+			// Log the time adjustment
+			console.log(`Adjusted booking time to ${option} slot: ${timeSlot.start} - ${timeSlot.end}`)
+		}
+
+		// Update booking context with selected court and adjusted times
+		bookingContext.set(bookingUpdate)
+
+		// Reset dialog state
+		this.pendingCourtSelection = null
+		this.showConfirmationDialog = false
+
+		// Advance to Payment step
+		BookingProgressContext.set({
+			currentStep: BookingStep.Payment,
+		})
+
+		// Animate the selected court if in list view
+		if (this.viewMode === ViewMode.LIST) {
+			setTimeout(() => {
+				const selectedCourtElement = this.shadowRoot?.querySelector(`[data-court-id="${court.id}"]`)
+				if (selectedCourtElement) {
+					selectedCourtElement.classList.add('pulse-animation')
+				}
+			}, 50)
+		}
+
+		// Fire change event for parent components
+		this.dispatchEvent(
+			new CustomEvent('next', {
+				detail: {
+					court,
+					timeOption: option,
+					adjustedTimes: option !== 'original',
+					timeSlot,
+				},
+			}),
+		)
+	}
+
+	private handleDialogCancel(): void {
+		this.cancelCourtSelection()
+	}
+
+	/**
+	 * Cancel court selection from dialog
+	 */
+	private cancelCourtSelection(): void {
+		this.pendingCourtSelection = null
+		this.showConfirmationDialog = false
+	}
 	/**
 	 * Render the map or list view based on current view mode
 	 */
@@ -473,6 +541,19 @@ export class CourtSelectStep extends $LitElement(css`
 
 		// Render main content
 		return html`
+			${this.showConfirmationDialog && this.pendingCourtSelection
+				? html`
+						<court-availability-dialog
+							.court=${this.pendingCourtSelection}
+							.availability=${this.courtAvailability.get(this.pendingCourtSelection.id)!}
+							.booking=${this.booking}
+							.open=${this.showConfirmationDialog}
+							@confirm-selection=${this.handleDialogConfirm}
+							@cancel-selection=${this.handleDialogCancel}
+							@dialog-close=${() => (this.showConfirmationDialog = false)}
+						></court-availability-dialog>
+				  `
+				: ''}
 			<div class="mt-3 bg-surface-container-low rounded-lg px-2">
 				${this.error
 					? html`
@@ -585,9 +666,6 @@ export class CourtSelectStep extends $LitElement(css`
 							</div>
 					  `}
 			</div>
-
-			<!-- Confirmation dialog -->
-			${this.renderConfirmationDialog()}
 		`
 	}
 }
