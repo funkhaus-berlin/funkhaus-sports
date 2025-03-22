@@ -1,3 +1,4 @@
+// src/public/book/components/steps/duration-select.ts
 import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
@@ -21,7 +22,7 @@ import {
 	tap,
 } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
-import { enhancedAvailabilityCoordinator } from 'src/bookingServices/enhanced-availability-coordinator'
+import { availabilityContext, availabilityLoading$, getAvailableDurations } from 'src/availability-context'
 import { Court } from 'src/db/courts.collection'
 import { toUserTimezone } from 'src/utils/timezone'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
@@ -30,7 +31,7 @@ import { Duration } from '../../types'
 /**
  * Duration selection component that matches the time selection component design
  * Grid view by default on desktop, switching to list view on selection or small screens
- * Uses the enhanced availability coordinator to show durations for all courts
+ * Uses the availability context to show durations for all courts
  */
 @customElement('duration-selection-step')
 export class DurationSelectionStep extends $LitElement(css`
@@ -71,9 +72,22 @@ export class DurationSelectionStep extends $LitElement(css`
 	@property({ type: Boolean }) hidden = false
 
 	// Basic dependencies
-	@select(bookingContext) booking!: Booking
-	@select(courtsContext) courts!: Map<string, Court>
-	@select(BookingProgressContext) bookingProgress!: BookingProgress
+	@select(bookingContext, b => JSON.parse(JSON.stringify(b)), {
+		required: true,
+	})
+	booking!: Booking
+	@select(courtsContext, undefined, {
+		required: true,
+	})
+	courts!: Map<string, Court>
+	@select(BookingProgressContext, undefined, {
+		required: true,
+	})
+	bookingProgress!: BookingProgress
+
+	// Add availability context
+	@select(availabilityContext, undefined, { required: true })
+	availability!: any
 
 	// Core state streams
 	private state$ = new BehaviorSubject<{
@@ -125,7 +139,7 @@ export class DurationSelectionStep extends $LitElement(css`
 		// Subscribe to external data sources
 		this.subscribeToBookingContext()
 		this.subscribeToProgressContext()
-		this.subscribeToAvailabilityCoordinator()
+		this.subscribeToAvailabilityContext()
 	}
 
 	disconnectedCallback(): void {
@@ -273,12 +287,7 @@ export class DurationSelectionStep extends $LitElement(css`
 			})),
 			// Important: reload when time selection changes
 			// Using distinctUntilChanged to avoid unnecessary reloads
-			filter((booking, index) => {
-				// Always load on first emission
-				if (index === 0) return true
-				// Only reload if start time or date changed
-				return booking.startTime !== this.booking?.startTime || booking.date !== this.booking?.date
-			}),
+			distinctUntilChanged((prev, curr) => prev.startTime === curr.startTime),
 			tap(booking => {
 				console.log('Booking context changed, reloading durations:', booking)
 				this.updateState({
@@ -287,8 +296,8 @@ export class DurationSelectionStep extends $LitElement(css`
 					durations: [],
 				})
 
-				// Load durations with a short delay to ensure availability data is up to date
-				setTimeout(() => this.loadDurations(), 100)
+				// Load durations immediately to be more responsive
+				this.loadDurations()
 			}),
 		).subscribe({
 			error: err => {
@@ -323,19 +332,20 @@ export class DurationSelectionStep extends $LitElement(css`
 		})
 	}
 
-	private subscribeToAvailabilityCoordinator(): void {
-		// Subscribe to enhanced availability coordinator errors
-		enhancedAvailabilityCoordinator.error$
-			.pipe(
-				takeUntil(this.disconnecting),
-				filter(error => !!error),
-			)
-			.subscribe(error => {
-				this.updateState({ error })
-			})
+	// NEW: Subscribe to availability context
+	private subscribeToAvailabilityContext(): void {
+		// Subscribe to availability context updates
+		availabilityContext.$.pipe(
+			takeUntil(this.disconnecting),
+			filter(
+				availability => availability.date === bookingContext.value.date && !!this.booking.startTime, // Only process when we have a start time
+			),
+		).subscribe(() => {
+			this.loadDurations()
+		})
 
-		// Subscribe to enhanced availability coordinator loading state
-		enhancedAvailabilityCoordinator.loading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
+		// Subscribe to loading state
+		availabilityLoading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
 			this.updateState({ loading })
 		})
 	}
@@ -383,7 +393,7 @@ export class DurationSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Load durations for all courts using the enhanced availability coordinator
+	 * Load durations using the availability context
 	 */
 	private loadDurations(): void {
 		// Set initial loading state
@@ -405,53 +415,38 @@ export class DurationSelectionStep extends $LitElement(css`
 			console.log('Loading durations for all courts at time', this.booking.startTime)
 
 			try {
-				// Use enhanced availability coordinator to get all available durations across all courts
-				const allDurations = enhancedAvailabilityCoordinator.getAllAvailableDurations(this.booking.startTime)
+				// Get available durations from availability context
+				const availableDurations = getAvailableDurations(this.booking.startTime)
 
-				if (allDurations.length > 0) {
-					// Convert to the simpler Duration format needed for the UI
-					const durations: Duration[] = allDurations.map(duration => ({
-						label: duration.label,
-						value: duration.value,
-						price: duration.price,
-					}))
-
-					// Track available courts count
-					const maxAvailableCourts = Math.max(...allDurations.map(d => d.availableCourts.length))
+				if (availableDurations.length > 0) {
+					// Calculate available courts count
+					const availableCourtsCount = this.availability.activeCourtIds.length || 0
 
 					this.updateState({
-						durations,
+						durations: availableDurations,
 						showingEstimatedPrices: false,
-						availableCourtsCount: maxAvailableCourts,
+						availableCourtsCount,
+						loading: false,
+						error: this.availability.error,
 					})
 
-					this.lastSuccessfulData = { durations }
-					this.announceForScreenReader(`${durations.length} duration options available`)
-					console.log('Loaded durations:', durations)
+					this.lastSuccessfulData = { durations: availableDurations }
+					this.announceForScreenReader(`${availableDurations.length} duration options available`)
 				} else {
-					// No valid durations available - check if it's a data issue or truly no availability
-					if (enhancedAvailabilityCoordinator.error$.value) {
-						// There was an error fetching availability data
-						this.updateState({
-							error: 'Could not determine available durations. Using estimates instead.',
-							durations: [],
-						})
-						this.setEstimatedPrices()
-						console.warn('Using estimated prices due to error:', enhancedAvailabilityCoordinator.error$.value)
-					} else {
-						// No error, but still no available durations - truly unavailable
-						this.updateState({
-							error: 'No valid duration options available for this time slot. Please select a different time.',
-							durations: [],
-						})
-						console.warn('No durations available for this time slot')
-					}
+					// No valid durations available - use estimated prices as fallback
+					this.updateState({
+						error: 'No valid duration options available for this time slot. Please select a different time.',
+						durations: [],
+						loading: false,
+					})
+					this.setEstimatedPrices()
 				}
 			} catch (error) {
 				console.error('Error getting available durations:', error)
 				this.updateState({
 					error: 'Error determining available durations. Using estimates instead.',
 					durations: [],
+					loading: false,
 				})
 				this.setEstimatedPrices()
 			}
@@ -459,9 +454,8 @@ export class DurationSelectionStep extends $LitElement(css`
 			// Missing start time
 			console.warn('Missing start time, using estimated prices')
 			this.setEstimatedPrices()
+			this.updateState({ loading: false })
 		}
-
-		this.updateState({ loading: false })
 
 		// After data is loaded, try to scroll to the appropriate position
 		this.updateComplete.then(() => {
@@ -516,6 +510,7 @@ export class DurationSelectionStep extends $LitElement(css`
 		this.updateState({
 			durations: filteredDurations,
 			showingEstimatedPrices: true,
+			loading: false,
 		})
 
 		this.lastSuccessfulData = { durations: filteredDurations }
@@ -557,13 +552,10 @@ export class DurationSelectionStep extends $LitElement(css`
 			// Convert back to UTC for storage
 			const endTime = localEndTime.utc().toISOString()
 
-			bookingContext.set(
-				{
-					endTime,
-					price: duration.price,
-				},
-				true,
-			)
+			bookingContext.set({
+				endTime,
+				price: duration.price,
+			})
 		}
 
 		// Always switch to list view after selection
@@ -736,8 +728,7 @@ export class DurationSelectionStep extends $LitElement(css`
 	 * Retry loading duration data
 	 */
 	private retryLoading(): void {
-		// Force a refresh of availability data
-		enhancedAvailabilityCoordinator.refreshData()
+		// Force reload durations
 		this.loadDurations()
 	}
 
@@ -774,21 +765,6 @@ export class DurationSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Render error state
-	 */
-	private renderErrorState(): unknown {
-		return html`
-			<div class="p-6 bg-error-container rounded-lg text-center">
-				<schmancy-icon size="32px" class="text-error-default mb-2">error_outline</schmancy-icon>
-				<p class="text-error-on-container mb-2">${this.state$.value.error}</p>
-				<button @click=${() => this.retryLoading()} class="px-4 py-2 bg-error-default text-error-on rounded-md mt-2">
-					Try Again
-				</button>
-			</div>
-		`
-	}
-
-	/**
 	 * Render empty state (no durations)
 	 */
 	private renderEmptyState(): unknown {
@@ -798,20 +774,6 @@ export class DurationSelectionStep extends $LitElement(css`
 				<schmancy-typography type="body" token="md" class="mt-2">
 					No duration options available for this time.
 				</schmancy-typography>
-			</div>
-		`
-	}
-
-	/**
-	 * Render loading state
-	 */
-	private renderLoadingState(): unknown {
-		return html`
-			<div class="text-center py-6">
-				<div
-					class="inline-block w-8 h-8 border-4 border-t-primary-default border-r-outlineVariant border-b-outlineVariant border-l-outlineVariant rounded-full animate-spin"
-				></div>
-				<schmancy-typography type="body" token="md" class="mt-2">Loading durations...</schmancy-typography>
 			</div>
 		`
 	}
@@ -906,22 +868,7 @@ export class DurationSelectionStep extends $LitElement(css`
 		if (this.hidden) return nothing
 
 		// Get current state values
-		const { durations, loading, error, viewMode, showingEstimatedPrices, availableCourtsCount } = this.state$.value
-
-		// Show loading state if loading and no saved data
-		if (loading && !this.lastSuccessfulData) {
-			return this.renderLoadingState()
-		}
-
-		// Show error message if present and no saved data
-		if (error && !this.lastSuccessfulData) {
-			return this.renderErrorState()
-		}
-
-		// Show empty state if no durations
-		if (durations.length === 0 && !this.lastSuccessfulData) {
-			return this.renderEmptyState()
-		}
+		const { durations, loading, error, showingEstimatedPrices, availableCourtsCount } = this.state$.value
 
 		// Use last successful data if available
 		const displayDurations =
@@ -1015,10 +962,5 @@ export class DurationSelectionStep extends $LitElement(css`
 				)}
 			</div>
 		`
-	}
-}
-declare global {
-	interface HTMLElementTagNameMap {
-		'duration-selection-step': DurationSelectionStep
 	}
 }

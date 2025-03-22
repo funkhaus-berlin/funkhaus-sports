@@ -1,3 +1,5 @@
+// src/public/book/components/steps/start-time-select.ts
+
 import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
@@ -17,16 +19,20 @@ import {
 	Observable,
 	shareReplay,
 	startWith,
-	switchMap,
 	take,
 	takeUntil,
 	tap,
 } from 'rxjs'
+import {
+	availabilityContext,
+	AvailabilityData,
+	availabilityLoading$,
+	getAvailableTimeSlots,
+} from 'src/availability-context'
 import { toUTC } from 'src/utils/timezone'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { TimeSlot } from '../../types'
-// Import the enhanced availability coordinator
-import { enhancedAvailabilityCoordinator } from 'src/bookingServices/enhanced-availability-coordinator'
+// Import the new availability context and functions
 
 // Configure dayjs with timezone plugins
 dayjs.extend(utc)
@@ -68,6 +74,10 @@ function toUserTimezone(isoString: string): dayjs.Dayjs {
  */
 @customElement('time-selection-step')
 export class TimeSelectionStep extends $LitElement(css`
+	:host {
+		display: block;
+		position: relative;
+	}
 	.scrollbar-hide {
 		-ms-overflow-style: none; /* IE and Edge */
 		scrollbar-width: none; /* Firefox */
@@ -111,6 +121,10 @@ export class TimeSelectionStep extends $LitElement(css`
 	@select(BookingProgressContext, undefined, { required: true })
 	bookingProgress!: BookingProgress
 
+	// Add availability context
+	@select(availabilityContext, undefined, { required: true })
+	availability!: AvailabilityData
+
 	// Core state streams
 	private state$ = new BehaviorSubject<{
 		timeSlots: TimeSlot[]
@@ -130,7 +144,7 @@ export class TimeSelectionStep extends $LitElement(css`
 	@state() private isActive = false
 	@state() private isCompact = false
 	@state() private isDesktopOrTablet = window.innerWidth >= 384
-	@state() private shouldUseGridView = false
+	@state() shouldUseGridView = false
 	@state() private availableCourtsCount = 0
 
 	// Simple transition state
@@ -146,7 +160,7 @@ export class TimeSelectionStep extends $LitElement(css`
 	// User preferences
 	private userTimezone = getUserTimezone()
 	private userLocale = navigator.language || 'en-US'
-	private use24HourFormat = this._detectTimeFormatPreference()
+	use24HourFormat = this._detectTimeFormatPreference()
 
 	// Store references for cleanup
 	private resizeObserver: ResizeObserver | null = null
@@ -164,7 +178,7 @@ export class TimeSelectionStep extends $LitElement(css`
 		// Subscribe to external data sources
 		this.subscribeToBookingContext()
 		this.subscribeToProgressContext()
-		this.subscribeToAvailabilityCoordinator()
+		this.subscribeToAvailabilityContext()
 	}
 
 	disconnectedCallback(): void {
@@ -309,32 +323,18 @@ export class TimeSelectionStep extends $LitElement(css`
 	// External subscriptions
 	private subscribeToBookingContext(): void {
 		bookingContext.$.pipe(
-			startWith(bookingContext.value),
 			takeUntil(this.disconnecting),
 			filter(booking => !!booking.date && !!booking.venueId),
 			distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.venueId === curr.venueId),
 			tap(() => {
 				this.updateState({
-					timeSlots: [],
 					autoScrollAttempted: false,
 					loading: true,
 					error: null,
 				})
-
-				// Force refresh of availability data
-				enhancedAvailabilityCoordinator.refreshData()
 			}),
-			switchMap(() =>
-				enhancedAvailabilityCoordinator.availabilityData$.pipe(
-					filter(data => !!data),
-					takeUntil(this.disconnecting),
-				),
-			),
-		).subscribe(data => {
-			if (data) {
-				this.loadTimeSlots()
-			}
-		})
+			shareReplay(1),
+		).subscribe()
 	}
 
 	private subscribeToProgressContext(): void {
@@ -352,21 +352,28 @@ export class TimeSelectionStep extends $LitElement(css`
 		})
 	}
 
-	private subscribeToAvailabilityCoordinator(): void {
-		// Subscribe to loading state
-		enhancedAvailabilityCoordinator.loading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
-			this.updateState({ loading })
+	// NEW: Subscribe to availability context instead of using the coordinator
+	private subscribeToAvailabilityContext(): void {
+		// Subscribe to availability context updates
+		availabilityContext.$.pipe(
+			tap(console.log),
+			takeUntil(this.disconnecting),
+			filter(availability => !!availability && !!availability.date && !!availability.venueId),
+			filter(availability => availability.date === bookingContext.value.date),
+			distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.venueId === curr.venueId),
+		).subscribe({
+			next: () => {
+				this.loadTimeSlots()
+			},
+			complete: () => {
+				// alert('Availability context completed')
+			},
 		})
 
-		// Subscribe to error state
-		enhancedAvailabilityCoordinator.error$
-			.pipe(
-				takeUntil(this.disconnecting),
-				filter(error => !!error),
-			)
-			.subscribe(error => {
-				this.updateState({ error })
-			})
+		// Subscribe to loading state
+		availabilityLoading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
+			this.updateState({ loading })
+		})
 	}
 
 	// State management helper
@@ -378,30 +385,17 @@ export class TimeSelectionStep extends $LitElement(css`
 		this.requestUpdate()
 	}
 
-	// Business logic methods
+	// Business logic methods - UPDATED to use availability context
 	private loadTimeSlots(): void {
 		try {
-			// Normalize the date format
-			let formattedDate = this.booking.date
-			if (formattedDate.includes('T')) {
-				formattedDate = formattedDate.split('T')[0]
-			}
-
-			// Get all time slots where ANY court is available
-			const timeSlotStatus = enhancedAvailabilityCoordinator.getAllAvailableTimeSlots(formattedDate)
-
-			// Convert to TimeSlot format for UI
-			const timeSlots: TimeSlot[] = timeSlotStatus.map(slot => ({
-				label: slot.time,
-				value: slot.timeValue,
-				available: slot.hasAvailableCourts,
-			}))
+			// Get time slots from availability context
+			const timeSlots = getAvailableTimeSlots()
 
 			// Update state
 			this.updateState({
 				timeSlots,
 				loading: false,
-				error: null,
+				error: this.availability.error,
 			})
 
 			// After data is loaded, try to scroll to appropriate position
@@ -571,7 +565,9 @@ export class TimeSelectionStep extends $LitElement(css`
 	}
 
 	private retryLoading(): void {
-		enhancedAvailabilityCoordinator.refreshData()
+		// No longer using enhancedAvailabilityCoordinator, so we can't call refreshData
+		// Instead we'll just reload time slots from the current availability context
+		this.loadTimeSlots()
 	}
 
 	// Scrolling helper methods
@@ -684,33 +680,9 @@ export class TimeSelectionStep extends $LitElement(css`
 		}
 	}
 
-	// UI Rendering Methods
-	private renderLoadingState(): unknown {
-		return html`
-			<div class="text-center py-6">
-				<div
-					class="inline-block w-8 h-8 border-4 border-t-primary-default border-r-outlineVariant border-b-outlineVariant border-l-outlineVariant rounded-full animate-spin"
-				></div>
-				<schmancy-typography type="body" token="md" class="mt-2">Loading time slots...</schmancy-typography>
-			</div>
-		`
-	}
-
-	private renderErrorState(): unknown {
-		return html`
-			<div class="p-6 bg-error-container rounded-lg text-center">
-				<schmancy-icon size="32px" class="text-error-default mb-2">error_outline</schmancy-icon>
-				<p class="text-error-on-container mb-2">${this.state$.value.error}</p>
-				<button @click=${() => this.retryLoading()} class="px-4 py-2 bg-error-default text-error-on rounded-md mt-2">
-					Try Again
-				</button>
-			</div>
-		`
-	}
-
 	private renderEmptyState(): unknown {
 		return html`
-			<div class="text-center py-6">
+			<div class="text-center py-6 grid gap-4 justify-center">
 				<schmancy-icon size="48px" class="text-surface-on-variant opacity-50">schedule</schmancy-icon>
 				<schmancy-typography type="body" token="md" class="mt-2">
 					No time slots available for this date.
@@ -771,7 +743,7 @@ export class TimeSelectionStep extends $LitElement(css`
 	private renderGridLayout(slots: TimeSlot[]): unknown {
 		return html`
 			<div
-				class="grid grid-cols-5 md:grid-cols-5 gap-2 py-4"
+				class="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-5 gap-3 py-4"
 				role="listbox"
 				aria-label="Available Time Slots"
 				aria-multiselectable="false"
@@ -809,15 +781,12 @@ export class TimeSelectionStep extends $LitElement(css`
 		// Get current state values
 		const { timeSlots, loading, error, viewMode } = this.state$.value
 
-		// Show loading state if loading and no data yet
-		if (loading && timeSlots.length === 0) {
-			return this.renderLoadingState()
-		}
-
 		// Show empty state if no time slots
-		if (timeSlots.length === 0) {
+		if (!loading && timeSlots.length === 0) {
 			return this.renderEmptyState()
 		}
+
+		// ${when(loading, () => html` <sch-busy></sch-busy> `)}
 
 		return html`
 			<div
@@ -832,18 +801,6 @@ export class TimeSelectionStep extends $LitElement(css`
 							<div class="bg-error-container p-2 rounded-t-lg text-error-on-container text-sm text-center mb-3">
 								${error}
 								<button @click=${() => this.retryLoading()} class="ml-2 underline font-medium">Refresh</button>
-							</div>
-					  `
-					: nothing}
-
-				<!-- Loading indicator overlay if loading but showing existing data -->
-				${loading && timeSlots.length > 0
-					? html`
-							<div class="bg-surface-low bg-opacity-80 p-1 text-center text-xs flex justify-center items-center gap-2">
-								<div
-									class="inline-block w-4 h-4 border-2 border-t-primary-default border-r-outlineVariant border-b-outlineVariant border-l-outlineVariant rounded-full animate-spin"
-								></div>
-								<span>Updating...</span>
 							</div>
 					  `
 					: nothing}

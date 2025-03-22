@@ -1,4 +1,4 @@
-// src/public/book/book.ts - merged version
+// src/public/book/book.ts
 import { fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, PropertyValues } from 'lit'
@@ -7,6 +7,7 @@ import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, filter, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
+import { initializeAvailabilityContext } from 'src/availability-context'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
@@ -14,6 +15,9 @@ import './components'
 import { BookingErrorService } from './components/errors/booking-error-service'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep, ErrorCategory } from './context'
 import { PaymentStatusHandler } from './payment-status-handler'
+
+// Import the availability context initialization function
+
 /**
  * Court booking system component
  * Handles the complete booking flow from date selection to payment
@@ -41,6 +45,9 @@ export class CourtBookingSystem extends $LitElement() {
 
 	async connectedCallback() {
 		super.connectedCallback()
+
+		// Initialize the availability context
+		initializeAvailabilityContext(this.disconnecting)
 
 		// Create payment slot
 		this.setupPaymentSlot()
@@ -276,15 +283,7 @@ export class CourtBookingSystem extends $LitElement() {
 	}
 
 	private renderProcessingOverlay() {
-		return html`
-			<div
-				class="fixed inset-0 z-50 bg-opacity-70 backdrop-blur-sm duration-300 transition-opacity flex items-center justify-center "
-			>
-				<schmancy-flex class="px-4" justify="center" flow="row" gap="md" align="center">
-					<schmancy-spinner class="h-12 w-12" size="48px"></schmancy-spinner>
-				</schmancy-flex>
-			</div>
-		`
+		return html` <sch-busy></sch-busy> `
 	}
 
 	private renderCurrentStep() {

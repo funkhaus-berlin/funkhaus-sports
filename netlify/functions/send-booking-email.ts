@@ -144,21 +144,19 @@ async function sendEmail(data: any, pdfBuffer: Buffer): Promise<boolean> {
  */
 async function generateBookingPDF(data: any): Promise<Buffer> {
 	// Create a new PDF document
+
+	// Register custom fonts
+
 	const doc = new PDFDocument({
 		size: 'A4',
 		margin: 50,
+		font: resolve(__dirname, './_shared/assets/JosefinSans-Regular.ttf'),
 	})
+	doc.registerFont('Regular', resolve(__dirname, './_shared/assets/JosefinSans-Regular.ttf'))
+	doc.registerFont('Bold', resolve(__dirname, './_shared/assets/JosefinSans-Bold.ttf'))
+
 	let buffers: Array<Buffer> = []
 	doc.on('data', chunk => buffers.push(chunk))
-
-	// Define font paths
-	const fontPath = resolve(__dirname, './_shared/assets/')
-	const normalFont = `${fontPath}/JosefinSans-Regular.ttf`
-	const boldFont = `${fontPath}/JosefinSans-Bold.ttf`
-
-	// Register custom fonts
-	doc.registerFont('Regular', normalFont)
-	doc.registerFont('Bold', boldFont)
 
 	// Header - Invoice title
 	let y = 90
@@ -270,11 +268,6 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	// Move to the invoice items section
 	y = 300
 
-	// Section title
-	doc.font('Bold').fontSize(14).fillColor('#5e808e').text('BOOKING DETAILS', 50, y)
-	doc.fillColor('#000000')
-	y += 20
-
 	// Draw table headers with background
 	doc.fillColor('#f5f5f5').rect(50, y, 500, 25).fill()
 	doc.fillColor('#000000')
@@ -282,8 +275,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	// Table headers
 	doc.font('Bold').fontSize(12)
 	doc.text('Description', 60, y + 8)
-	doc.text('Duration', 310, y + 8)
-	doc.text('Rate', 390, y + 8)
+	doc.text('Duration', 230, y + 8)
 	doc.text('Amount', 470, y + 8)
 
 	y += 25
@@ -301,8 +293,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	// Invoice item
 	doc.font('Regular').fontSize(12)
 	doc.text(description, 60, y + 8, { width: 240 })
-	doc.text(duration, 310, y + 8)
-	doc.text(`€${netAmount.toFixed(2)}`, 390, y + 8)
+	doc.text(duration, 230, y + 8)
 	doc.text(`€${netAmount.toFixed(2)}`, 470, y + 8)
 
 	y += 30
@@ -363,7 +354,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 
 	// Page number and date
 	doc.fontSize(10).text(new Date().toISOString().split('T')[0], 50, footerY + 115)
-	doc.text('Page 1 of 1', 500, footerY + 115)
+	doc.text('Page 1 of 1', 450, footerY + 115)
 
 	// End the document
 	doc.end()

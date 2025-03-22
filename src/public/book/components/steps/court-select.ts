@@ -6,31 +6,46 @@ import { customElement, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import { distinctUntilChanged, filter, map, shareReplay, startWith, takeUntil, tap } from 'rxjs'
+import { distinctUntilChanged, filter, map, shareReplay, startWith, takeUntil } from 'rxjs'
 import { courtsContext, selectMyCourts } from 'src/admin/venues/courts/context'
 import { Court } from 'src/db/courts.collection'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 
-// Import the enhanced availability coordinator
+// Import the new availability context
 import {
+	availabilityContext,
+	availabilityLoading$,
 	CourtAvailabilityStatus,
-	enhancedAvailabilityCoordinator,
-} from 'src/bookingServices/enhanced-availability-coordinator'
+	getAllCourtsAvailability,
+} from 'src/availability-context'
 
 import './sport-court-card'
 
 /**
  * Updated Court selection component for the booking flow
- * Shows availability based on selected date, time, and duration
- * Adds confirmation for partially available courts
+ * Uses availability context to show availability based on selected date, time, and duration
  */
 @customElement('court-select-step')
 export class CourtSelectStep extends $LitElement() {
-	@select(courtsContext) allCourts!: Map<string, Court>
-	@select(bookingContext) booking!: Booking
+	@select(courtsContext, undefined, {
+		required: true,
+	})
+	allCourts!: Map<string, Court>
+	@select(bookingContext, undefined, {
+		required: true,
+	})
+	booking!: Booking
 
-	@select(BookingProgressContext)
+	@select(BookingProgressContext, undefined, {
+		required: true,
+	})
 	bookingProgress!: BookingProgress
+
+	// Add availability context
+	@select(availabilityContext, undefined, {
+		required: true,
+	})
+	availability!: any
 
 	@state() selectedVenueCourts: Court[] = []
 	@state() loading: boolean = true
@@ -59,24 +74,13 @@ export class CourtSelectStep extends $LitElement() {
 	connectedCallback() {
 		super.connectedCallback()
 
-		// Subscribe to availability coordinator errors
-		enhancedAvailabilityCoordinator.error$
-			.pipe(
-				takeUntil(this.disconnecting),
-				filter(error => !!error),
-			)
-			.subscribe(error => {
-				this.error = error
-				this.requestUpdate()
-			})
-
-		// Subscribe to availability coordinator loading state
-		enhancedAvailabilityCoordinator.loading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
+		// Subscribe to availability loading and error states
+		availabilityLoading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
 			this.loading = loading
 			this.requestUpdate()
 		})
 
-		// Set up the court data subscription with improved error handling
+		// Set up subscription to booking context for availability updates
 		bookingContext.$.pipe(
 			startWith(bookingContext.value),
 			takeUntil(this.disconnecting),
@@ -94,8 +98,8 @@ export class CourtSelectStep extends $LitElement() {
 					prev.startTime === curr.startTime &&
 					prev.endTime === curr.endTime,
 			),
-			tap(booking => this.loadCourtsWithAvailability(booking)),
 		).subscribe({
+			next: () => this.loadCourtsWithAvailability(),
 			error: err => {
 				console.error('Error in booking subscription:', err)
 				this.error = 'Failed to load court availability data'
@@ -108,26 +112,13 @@ export class CourtSelectStep extends $LitElement() {
 	/**
 	 * Load courts with availability information for selected date, time, and duration
 	 */
-	private loadCourtsWithAvailability(booking: {
-		date: string
-		venueId: string
-		startTime: string
-		endTime: string
-	}): void {
+	private loadCourtsWithAvailability(): void {
 		this.loading = true
 		this.error = null
 
 		try {
-			// Calculate duration in minutes from startTime and endTime
-			const startTime = new Date(booking.startTime)
-			const endTime = new Date(booking.endTime)
-			const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000)
-
-			// Get court availability statuses from the coordinator
-			const courtAvailabilities = enhancedAvailabilityCoordinator.getAllCourtsAvailability(
-				booking.startTime,
-				durationMinutes,
-			)
+			// Get court availability statuses from the availability context
+			const courtAvailabilities = getAllCourtsAvailability(this.booking.startTime, this.calculateDuration())
 
 			// Create map of court ID to availability status for efficient lookups
 			const availabilityMap = new Map<string, CourtAvailabilityStatus>()
@@ -139,7 +130,7 @@ export class CourtSelectStep extends $LitElement() {
 			this.courtAvailability = availabilityMap
 
 			// Load the court data
-			this.loadCourtData(booking.date, booking.venueId).subscribe({
+			this.loadCourtData().subscribe({
 				next: courts => this.handleCourtDataLoaded(courts),
 				error: err => this.handleCourtDataError(err),
 			})
@@ -204,14 +195,14 @@ export class CourtSelectStep extends $LitElement() {
 	}
 
 	/**
-	 * Load court data with availability information using the enhanced service
+	 * Load court data with availability information
 	 */
-	private loadCourtData(date: string, venueId: string) {
+	private loadCourtData() {
 		return selectMyCourts.pipe(
 			map(courts => Array.from(courts.values())),
 			map(courts => {
 				// Filter active courts for this venue
-				return courts.filter(court => court.status === 'active' && court.venueId === venueId)
+				return courts.filter(court => court.status === 'active' && court.venueId === this.booking.venueId)
 			}),
 			map(courts => {
 				// Sort courts by availability using our availability map
@@ -240,9 +231,23 @@ export class CourtSelectStep extends $LitElement() {
 	}
 
 	/**
-	 * Calculate the availability ratio for a court
-	 * This shows what percentage of the requested time is available
+	 * Calculate current duration from booking start and end times
 	 */
+	private calculateDuration(): number {
+		if (!this.booking.startTime || !this.booking.endTime) {
+			return 0
+		}
+
+		try {
+			const start = dayjs(this.booking.startTime)
+			const end = dayjs(this.booking.endTime)
+			return end.diff(start, 'minute')
+		} catch (e) {
+			console.error('Error calculating duration:', e)
+			return 0
+		}
+	}
+
 	/**
 	 * Get court availability status based on our availability map
 	 */
@@ -462,18 +467,8 @@ export class CourtSelectStep extends $LitElement() {
 	}
 
 	private retryLoading(): void {
-		// Force a refresh of availability data
-		enhancedAvailabilityCoordinator.refreshData()
-
-		// Then reload courts with availability
-		if (this.booking?.date && this.booking?.venueId && this.booking?.startTime && this.booking?.endTime) {
-			this.loadCourtsWithAvailability({
-				date: this.booking.date,
-				venueId: this.booking.venueId,
-				startTime: this.booking.startTime,
-				endTime: this.booking.endTime,
-			})
-		}
+		// Trigger a reload of courts with availability
+		this.loadCourtsWithAvailability()
 	}
 
 	/**

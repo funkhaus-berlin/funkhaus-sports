@@ -2,6 +2,15 @@
 
 import { createContext } from '@mhmo91/schmancy'
 
+export type BookingStatus =
+	| 'pending'
+	| 'confirmed'
+	| 'cancelled'
+	| 'completed'
+	| 'no-show'
+	| 'refunded'
+	| 'failed'
+	| 'processing'
 // Error interfaces
 export interface BookingErrorField {
 	field: string
@@ -37,7 +46,7 @@ export interface Booking {
 	price: number
 	date: string
 	paymentStatus?: string
-	status?: string
+	status: BookingStatus
 	paymentIntentId?: string
 	customerEmail?: string
 	customerPhone: string
@@ -61,6 +70,7 @@ export const bookingContext = createContext<Booking>(
 		userName: '',
 		courtId: '',
 		startTime: '',
+		status: 'pending',
 		endTime: '',
 		price: 0,
 		date: '',
