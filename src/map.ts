@@ -1,6 +1,5 @@
-import { html, LitElement, PropertyValues } from 'lit'
-import { customElement, property, state } from 'lit/decorators.js'
-import { unsafeHTML } from 'lit/directives/unsafe-html.js'
+import { LitElement, html, css, PropertyValues } from 'lit'
+import { customElement, property, query } from 'lit/decorators.js'
 
 // Define interfaces for Leaflet since we're dynamically loading it
 declare global {
@@ -15,22 +14,119 @@ export class SimpleMap extends LitElement {
 	@property({ type: Number }) longitude: number = 13.4967
 	@property({ type: String }) address: string = 'Köpenicker Ch 11-14, 10317 Berlin'
 
-	@state() private leafletLoaded: boolean = false
-	private map: any = null
+	@query('#map') mapElement!: HTMLElement
 
-	// Explicitly disable shadow DOM
-	createRenderRoot() {
-		return this
+	private map: any = null
+	private leafletLoaded: boolean = false
+
+	// Include Leaflet CSS in the shadow DOM
+	static styles = css`
+		:host {
+			display: block;
+		}
+
+		#map {
+			height: 300px;
+			width: 100%;
+			border: 1px solid #ccc;
+			border-radius: 4px;
+			overflow: hidden;
+		}
+
+		.attribution {
+			margin-top: 8px;
+			font-size: 12px;
+			color: #666;
+		}
+
+		.attribution a {
+			color: #0078a8;
+			text-decoration: none;
+		}
+
+		.attribution a:hover {
+			text-decoration: underline;
+		}
+
+		/* Include essential Leaflet styles directly in component */
+		.leaflet-pane,
+		.leaflet-tile,
+		.leaflet-marker-icon,
+		.leaflet-marker-shadow,
+		.leaflet-tile-container,
+		.leaflet-pane > svg,
+		.leaflet-pane > canvas,
+		.leaflet-zoom-box,
+		.leaflet-image-layer,
+		.leaflet-layer {
+			position: absolute;
+			left: 0;
+			top: 0;
+		}
+
+		.leaflet-container {
+			overflow: hidden;
+		}
+
+		.leaflet-tile,
+		.leaflet-marker-icon,
+		.leaflet-marker-shadow {
+			-webkit-user-select: none;
+			-moz-user-select: none;
+			user-select: none;
+			-webkit-user-drag: none;
+		}
+
+		.leaflet-control {
+			position: relative;
+			z-index: 800;
+		}
+
+		.leaflet-pane {
+			z-index: 400;
+		}
+
+		.leaflet-tile-pane {
+			z-index: 200;
+		}
+
+		.leaflet-overlay-pane {
+			z-index: 400;
+		}
+
+		.leaflet-shadow-pane {
+			z-index: 500;
+		}
+
+		.leaflet-marker-pane {
+			z-index: 600;
+		}
+
+		.leaflet-tooltip-pane {
+			z-index: 650;
+		}
+
+		.leaflet-popup-pane {
+			z-index: 700;
+		}
+	`
+
+	connectedCallback() {
+		super.connectedCallback()
+		this._loadLeafletScript().then(() => {
+			this.leafletLoaded = true
+		})
 	}
 
 	protected firstUpdated(): void {
-		this._loadLeafletLibraries().then(() => {
-			this.leafletLoaded = true
-			// Initialize map after a brief delay to ensure DOM is ready
-			setTimeout(() => {
+		if (this.leafletLoaded) {
+			this._initializeMap()
+		} else {
+			this._loadLeafletScript().then(() => {
+				this.leafletLoaded = true
 				this._initializeMap()
-			}, 100)
-		})
+			})
+		}
 	}
 
 	protected updated(changedProperties: PropertyValues): void {
@@ -51,7 +147,7 @@ export class SimpleMap extends LitElement {
 		}
 	}
 
-	private async _loadLeafletLibraries(): Promise<void> {
+	private async _loadLeafletScript(): Promise<void> {
 		return new Promise<void>(resolve => {
 			// Check if Leaflet is already loaded
 			if (window.L) {
@@ -59,75 +155,71 @@ export class SimpleMap extends LitElement {
 				return
 			}
 
-			// Load Leaflet CSS
-			const leafletCss = document.createElement('link')
-			leafletCss.rel = 'stylesheet'
-			leafletCss.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-			leafletCss.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY='
-			leafletCss.crossOrigin = ''
-			document.head.appendChild(leafletCss)
-
-			// Load Leaflet JS
+			// Load Leaflet JS (we handle CSS internally via static styles)
 			const leafletScript = document.createElement('script')
 			leafletScript.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
 			leafletScript.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo='
 			leafletScript.crossOrigin = ''
-			leafletScript.onload = () => resolve()
+
+			leafletScript.onload = () => {
+				resolve()
+			}
+
 			document.head.appendChild(leafletScript)
 		})
 	}
 
 	private _initializeMap(): void {
-		// Use querySelector directly since we're not using shadow DOM
-		const mapElement = this.querySelector('#map') as HTMLElement
+		// Wait for DOM to be ready
+		requestAnimationFrame(() => {
+			if (!this.mapElement || !window.L) return
 
-		if (!mapElement || !window.L) return
-
-		// If a map already exists, remove it first
-		if (this.map) {
-			this.map.remove()
-			this.map = null
-		}
-
-		// Initialize map with minimal controls
-		const L = window.L
-
-		this.map = L.map(mapElement, {
-			center: [this.latitude, this.longitude],
-			zoom: 16,
-			dragging: false,
-			touchZoom: false,
-			scrollWheelZoom: false,
-			doubleClickZoom: false,
-			boxZoom: false,
-			keyboard: false,
-			zoomControl: false,
-			attributionControl: true,
-		})
-
-		// Add a simple tile layer
-		L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-			attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-		}).addTo(this.map)
-
-		// Add a marker for the location
-		L.marker([this.latitude, this.longitude]).addTo(this.map).bindPopup(this.address).openPopup()
-
-		// Force a redraw of the map to ensure proper rendering
-		setTimeout(() => {
+			// If a map already exists, remove it first
 			if (this.map) {
-				this.map.invalidateSize(true)
+				this.map.remove()
+				this.map = null
 			}
-		}, 200)
+
+			// Initialize map with minimal controls
+			const L = window.L
+
+			// Create map with the proper container
+			this.map = L.map(this.mapElement, {
+				center: [this.latitude, this.longitude],
+				zoom: 16,
+				dragging: false,
+				touchZoom: false,
+				scrollWheelZoom: false,
+				doubleClickZoom: false,
+				boxZoom: false,
+				keyboard: false,
+				zoomControl: false,
+				attributionControl: false, // We'll add our own attribution
+			})
+
+			// Add a simple tile layer
+			L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+				attribution: '',
+			}).addTo(this.map)
+
+			// Add a marker for the location
+			L.marker([this.latitude, this.longitude]).addTo(this.map).bindPopup(this.address).openPopup()
+
+			// Force a redraw of the map
+			setTimeout(() => {
+				if (this.map) {
+					this.map.invalidateSize(true)
+				}
+			}, 200)
+		})
 	}
 
 	render() {
 		return html`
-			<div id="map" class="h-[300px] w-full border border-gray-300 rounded-md overflow-hidden"></div>
-			<div class="mt-2 text-sm text-gray-500">
-				${unsafeHTML(
-					'&copy; <a href="https://www.openstreetmap.org/copyright" class="text-blue-500 hover:underline">OpenStreetMap</a> contributors',
-				)}
+			<div id="map"></div>
+			<div class="attribution">
+				©
+				<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors
 			</div>
 		`
 	}

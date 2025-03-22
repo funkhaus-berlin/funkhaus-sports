@@ -1,5 +1,5 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { css, html, PropertyValues } from 'lit'
+import { css, html } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 
@@ -286,7 +286,7 @@ export class CourtMapView extends $LitElement(css`
 
 		try {
 			const bounds = this._L.latLngBounds()
-			this.courts.forEach((court, index) => {
+			this.courts.forEach((_court, index) => {
 				// Create location for the court (in production, use real coordinates)
 				const lat = 51.505 + Math.cos(index * 0.7) * 0.002
 				const lng = -0.09 + Math.sin(index * 0.7) * 0.002
@@ -301,7 +301,7 @@ export class CourtMapView extends $LitElement(css`
 	/**
 	 * After first render, initialize the map
 	 */
-	async firstUpdated(changedProperties: PropertyValues): Promise<void> {
+	async firstUpdated(): Promise<void> {
 		this.loading = true
 		this.error = null
 
@@ -421,7 +421,7 @@ export class CourtMapView extends $LitElement(css`
 
 		// Setup ResizeObserver for modern browsers
 		try {
-			this._resizeObserver = new ResizeObserver(entries => {
+			this._resizeObserver = new ResizeObserver(() => {
 				if (this._mapResizeHandlerBound) {
 					this._mapResizeHandlerBound()
 				}

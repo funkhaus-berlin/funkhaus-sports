@@ -7,9 +7,8 @@ import { distinctUntilChanged, filter, map, shareReplay, switchMap, takeUntil, t
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
 import { BookingsDB } from 'src/db/bookings.collection'
-import { getUserTimezone } from 'src/utils/timezone'
-import { Booking } from './bookingServices/availability'
-import { bookingContext } from './public/book/context'
+import { getUserTimezone, isTimeSlotInPast } from 'src/utils/timezone'
+import { Booking, bookingContext } from './public/book/context'
 import { Duration, TimeSlot } from './public/book/types'
 
 // Define interfaces for availability data
@@ -315,11 +314,12 @@ export function isCourtAvailableForDuration(courtId: string, startTime: string, 
 export function getAvailableTimeSlots(): TimeSlot[] {
 	const availability = availabilityContext.value
 
-	return availability.timeSlots.map(slot => ({
+	const ts = availability.timeSlots.map(slot => ({
 		label: slot.time,
 		value: slot.timeValue,
 		available: slot.hasAvailableCourts,
 	}))
+	return filterPastTimeSlots(ts, availability.date)
 }
 
 /**
@@ -484,6 +484,40 @@ function calculateDuration(startTime?: string, endTime?: string): number {
 		console.error('Error calculating duration:', e)
 		return 0
 	}
+}
+
+/**
+ * Filter time slots to mark past ones as unavailable
+ *
+ * This function wraps your existing getAvailableTimeSlots function,
+ * applying a filter to mark any time slots in the past as unavailable.
+ *
+ * @param timeSlots The original time slots from your existing implementation
+ * @param date The date to check against (defaults to booking context date)
+ * @returns The same time slots with past ones marked as unavailable
+ */
+export function filterPastTimeSlots(timeSlots: TimeSlot[], date?: string): TimeSlot[] {
+	// Use provided date or get from booking context
+	const targetDate = date || bookingContext.value.date
+
+	if (!targetDate || !timeSlots || timeSlots.length === 0) {
+		return timeSlots
+	}
+
+	// Apply filter to mark past time slots as unavailable
+	return timeSlots.map(slot => {
+		// If already unavailable, keep it that way
+		if (!slot.available) return slot
+
+		// Check if this time slot is in the past
+		const isPastSlot = isTimeSlotInPast(targetDate, slot.value)
+
+		// Return the slot with updated availability
+		return {
+			...slot,
+			available: !isPastSlot && slot.available,
+		}
+	})
 }
 
 /**

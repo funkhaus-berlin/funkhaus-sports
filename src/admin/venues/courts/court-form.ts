@@ -2,7 +2,7 @@
 import { $notify, SchmancyInputChangeEvent, SchmancySelectChangeEvent, select, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
-import { customElement, property, state } from 'lit/decorators.js'
+import { customElement, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { takeUntil } from 'rxjs'
 import { Court, CourtsDB, CourtTypeEnum, Pricing } from 'src/db/courts.collection'

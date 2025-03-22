@@ -9,6 +9,54 @@ dayjs.extend(utc)
 dayjs.extend(timezone)
 
 /**
+ * Check if a time slot is in the past for the selected date
+ * @param date - The selected date in YYYY-MM-DD format
+ * @param timeValue - The time slot value in minutes (e.g., 8*60 for 8:00 AM)
+ * @returns boolean - true if the time slot is in the past
+ */
+export function isTimeSlotInPast(date: string, timeValue: number): boolean {
+	if (!date) return false
+
+	try {
+		// Get user's timezone
+		const userTz = getUserTimezone()
+
+		// Create date objects
+		const now = dayjs().tz(userTz)
+		const selectedDate = dayjs(date).tz(userTz)
+
+		// Calculate hours and minutes from time value
+		const hours = Math.floor(timeValue / 60)
+		const minutes = timeValue % 60
+
+		// Set the hours and minutes on the selected date
+		const slotDateTime = selectedDate.hour(hours).minute(minutes)
+
+		// Check if the slot is in the past
+		return slotDateTime.isBefore(now)
+	} catch (error) {
+		console.error('Error checking if time slot is in past:', error)
+		return false
+	}
+}
+
+/**
+ * Format time from minutes to string (e.g., 510 -> "8:30")
+ */
+export function formatTimeFromMinutes(minutes: number, use24Hour: boolean = false): string {
+	const hours = Math.floor(minutes / 60)
+	const mins = minutes % 60
+
+	if (use24Hour) {
+		return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+	} else {
+		// 12-hour format
+		const period = hours >= 12 ? 'PM' : 'AM'
+		const displayHour = hours % 12 === 0 ? 12 : hours % 12
+		return `${displayHour}:${mins.toString().padStart(2, '0')} ${period}`
+	}
+}
+/**
  * Get user's timezone or default to Berlin
  */
 export function getUserTimezone(): string {

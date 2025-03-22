@@ -60,35 +60,10 @@ export class BookingFilter extends $LitElement() {
 		bookingFilterContext.set({ status: e.detail.value })
 	}
 
-	// Update courts filter
-	private updateCourts(e: CustomEvent): void {
-		bookingFilterContext.set({ courts: e.detail })
-	}
-
-	// Update user filter
-	private updateUser(e: CustomEvent): void {
-		bookingFilterContext.set({ user: e.detail.value })
-	}
-
 	// Handle search input
 	private handleSearchInput(e: CustomEvent): void {
 		const searchValue = e.detail.value
 		this.searchSubject.next(searchValue)
-	}
-
-	// Reset all filters to default
-	private resetFilters(): void {
-		bookingFilterContext.set(
-			{
-				dateFrom: DEFAULT_DATE_RANGE.dateFrom,
-				dateTo: DEFAULT_DATE_RANGE.dateTo,
-				status: 'all',
-				courts: [],
-				search: '',
-				user: '',
-			},
-			false,
-		) // false to replace, not merge
 	}
 
 	render(): TemplateResult {

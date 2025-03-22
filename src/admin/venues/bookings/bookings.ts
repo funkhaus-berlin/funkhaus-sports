@@ -170,68 +170,7 @@ export class VenuBookingsList extends $LitElement() {
 	// 	// })
 	// }
 
-	/**
-	 * Format the booking status with appropriate styling
-	 */
-	private getStatusBadgeClass(status: string): string {
-		switch (status) {
-			case 'confirmed':
-				return 'bg-success-container text-success-on'
-			case 'cancelled':
-				return 'bg-error-container text-error-on'
-			case 'pending':
-				return 'bg-warning-container text-warning-on'
-			default:
-				return 'bg-surface-container text-surface-on'
-		}
-	}
-
-	/**
-	 * Get court name from court ID
-	 */
-	private getCourtName(courtId: string): string {
-		return this.courts.get(courtId)?.name || 'Unknown Court'
-	}
-
 	render(): TemplateResult {
-		// Define table columns
-		const columns: TableColumn[] = [
-			{
-				name: 'Customer',
-				key: 'userName',
-				render: (booking: Booking) => html`${booking.userName || booking.customerEmail || 'Guest'}`,
-			},
-			{
-				name: 'Court',
-				key: 'courtId',
-				render: (booking: Booking) => html`${this.getCourtName(booking.courtId)}`,
-			},
-			{
-				name: 'Date',
-				key: 'date',
-				render: (booking: Booking) => html`${dayjs(booking.date).format('MMM D, YYYY')}`,
-			},
-			{
-				name: 'Time',
-				key: 'startTime',
-				render: (booking: Booking) => html`${dayjs(booking.startTime).format('h:mm A')}`,
-			},
-			{
-				name: 'Status',
-				key: 'status',
-				render: (booking: Booking) => html`
-					<span class="px-2 py-1 rounded-full text-xs ${this.getStatusBadgeClass(booking.status || 'pending')}">
-						${booking.status || 'pending'}
-					</span>
-				`,
-			},
-			{
-				name: 'Price',
-				key: 'price',
-				render: (booking: Booking) => html`€${booking.price?.toFixed(2) || '0.00'}`,
-			},
-		]
-
 		return html`
 			<schmancy-surface ${fullHeight()} type="container" rounded="all">
 				<schmancy-grid ${fullHeight()} rows="auto auto 1fr auto" class="gap-4 p-4">
