@@ -1,12 +1,11 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { css, html } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
-import { classMap } from 'lit/directives/class-map.js'
 import { when } from 'lit/directives/when.js'
 
 /**
  * Reusable selection tile component for displaying time slots, durations, etc.
- * Used by time selection and duration selection components
+ * Enhanced with better grid view sizing, spacing, and typography
  */
 @customElement('selection-tile')
 export class SelectionTile extends $LitElement(css`
@@ -28,7 +27,32 @@ export class SelectionTile extends $LitElement(css`
 	}
 
 	.pulse {
-		animation: pulse 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+		animation: pulse 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+	}
+
+	/* Improve focus styles for accessibility */
+	.tile:focus-visible {
+		outline: 2px solid var(--sys-color-primary-default, #3d75f3);
+		outline-offset: 2px;
+	}
+
+	/* Price tag styles */
+	.price-tag {
+		background-color: rgba(0, 0, 0, 0.06);
+		border-radius: 12px;
+		padding: 2px 4px;
+		font-weight: 500;
+		transition: all 0.3s ease;
+	}
+
+	/* Enhanced hover effect */
+	.tile:not(.disabled):not(.selected):hover .price-tag {
+		background-color: rgba(0, 0, 0, 0.1);
+	}
+
+	/* Selected state price tag */
+	.tile.selected .price-tag {
+		background-color: rgba(255, 255, 255, 0.2);
 	}
 `) {
 	/**
@@ -79,38 +103,75 @@ export class SelectionTile extends $LitElement(css`
 	@property({ type: String })
 	dataValue = ''
 
+	/**
+	 * Price for duration options
+	 */
+	@property({ type: Number })
+	price = 0
+
+	/**
+	 * Whether to show the price (for duration tiles)
+	 */
+	@property({ type: Boolean })
+	showPrice = false
+
+	/**
+	 * Handle keyboard navigation for accessibility
+	 */
+	private handleKeyDown(e: KeyboardEvent) {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault()
+			this.dispatchEvent(new CustomEvent('click', { bubbles: true }))
+		}
+	}
+
 	render() {
-		// Size classes based on compact mode
-		const sizeClasses = {
-			// Normal size
-			'w-24': !this.compact && this.type === 'time',
-			'h-24': !this.compact && this.type === 'time',
-			'w-28': !this.compact && this.type === 'duration',
-			'h-28': !this.compact && this.type === 'duration',
-			// Compact size
-			'w-16': this.compact && this.type === 'time',
-			'h-16': this.compact && this.type === 'time',
-			'w-20': this.compact && this.type === 'duration',
-			'h-20': this.compact && this.type === 'duration',
+		// Even more compact dimensions - reduced height significantly
+		const dimensions = {
+			time: {
+				normal: { width: 'w-18', height: 'h-16' },
+				compact: { width: 'w-14', height: 'h-10' },
+			},
+			duration: {
+				normal: { width: 'w-18', height: 'h-16' },
+				compact: { width: 'w-16', height: 'h-14' },
+			},
 		}
 
-		// Classes for the tile
-		const tileClasses = {
-			// Basic layout
-			'flex-none': true,
-			'rounded-lg': true,
-			flex: true,
-			'flex-col': true,
-			'items-center': true,
-			'justify-center': true,
-			border: true,
+		// Get the right dimensions
+		const mode = this.compact ? 'compact' : 'normal'
+		const size = dimensions[this.type as keyof typeof dimensions]?.[mode] || dimensions.time[mode] // Default to time if type not found
 
-			// Sizes based on type and compact state
-			...sizeClasses,
+		// Font size based on compact mode and selection state - optimized for grid density
+		const fontSize = this.compact
+			? 'text-sm' // Always keep compact mode text small
+			: this.selected
+			? 'text-base'
+			: 'text-sm' // Slightly smaller text in normal mode too
+
+		// Padding based on compact mode - reduced for more compact display
+		const padding = this.compact ? 'p-1' : 'p-2'
+
+		// Tile classes with improved grid view styling
+		const tileClasses = {
+			tile: true,
+			grid: true,
+			'rounded-lg': true,
+			'items-center': true,
+			'justify-center': true, // Always use space-between for better vertical distribution
+
+			// Sizing based on type and compact state
+			[size.width]: true,
+			[size.height]: true,
+			[padding]: true,
+
+			// Border styling
+			border: true,
+			'border-2': this.selected, // Thicker border when selected
 
 			// Transitions for smooth animations
 			'transition-all': true,
-			'duration-300': true,
+			'duration-100': true,
 			transform: true,
 			'ease-in-out': true,
 
@@ -119,13 +180,13 @@ export class SelectionTile extends $LitElement(css`
 			'cursor-not-allowed': this.disabled,
 			'hover:scale-105': !this.disabled && !this.selected,
 			'hover:shadow-md': !this.disabled && !this.selected,
-			'active:scale-95': !this.disabled && !this.selected, // Add press animation
+			'active:scale-95': !this.disabled && !this.selected,
 
 			// Selected animation
-			'scale-105': this.selected, // Make selected items slightly larger
-			'shadow-md': this.selected, // Add shadow to selected items
+			'scale-105': this.selected,
+			'shadow-md': this.selected,
 
-			// Visual states based on selection and disabled state
+			// Visual states
 			'bg-primary-default': this.selected,
 			'text-primary-on': this.selected,
 			'border-primary-default': this.selected,
@@ -136,62 +197,82 @@ export class SelectionTile extends $LitElement(css`
 			'border-error-container': this.disabled,
 			'text-error-default': this.disabled,
 			'opacity-60': this.disabled,
+			selected: this.selected,
+			disabled: this.disabled,
 		}
 
-		// Icon animation classes
-		const iconClasses = {
-			'transition-all': true,
-			'duration-300': true,
-			transform: true,
-			'text-primary-on': this.selected,
-			'text-primary-default': !this.selected && !this.disabled,
-			'text-error-default': this.disabled,
-			'scale-125': this.selected, // Enlarge icon when selected
-		}
-
-		// Label classes
+		// Label styling - improved for horizontal layout
 		const labelClasses = {
+			[fontSize]: true,
 			'font-bold': true,
-			'mt-1': true,
+			'text-center': true,
 			'transition-all': true,
-			'duration-300': true,
-			'text-base': !this.compact && this.selected, // Keep text readable even in compact mode when selected
-			'text-sm': this.compact || !this.selected,
+			'duration-100': true,
+			'leading-tight': true,
 		}
 
-		// Status text classes
-		const statusClasses = {
+		// Description styling
+		const descriptionClasses = {
 			'transition-all': true,
-			'duration-300': true,
-			...(this.compact ? { 'text-2xs': true, 'mt-0.5': true } : { 'text-xs': true, 'mt-1': true }),
+			'duration-100': true,
+			'text-xs': !this.compact,
+			'text-2xs': this.compact,
+			'mt-1': !this.compact,
+			'mt-0.5': this.compact,
 			'text-success-default': !this.disabled,
 			'text-error-default': this.disabled,
+			'text-center': true,
 		}
 
 		return html`
 			<div
-				class=${classMap(tileClasses)}
+				class=${this.classMap(tileClasses)}
 				data-value=${this.dataValue}
+				@keydown=${this.handleKeyDown}
 				role="option"
-				aria-selected="${this.selected ? 'true' : 'false'}"
-				aria-disabled="${this.disabled ? 'true' : 'false'}"
+				aria-selected=${this.selected}
+				aria-disabled=${this.disabled}
+				tabindex=${this.disabled ? '-1' : '0'}
 			>
-				<!-- Icon with animation -->
-				<schmancy-icon class=${classMap(iconClasses)} size=${this.compact ? '14px' : '16px'}>
-					${this.icon}
-				</schmancy-icon>
+				<!-- Label (primary content) with small inline icon -->
+				<div class="grid items-center align-middle justify-center  gap-2">
+					${when(
+						this.icon && !this.compact && this.type !== 'duration', // Show a small inline icon next to the label
+						() => html`
+							<schmancy-icon
+								class="${this.selected ? 'text-primary-on' : 'text-primary-default'} opacity-70 mx-auto"
+								size="${this.compact ? '12px' : '16px'}"
+							>
+								${this.icon}
+							</schmancy-icon>
+						`,
+					)}
+					<div class=${this.classMap(labelClasses)}>${this.label}</div>
+				</div>
 
-				<!-- Primary label -->
-				<div class=${classMap(labelClasses)}>${this.label}</div>
-
-				<!-- Status/description (optional) -->
+				<!-- Bottom section with price or description - more compact -->
 				${when(
-					this.description && (!this.compact || this.disabled),
+					this.type === 'duration' && this.showPrice && this.price > 0,
 					() => html`
-						<div class=${classMap(statusClasses)}>
-							<schmancy-typography type="label" token="sm"> ${this.description} </schmancy-typography>
+						<div
+							class="price-tag mt-1 ${this.compact ? 'text-xs' : 'text-sm'} ${this.selected
+								? 'text-primary-on'
+								: 'text-primary-default'}"
+						>
+							€${this.price.toFixed(2)}
 						</div>
 					`,
+					() =>
+						when(
+							this.description && (!this.compact || this.disabled),
+							() => html`
+								<div class=${this.classMap(descriptionClasses)}>
+									${this.compact
+										? this.description
+										: html`<schmancy-typography type="label" token="sm">${this.description}</schmancy-typography>`}
+								</div>
+							`,
+						),
 				)}
 			</div>
 		`

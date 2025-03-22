@@ -1,5 +1,3 @@
-// src/public/book/components/steps/start-time-select.ts
-
 import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
@@ -7,6 +5,7 @@ import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
 import { css, html, nothing } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
+import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import {
@@ -32,7 +31,6 @@ import {
 import { toUTC } from 'src/utils/timezone'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { TimeSlot } from '../../types'
-// Import the new availability context and functions
 
 // Configure dayjs with timezone plugins
 dayjs.extend(utc)
@@ -42,7 +40,7 @@ dayjs.extend(timezone)
 const PULSE_ANIMATION = {
 	keyframes: [{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }],
 	options: {
-		duration: 400,
+		duration: 200,
 		easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
 	},
 }
@@ -89,14 +87,14 @@ export class TimeSelectionStep extends $LitElement(css`
 	/* View transition system */
 	.view-container {
 		position: relative;
-		min-height: 85px; /* Minimum height to prevent collapse during transitions */
+		min-height: 45px; /* Minimum height to prevent collapse during transitions */
 	}
 
 	.grid-view,
 	.list-view {
 		opacity: 0;
 		visibility: hidden;
-		transition: opacity 300ms ease, visibility 0ms 300ms;
+		transition: opacity 100ms ease, visibility 0ms 100ms;
 		position: absolute;
 		width: 100%;
 		top: 0;
@@ -107,7 +105,7 @@ export class TimeSelectionStep extends $LitElement(css`
 	.list-view.active {
 		opacity: 1;
 		visibility: visible;
-		transition: opacity 300ms ease, visibility 0ms;
+		transition: opacity 100ms ease, visibility 0ms;
 		position: relative;
 	}
 `) {
@@ -141,21 +139,19 @@ export class TimeSelectionStep extends $LitElement(css`
 	})
 
 	// State properties derived from observables
-	@state() private isActive = false
+	@state() isActive = false
 	@state() private isCompact = false
-	@state() private isDesktopOrTablet = window.innerWidth >= 384
+	@state() isDesktopOrTablet = window.innerWidth >= 384
 	@state() shouldUseGridView = false
-	@state() private availableCourtsCount = 0
 
 	// Simple transition state
-	@state() private isTransitioning = false
+	@state() isTransitioning = false
 
 	// Observables for reactive state management
 	private isActive$!: Observable<boolean>
 	private isCompact$!: Observable<boolean>
 	private isDesktopOrTablet$!: Observable<boolean>
 	private shouldUseGridView$!: Observable<boolean>
-	private availableCourtsCount$!: Observable<number>
 
 	// User preferences
 	private userTimezone = getUserTimezone()
@@ -164,6 +160,10 @@ export class TimeSelectionStep extends $LitElement(css`
 
 	// Store references for cleanup
 	private resizeObserver: ResizeObserver | null = null
+
+	// Refs for DOM elements
+	private scrollContainerRef: Ref<HTMLElement> = createRef<HTMLElement>()
+	private timeSlotRefs = new Map<number, HTMLElement>()
 
 	// Connection lifecycle methods
 	connectedCallback(): void {
@@ -189,6 +189,14 @@ export class TimeSelectionStep extends $LitElement(css`
 			this.resizeObserver.disconnect()
 			this.resizeObserver = null
 		}
+
+		// Clean up refs
+		this.clearTimeSlotRefs()
+	}
+
+	// Clear time slot references when no longer needed
+	private clearTimeSlotRefs(): void {
+		this.timeSlotRefs.clear()
 	}
 
 	// Stream setup methods
@@ -243,18 +251,22 @@ export class TimeSelectionStep extends $LitElement(css`
 				this.updateState({ viewMode })
 
 				// Reset transition flag after animation
-				setTimeout(() => {
-					this.isTransitioning = false
+				this.isTransitioning = false
 
-					// Handle auto-scrolling for list view
-					if (viewMode === 'list') {
+				// Handle auto-scrolling for list view
+				if (viewMode === 'list') {
+					setTimeout(() => {
+						// If booking start time is set, scroll to it
 						if (this.booking.startTime) {
 							this.scrollToTime(this.booking.startTime)
-						} else if (!this.state$.value.autoScrollAttempted) {
+						}
+						// If no start time and auto-scroll not attempted, scroll to first available time
+						else if (!this.state$.value.autoScrollAttempted) {
+							this.updateState({ autoScrollAttempted: true })
 							this.scrollToFirstAvailableTime()
 						}
-					}
-				}, 350)
+					}, 250)
+				}
 			})
 
 		// Should use grid view - derived from other streams
@@ -264,15 +276,6 @@ export class TimeSelectionStep extends $LitElement(css`
 			this.state$.pipe(map(state => state.viewMode)),
 		]).pipe(
 			map(([isActive, isDesktop, viewMode]) => isActive && isDesktop && viewMode === 'grid'),
-			distinctUntilChanged(),
-			shareReplay(1),
-		)
-
-		// Available courts count - derived from time slots
-		this.availableCourtsCount$ = this.state$.pipe(
-			map(state => state.timeSlots),
-			filter(slots => slots.length > 0),
-			map(slots => slots.filter(slot => slot.available).length),
 			distinctUntilChanged(),
 			shareReplay(1),
 		)
@@ -295,11 +298,6 @@ export class TimeSelectionStep extends $LitElement(css`
 
 		this.shouldUseGridView$.pipe(takeUntil(this.disconnecting)).subscribe(shouldUseGridView => {
 			this.shouldUseGridView = shouldUseGridView
-			this.requestUpdate()
-		})
-
-		this.availableCourtsCount$.pipe(takeUntil(this.disconnecting)).subscribe(count => {
-			this.availableCourtsCount = count
 			this.requestUpdate()
 		})
 	}
@@ -343,16 +341,15 @@ export class TimeSelectionStep extends $LitElement(css`
 				this.updateState({ autoScrollAttempted: false })
 
 				// Try to scroll to first available after DOM update
-				setTimeout(() => {
+				this.updateComplete.then(() => {
 					if (this.state$.value.viewMode === 'list') {
 						this.scrollToFirstAvailableTime()
 					}
-				}, 350) // Wait for animations to complete
+				})
 			}
 		})
 	}
 
-	// NEW: Subscribe to availability context instead of using the coordinator
 	private subscribeToAvailabilityContext(): void {
 		// Subscribe to availability context updates
 		availabilityContext.$.pipe(
@@ -388,6 +385,9 @@ export class TimeSelectionStep extends $LitElement(css`
 	// Business logic methods - UPDATED to use availability context
 	private loadTimeSlots(): void {
 		try {
+			// Clear existing time slot refs before updating
+			this.clearTimeSlotRefs()
+
 			// Get time slots from availability context
 			const timeSlots = getAvailableTimeSlots()
 
@@ -402,10 +402,10 @@ export class TimeSelectionStep extends $LitElement(css`
 			this.updateComplete.then(() => {
 				if (this.state$.value.viewMode === 'list') {
 					if (this.booking.startTime) {
-						setTimeout(() => this.scrollToTime(this.booking.startTime), 150)
+						this.scrollToTime(this.booking.startTime)
 					} else if (!this.state$.value.autoScrollAttempted) {
 						this.updateState({ autoScrollAttempted: true })
-						setTimeout(() => this.scrollToFirstAvailableTime(), 150)
+						this.scrollToFirstAvailableTime()
 					}
 				}
 			})
@@ -418,6 +418,9 @@ export class TimeSelectionStep extends $LitElement(css`
 	}
 
 	private generateDefaultTimeSlots(): void {
+		// Clear existing time slot refs before updating
+		this.clearTimeSlotRefs()
+
 		// Check if date is today
 		const userTimezone = getUserTimezone()
 		const selectedDate = dayjs(this.booking.date).tz(userTimezone)
@@ -482,10 +485,10 @@ export class TimeSelectionStep extends $LitElement(css`
 		this.updateComplete.then(() => {
 			if (this.state$.value.viewMode === 'list') {
 				if (this.booking.startTime) {
-					setTimeout(() => this.scrollToTime(this.booking.startTime), 150)
+					this.scrollToTime(this.booking.startTime)
 				} else if (!this.state$.value.autoScrollAttempted) {
 					this.updateState({ autoScrollAttempted: true })
-					setTimeout(() => this.scrollToFirstAvailableTime(), 150)
+					this.scrollToFirstAvailableTime()
 				}
 			}
 		})
@@ -494,29 +497,30 @@ export class TimeSelectionStep extends $LitElement(css`
 	}
 
 	// UI interaction methods
-	private toggleView(mode: 'grid' | 'list'): void {
-		if (this.state$.value.viewMode !== mode && !this.isTransitioning) {
-			this.isTransitioning = true
+	// private toggleView(mode: 'grid' | 'list'): void {
+	// 	if (this.state$.value.viewMode !== mode && !this.isTransitioning) {
+	// 		this.isTransitioning = true
 
-			// Update state with new view mode
-			this.updateState({ viewMode: mode })
+	// 		// Update state with new view mode
+	// 		this.updateState({ viewMode: mode })
 
-			// Reset transition state after a delay for the animation
-			setTimeout(() => {
-				this.isTransitioning = false
+	// 		// Reset transition state after a delay for the animation
+	// 		this.isTransitioning = false
 
-				// If switching to list mode, try to scroll after animation completes
-				if (mode === 'list') {
-					if (this.booking.startTime) {
-						this.scrollToTime(this.booking.startTime)
-					} else if (!this.state$.value.autoScrollAttempted) {
-						this.scrollToFirstAvailableTime()
-					}
-				}
-			}, 350)
-		}
-	}
+	// 		// If switching to list mode, try to scroll after animation completes
+	// 		this.updateComplete.then(() => {
+	// 			if (mode === 'list') {
+	// 				if (this.booking.startTime) {
+	// 					this.scrollToTime(this.booking.startTime)
+	// 				} else if (!this.state$.value.autoScrollAttempted) {
+	// 					this.scrollToFirstAvailableTime()
+	// 				}
+	// 			}
+	// 		})
+	// 	}
+	// }
 
+	// UPDATED: Refactored without using querySelector
 	private handleTimeSelect(slot: TimeSlot): void {
 		if (!slot.available) return
 
@@ -539,13 +543,11 @@ export class TimeSelectionStep extends $LitElement(css`
 				true,
 			)
 
-			// Highlight the selected time
-			setTimeout(() => {
-				const selectedEl = this.shadowRoot?.querySelector(`[data-time-value="${slot.value}"]`)
-				if (selectedEl instanceof HTMLElement) {
-					selectedEl.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
-				}
-			}, 50)
+			// Highlight the selected time using our ref system
+			const selectedEl = this.timeSlotRefs.get(slot.value)
+			if (selectedEl) {
+				selectedEl.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
+			}
 
 			// Go to duration selection step
 			BookingProgressContext.set({
@@ -565,12 +567,10 @@ export class TimeSelectionStep extends $LitElement(css`
 	}
 
 	private retryLoading(): void {
-		// No longer using enhancedAvailabilityCoordinator, so we can't call refreshData
-		// Instead we'll just reload time slots from the current availability context
 		this.loadTimeSlots()
 	}
 
-	// Scrolling helper methods
+	// UPDATED: Refactored scrolling methods without using querySelector
 	private scrollToFirstAvailableTime(): void {
 		if (this.state$.value.viewMode !== 'list') return
 
@@ -597,11 +597,13 @@ export class TimeSelectionStep extends $LitElement(css`
 	}
 
 	private scrollToTimeValue(timeValue: number, highlight = false): void {
-		const scrollContainer = this.shadowRoot?.querySelector('.options-scroll-container') as HTMLElement
-		if (!scrollContainer) return
+		const scrollContainer = this.scrollContainerRef.value
+		const timeEl = this.timeSlotRefs.get(timeValue)
 
-		const timeEl = this.shadowRoot?.querySelector(`[data-time-value="${timeValue}"]`) as HTMLElement
-		if (!timeEl) return
+		if (!scrollContainer || !timeEl) {
+			console.warn('Cannot scroll to time value', timeValue, 'Container or element not found')
+			return
+		}
 
 		// Check if element is already in view
 		const containerRect = scrollContainer.getBoundingClientRect()
@@ -691,42 +693,32 @@ export class TimeSelectionStep extends $LitElement(css`
 		`
 	}
 
-	private renderViewToggle(): unknown {
-		if (!this.isDesktopOrTablet || !this.isActive) return nothing
+	// private renderViewToggle(): unknown {
+	// 	if (!this.isDesktopOrTablet || !this.isActive) return nothing
 
-		const viewMode = this.state$.value.viewMode
+	// 	return html`
+	// 		<div class="flex items-center p-1 rounded-lg bg-surface-variant">
+	// 			<schmancy-icon-button @click=${() => this.toggleView('grid')} size="sm">flex_wrap</schmancy-icon-button>
 
-		return html`
-			<div class="flex items-center p-1 rounded-lg bg-surface-variant">
-				<button
-					class="px-2 py-1 rounded-md flex items-center justify-center transition-all duration-200 
-            ${viewMode === 'grid' ? 'bg-primary-container text-primary-default' : ''}"
-					@click=${() => this.toggleView('grid')}
-					aria-label="Grid view"
-					title="Grid view"
-					?disabled=${this.isTransitioning}
-				>
-					<schmancy-icon size="18px">grid_view</schmancy-icon>
-				</button>
-				<button
-					class="px-2 py-1 rounded-md flex items-center justify-center transition-all duration-200
-            ${viewMode === 'list' ? 'bg-primary-container text-primary-default' : ''}"
-					@click=${() => this.toggleView('list')}
-					aria-label="List view"
-					title="List view"
-					?disabled=${this.isTransitioning}
-				>
-					<schmancy-icon size="18px">view_list</schmancy-icon>
-				</button>
-			</div>
-		`
-	}
+	// 			<schmancy-icon-button size="sm" @click=${() => this.toggleView('list')}>flex_no_wrap</schmancy-icon-button>
+	// 		</div>
+	// 	`
+	// }
 
+	// UPDATED: Store refs to time slot elements
 	private renderTimeSlot(slot: TimeSlot): unknown {
 		const isSelected = this.isTimeSelected(slot)
 
+		// Create a reference callback
+		const timeSlotRef = (element: Element | undefined) => {
+			if (element) {
+				this.timeSlotRefs.set(slot.value, element as HTMLElement)
+			}
+		}
+
 		return html`
 			<selection-tile
+				${ref(timeSlotRef)}
 				?selected=${isSelected}
 				?compact=${this.isCompact}
 				type="time"
@@ -743,7 +735,7 @@ export class TimeSelectionStep extends $LitElement(css`
 	private renderGridLayout(slots: TimeSlot[]): unknown {
 		return html`
 			<div
-				class="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-5 gap-3 py-4"
+				class="grid grid-cols-5 sm:grid-cols-5 md:grid-cols-5 gap-3 py-4"
 				role="listbox"
 				aria-label="Available Time Slots"
 				aria-multiselectable="false"
@@ -757,15 +749,20 @@ export class TimeSelectionStep extends $LitElement(css`
 		`
 	}
 
+	// UPDATED: Add ref to scroll container
 	private renderListLayout(slots: TimeSlot[]): unknown {
 		return html`
 			<div
-				class="options-scroll-container flex py-2 overflow-x-auto scrollbar-hide transition-all duration-300 
+				${ref(this.scrollContainerRef)}
+				class="options-scroll-container grid grid-flow-col  py-2 overflow-x-auto scrollbar-hide transition-all duration-300 first:pl-1 last:pr-1
           ${this.isCompact ? 'gap-2' : 'gap-3'}"
 				role="listbox"
 				aria-label="Available Time Slots"
 				aria-multiselectable="false"
 			>
+				<!-- <schmancy-surface class="sticky left-2 z-10" type="low">
+					<schmancy-icon-button variant="filled tonal" class="my-auto  mr-2 z-10 "> schedule </schmancy-icon-button>
+				</schmancy-surface> -->
 				${repeat(
 					slots,
 					slot => slot.value,
@@ -786,8 +783,6 @@ export class TimeSelectionStep extends $LitElement(css`
 			return this.renderEmptyState()
 		}
 
-		// ${when(loading, () => html` <sch-busy></sch-busy> `)}
-
 		return html`
 			<div
 				class="
@@ -807,7 +802,7 @@ export class TimeSelectionStep extends $LitElement(css`
 
 				<!-- Title section with view toggle -->
 				${when(
-					!this.isCompact,
+					!this.isCompact && timeSlots.length > 0,
 					() => html`
 						<div class="flex items-center justify-between">
 							<div>
@@ -818,16 +813,7 @@ export class TimeSelectionStep extends $LitElement(css`
 									<span>Times shown in your local timezone (${this.userTimezone})</span>
 								</div>
 							</div>
-							${this.renderViewToggle()}
 						</div>
-
-						${this.availableCourtsCount > 0
-							? html`
-									<div class="text-xs text-success-default mt-1">
-										${this.availableCourtsCount} ${this.availableCourtsCount === 1 ? 'court' : 'courts'} available
-									</div>
-							  `
-							: nothing}
 					`,
 				)}
 

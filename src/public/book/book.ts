@@ -350,7 +350,7 @@ export class CourtBookingSystem extends $LitElement() {
 						</schmancy-grid>
 					</section>
 					<funkhaus-venue-card
-						class="block col-auto justify-self-start mt-4"
+						class="hidden md:block col-auto justify-self-start mt-4"
 						.venue=${this.venues.get(this.booking.venueId)!}
 						@click=${() => {}}
 						.theme=${this.venues.get(this.booking.venueId)?.theme!}
