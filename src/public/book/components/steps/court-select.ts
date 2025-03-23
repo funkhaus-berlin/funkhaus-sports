@@ -659,7 +659,7 @@ export class CourtSelectStep extends $LitElement(css`
 						: html`
 								<!-- Original grid layout with sport court cards -->
 								<div
-									class="grid grid-cols-2 md:grid-cols-3 justify-between gap-3 ${classMap(this.getContainerClasses())}"
+									class="grid grid-cols-3 md:grid-cols-3 justify-between gap-3 ${classMap(this.getContainerClasses())}"
 									role="listbox"
 									aria-label="Available Courts"
 									aria-multiselectable="false"
