@@ -288,31 +288,6 @@ export class CourtBookingSystem extends $LitElement() {
 		}
 	}
 
-	/**
-	 * Handle navigation to the next step based on current flow
-	 */
-	private handleNextStep(e: CustomEvent): void {
-		if (!this.bookingProgress) return
-
-		const currentStep = this.bookingProgress.currentStep
-		const nextStep = getNextStep(currentStep)
-
-		BookingProgressContext.set({
-			currentStep: nextStep,
-		})
-
-		// Dispatch event for parent components if needed
-		this.dispatchEvent(
-			new CustomEvent('step-change', {
-				detail: {
-					from: currentStep,
-					to: nextStep,
-				},
-				bubbles: true,
-			}),
-		)
-	}
-
 	private renderProgressSteps() {
 		return html` <funkhaus-booking-steps></funkhaus-booking-steps> `
 	}
