@@ -191,6 +191,7 @@ export class CourtMapView extends LitElement {
 	connectedCallback(): void {
 		super.connectedCallback()
 		this._loadLeafletScript().then(() => {
+			this._initializeMap()
 			this.leafletLoaded = true
 		})
 	}
@@ -239,13 +240,10 @@ export class CourtMapView extends LitElement {
 		this.loading = true
 		this.error = null
 
-		if (this.leafletLoaded) {
-			this._initializeMap()
-		} else {
+		if (!this.leafletLoaded) {
 			this._loadLeafletScript()
 				.then(() => {
 					this.leafletLoaded = true
-					this._initializeMap()
 				})
 				.catch(() => {
 					this.error = 'Failed to load map library. Please try again.'
@@ -288,7 +286,6 @@ export class CourtMapView extends LitElement {
 	 * Initialize the map with simplified options
 	 */
 	private _initializeMap(): void {
-		alert('Initializing map')
 		requestAnimationFrame(() => {
 			if (!this.mapContainer || !window.L) {
 				this.error = 'Could not initialize map'
