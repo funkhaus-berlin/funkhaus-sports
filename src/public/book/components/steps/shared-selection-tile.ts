@@ -126,15 +126,14 @@ export class SelectionTile extends $LitElement(css`
 	}
 
 	render() {
-		// Even more compact dimensions - reduced height significantly
 		const dimensions = {
 			time: {
-				normal: { width: 'w-18', height: 'h-16' },
+				normal: { width: 'w-16 sm:w-16 md:w-18', height: 'h-16 sm:h-16 md:h-18' },
 				compact: { width: 'w-14', height: 'h-10' },
 			},
 			duration: {
-				normal: { width: 'w-18', height: 'h-16' },
-				compact: { width: 'w-16', height: 'h-14' },
+				normal: { width: 'w-20', height: 'h-20' },
+				compact: { width: 'w-16', height: 'h-16' },
 			},
 		}
 
@@ -144,10 +143,10 @@ export class SelectionTile extends $LitElement(css`
 
 		// Font size based on compact mode and selection state - optimized for grid density
 		const fontSize = this.compact
-			? 'text-sm' // Always keep compact mode text small
+			? 'text-base' // Always keep compact mode text small
 			: this.selected
-			? 'text-base'
-			: 'text-sm' // Slightly smaller text in normal mode too
+			? 'text-xl'
+			: 'text-lg' // Slightly smaller text in normal mode too
 
 		// Padding based on compact mode - reduced for more compact display
 		const padding = this.compact ? 'p-1' : 'p-2'
@@ -235,7 +234,13 @@ export class SelectionTile extends $LitElement(css`
 				tabindex=${this.disabled ? '-1' : '0'}
 			>
 				<!-- Label (primary content) with small inline icon -->
-				<div class="grid items-center align-middle justify-center  gap-2">
+				<schmancy-grid
+					gap="sm"
+					rows="${this.icon && !this.compact && this.type !== 'duration' ? '1fr 2fr' : '1fr'}"
+					justify="stretch"
+					align="center"
+					class="w-full h-full"
+				>
 					${when(
 						this.icon && !this.compact && this.type !== 'duration', // Show a small inline icon next to the label
 						() => html`
@@ -248,8 +253,7 @@ export class SelectionTile extends $LitElement(css`
 						`,
 					)}
 					<div class=${this.classMap(labelClasses)}>${this.label}</div>
-				</div>
-
+				</schmancy-grid>
 				<!-- Bottom section with price or description - more compact -->
 				${when(
 					this.type === 'duration' && this.showPrice && this.price > 0,

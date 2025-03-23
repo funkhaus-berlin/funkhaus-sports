@@ -15,7 +15,9 @@ import { VenuesDB } from './db/venue-collection'
 import { BookingConfirmationRoute } from './public/booking-confirmation/booking-confirmation-route'
 import { VenueLandingPage } from './public/venues/venues'
 import './schmancy'
-// import './map'
+import './public/shared'
+import './map'
+
 dayjs.extend(utc)
 dayjs.extend(timezone)
 @customElement('app-index')

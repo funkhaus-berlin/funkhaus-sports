@@ -6,7 +6,7 @@ import { customElement, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
-import { venuesContext } from 'src/admin/venues/venue-context'
+import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 import { initializeAvailabilityContext } from 'src/availability-context'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
 import { Court } from 'src/db/courts.collection'
@@ -343,7 +343,7 @@ export class CourtBookingSystem extends $LitElement() {
 
 	render() {
 		return html`
-			<schmancy-surface ${fullHeight()} type="containerLow" rounded="all" elevation="1">
+			<schmancy-surface class="max-w-4xl mx-auto" ${fullHeight()} type="container" rounded="all" elevation="1">
 				<schmancy-grid
 					.rcols=${{
 						sm: '1fr',
@@ -353,7 +353,7 @@ export class CourtBookingSystem extends $LitElement() {
 					align="stretch"
 					gap="lg"
 				>
-					<section class="w-full justify-end flex">
+					<section class="w-full justify-center md:justify-end flex">
 						<schmancy-grid
 							rows="auto auto 1fr"
 							${fullHeight()}
@@ -369,9 +369,9 @@ export class CourtBookingSystem extends $LitElement() {
 					</section>
 					<funkhaus-venue-card
 						class="hidden md:block col-auto justify-self-start mt-4"
-						.venue=${this.venues.get(this.booking.venueId)!}
+						.venue=${venueContext.value as Venue}
 						@click=${() => {}}
-						.theme=${this.venues.get(this.booking.venueId)?.theme!}
+						.theme=${(venueContext.value as Venue).theme!}
 					></funkhaus-venue-card>
 				</schmancy-grid>
 				${when(this.bookingInProgress, () => this.renderProcessingOverlay())}

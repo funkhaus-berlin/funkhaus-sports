@@ -1,4 +1,4 @@
-import { LitElement, html, css, PropertyValues } from 'lit'
+import { css, html, LitElement, PropertyValues } from 'lit'
 import { customElement, property, query } from 'lit/decorators.js'
 
 // Define interfaces for Leaflet since we're dynamically loading it

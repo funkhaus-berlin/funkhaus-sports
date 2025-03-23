@@ -742,7 +742,7 @@ export class TimeSelectionStep extends $LitElement(css`
 	private renderGridLayout(slots: TimeSlot[]): unknown {
 		return html`
 			<div
-				class="grid grid-cols-5 sm:grid-cols-5 md:grid-cols-5 gap-3 py-4"
+				class="grid grid-cols-5 sm:grid-cols-6 gap-3 py-2"
 				role="listbox"
 				aria-label="Available Time Slots"
 				aria-multiselectable="false"
@@ -793,7 +793,7 @@ export class TimeSelectionStep extends $LitElement(css`
 		return html`
 			<div
 				class="
-          w-full bg-surface-low rounded-lg transition-all duration-300 mt-3 px-2
+          w-full bg-surface-low rounded-lg transition-all duration-300 p-2
           ${this.active ? 'scale-100' : !this.isCompact ? 'scale-95' : ''}
         "
 			>
@@ -813,7 +813,7 @@ export class TimeSelectionStep extends $LitElement(css`
 					() => html`
 						<div class="flex items-center justify-between">
 							<div>
-								<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
+								<schmancy-typography align="left" type="label" token="lg" class="font-medium text-primary-default">
 									Select Time
 								</schmancy-typography>
 								<div class="text-xs text-surface-on-variant mt-1">

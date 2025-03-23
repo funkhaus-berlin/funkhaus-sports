@@ -1,20 +1,26 @@
 import { area, mutationObserver } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { html, nothing } from 'lit'
+import { css, html, nothing } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { styleMap } from 'lit/directives/style-map.js'
 import { when } from 'lit/directives/when.js'
 import { delay, fromEvent, merge, startWith, takeUntil } from 'rxjs'
 import { Venue } from 'src/db/venue-collection'
-import { CourtBookingSystem } from '../book/book'
-import './logo'
+import { CourtBookingSystem } from '../../book/book'
+import '../../venues/logo'
 
 // Define golden ratio constant
 const GOLDEN_RATIO = 1.618
 
 @customElement('funkhaus-venue-card')
-export default class FunkhausVenueCard extends $LitElement() {
+export default class FunkhausVenueCard extends $LitElement(
+	css`
+		:host {
+			display: block;
+		}
+	`,
+) {
 	@query('section') card!: HTMLElement
 	@property({ type: Object }) venue!: Venue
 	@property({ type: Object }) theme: { logo?: string; primary?: string; text?: string } = {}

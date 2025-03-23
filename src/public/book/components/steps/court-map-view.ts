@@ -31,8 +31,7 @@ type CourtAvailabilityType = 'full' | 'partial' | 'none'
 /**
  * Court Map View Component
  *
- * A map-based view of tennis courts using Leaflet.js
- * Displays courts with availability indicators and selection capabilities
+ * A simplified map-based view of tennis courts using Leaflet.js
  */
 @customElement('court-map-view')
 export class CourtMapView extends LitElement {
@@ -82,26 +81,16 @@ export class CourtMapView extends LitElement {
 		:host {
 			display: block;
 			width: 100%;
-			/* Contain everything properly */
-			contain: layout paint;
 		}
 
-		/* Core map container - critical fixes */
 		.map-container {
 			width: 100%;
 			height: 400px;
 			border-radius: 8px;
 			position: relative;
 			overflow: hidden;
-			/* Force a single layer to prevent fragmentation */
-			isolation: isolate;
-			/* Force containing block */
-			transform: translateZ(0);
-			/* Ensure the map stays together with a clear stacking context */
-			z-index: 0;
 		}
 
-		/* Map loading overlay */
 		.map-loading-overlay {
 			position: absolute;
 			top: 0;
@@ -115,7 +104,6 @@ export class CourtMapView extends LitElement {
 			z-index: 1000;
 		}
 
-		/* Map error overlay */
 		.map-error-overlay {
 			position: absolute;
 			top: 0;
@@ -129,7 +117,6 @@ export class CourtMapView extends LitElement {
 			z-index: 1000;
 		}
 
-		/* Retry button */
 		.retry-button {
 			margin-top: 12px;
 			padding: 8px 16px;
@@ -140,18 +127,6 @@ export class CourtMapView extends LitElement {
 			cursor: pointer;
 		}
 
-		/* Force Leaflet container to respect boundaries */
-		.leaflet-container {
-			width: 100% !important;
-			height: 100% !important;
-			position: absolute !important;
-			top: 0 !important;
-			left: 0 !important;
-			right: 0 !important;
-			bottom: 0 !important;
-		}
-
-		/* Fix for map legend - move to bottom of container */
 		.map-legend {
 			position: absolute;
 			bottom: 10px;
@@ -166,7 +141,6 @@ export class CourtMapView extends LitElement {
 			gap: 12px;
 		}
 
-		/* Legend dots */
 		.legend-item {
 			display: flex;
 			align-items: center;
@@ -192,7 +166,6 @@ export class CourtMapView extends LitElement {
 			background-color: #ef4444;
 		}
 
-		/* Loading spinner */
 		.loading-spinner {
 			border: 4px solid rgba(0, 0, 0, 0.1);
 			width: 36px;
@@ -209,13 +182,6 @@ export class CourtMapView extends LitElement {
 			100% {
 				transform: rotate(360deg);
 			}
-		}
-
-		/* Error icon */
-		.error-icon {
-			color: #ef4444;
-			font-size: 48px;
-			margin-bottom: 16px;
 		}
 	`
 
@@ -236,12 +202,9 @@ export class CourtMapView extends LitElement {
 		return new Promise<void>((resolve, reject) => {
 			// Check if Leaflet is already loaded
 			if (window.L) {
-				console.log('Leaflet already loaded')
 				resolve()
 				return
 			}
-
-			console.log('Loading Leaflet script and CSS')
 
 			// Load CSS if not already present
 			if (!document.querySelector('link[href*="leaflet.css"]')) {
@@ -249,7 +212,7 @@ export class CourtMapView extends LitElement {
 				link.rel = 'stylesheet'
 				link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
 				link.crossOrigin = 'anonymous'
-				document.head.appendChild(link)
+				this.shadowRoot?.append(link)
 			}
 
 			// Load Leaflet JS
@@ -261,8 +224,7 @@ export class CourtMapView extends LitElement {
 				resolve()
 			}
 
-			leafletScript.onerror = e => {
-				console.error('Failed to load Leaflet:', e)
+			leafletScript.onerror = () => {
 				reject(new Error('Failed to load Leaflet script'))
 			}
 
@@ -285,8 +247,7 @@ export class CourtMapView extends LitElement {
 					this.leafletLoaded = true
 					this._initializeMap()
 				})
-				.catch(error => {
-					console.error('Error loading Leaflet:', error)
+				.catch(() => {
 					this.error = 'Failed to load map library. Please try again.'
 					this.loading = false
 				})
@@ -299,7 +260,6 @@ export class CourtMapView extends LitElement {
 	protected updated(changedProperties: Map<string, unknown>): void {
 		super.updated(changedProperties)
 
-		// Re-initialize map if coordinates change and Leaflet is loaded
 		if (
 			this.leafletLoaded &&
 			this.map &&
@@ -325,30 +285,15 @@ export class CourtMapView extends LitElement {
 	}
 
 	/**
-	 * Initialize the map
+	 * Initialize the map with simplified options
 	 */
 	private _initializeMap(): void {
-		// Log the status of Leaflet loading
-		console.log('Initializing map, Leaflet loaded:', !!window.L)
-
-		// Wait for DOM to be ready
 		requestAnimationFrame(() => {
-			if (!this.mapContainer) {
-				console.error('Map container not found')
-				this.error = 'Map container not found'
+			if (!this.mapContainer || !window.L) {
+				this.error = 'Could not initialize map'
 				this.loading = false
 				return
 			}
-
-			if (!window.L) {
-				console.error('Leaflet not loaded properly')
-				this.error = 'Map library not loaded properly'
-				this.loading = false
-				return
-			}
-
-			// Log container dimensions to help debug
-			console.log('Map container dimensions:', this.mapContainer.offsetWidth, this.mapContainer.offsetHeight)
 
 			// If a map already exists, remove it first
 			if (this.map) {
@@ -359,72 +304,35 @@ export class CourtMapView extends LitElement {
 			try {
 				const L = window.L
 
-				// Create map instance with simplified options
+				// Create a simple map instance
 				this.map = L.map(this.mapContainer, {
-					center: [51.505, -0.09],
-					zoom: 15,
+					center: [51.505, -0.09], // Default center (will be adjusted based on courts)
+					zoom: 13,
 					zoomControl: true,
-					attributionControl: false,
 				})
 
-				// Add simple tile layer, reducing complexity
+				// Add a basic tile layer
 				L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-					maxZoom: 19,
-					attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+					maxZoom: 25,
+					attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
 				}).addTo(this.map)
-
-				// Add attribution in a cleaner way
-				L.control
-					.attribution({
-						position: 'bottomleft',
-					})
-					.addAttribution('Map data &copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors')
-					.addTo(this.map)
 
 				// Create court markers
 				this._updateCourts()
 
-				// Force multiple redraws of the map to ensure proper rendering
+				// Force a redraw to ensure proper display
 				setTimeout(() => {
 					if (this.map) {
 						this.map.invalidateSize(true)
 					}
-				}, 100)
-
-				setTimeout(() => {
-					if (this.map) {
-						this.map.invalidateSize(true)
-					}
-				}, 500)
+				}, 300)
 
 				this.loading = false
 			} catch (error) {
-				console.error('Error initializing map:', error)
 				this.error = 'Failed to initialize map'
 				this.loading = false
 			}
 		})
-	}
-
-	/**
-	 * Create proper bounds from court coordinates
-	 */
-	private _createBoundsFromCourts(): any {
-		if (!window.L || this.courts.length === 0) return null
-
-		try {
-			const bounds = window.L.latLngBounds()
-			this.courts.forEach((_court, index) => {
-				// Create location for the court (in production, use real coordinates)
-				const lat = 51.505 + Math.cos(index * 0.7) * 0.002
-				const lng = -0.09 + Math.sin(index * 0.7) * 0.002
-				bounds.extend([lat, lng])
-			})
-			return bounds
-		} catch (e) {
-			console.error('Error creating bounds:', e)
-			return null
-		}
 	}
 
 	/**
@@ -445,21 +353,16 @@ export class CourtMapView extends LitElement {
 	 */
 	private _updateCourts(): void {
 		if (!this.map || !window.L || !this.mapContainer) {
-			console.warn('Cannot update courts: map not initialized')
 			return
 		}
 
 		try {
-			// Clean up previous event handlers to prevent memory leaks
+			// Clean up previous event handlers
 			this._clearAllPopupEventHandlers()
 
 			// Clear existing markers
 			Object.values(this.markers).forEach(marker => {
-				try {
-					marker.remove()
-				} catch (e) {
-					console.warn('Error removing marker:', e)
-				}
+				marker.remove()
 			})
 			this.markers = {}
 
@@ -469,186 +372,127 @@ export class CourtMapView extends LitElement {
 
 			// Create court markers
 			this.courts.forEach((court, index) => {
-				try {
-					// Create location for the court (in production, use real coordinates)
-					// For demo purposes, we're creating fake coordinates around a center point
-					const lat = 51.505 + Math.cos(index * 0.7) * 0.002
-					const lng = -0.09 + Math.sin(index * 0.7) * 0.002
+				// Create simulated location for the court
+				// In a real implementation, courts would have actual coordinates
+				const lat = 51.505 + Math.cos(index * 0.7) * 0.002
+				const lng = -0.09 + Math.sin(index * 0.7) * 0.002
 
-					// Get availability status
-					const availabilityStatus = this._getCourtAvailabilityStatus(court.id)
+				// Get availability status
+				const availabilityStatus = this._getCourtAvailabilityStatus(court.id)
 
-					// Set marker color based on availability
-					let markerColor: string
-					switch (availabilityStatus) {
-						case 'full':
-							markerColor = '#22c55e' // Green for fully available
-							break
-						case 'partial':
-							markerColor = '#f97316' // Orange for partially available
-							break
-						case 'none':
-						default:
-							markerColor = '#ef4444' // Red for unavailable
-					}
-
-					// Create custom marker icon
-					const isSelected = this.selectedCourtId === court.id
-					const iconSize = isSelected ? 36 : 30
-					const iconHtml = `
-            <div style="
-              width: ${iconSize}px; 
-              height: ${iconSize}px; 
-              background-color: ${markerColor}; 
-              border-radius: 50%; 
-              display: flex; 
-              align-items: center; 
-              justify-content: center;
-              color: white;
-              font-weight: bold;
-              border: 2px solid white;
-              box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-              transition: all 0.3s ease;
-            ">
-              ${index + 1}
-            </div>
-          `
-
-					const L = window.L
-
-					const icon = L.divIcon({
-						className: 'court-marker',
-						html: iconHtml,
-						iconSize: [iconSize, iconSize],
-						iconAnchor: [iconSize / 2, iconSize / 2],
-					})
-
-					// Create marker
-					const marker = L.marker([lat, lng], { icon })
-
-					// Add to map safely
-					marker.addTo(this.map)
-
-					// Get court details for popup
-					const sportTypes =
-						court.sportTypes && court.sportTypes.length > 0 ? court.sportTypes.join(', ') : 'Standard court'
-
-					const isAvailable = availabilityStatus !== 'none'
-
-					// Create unique ID for this court's button
-					const buttonId = `select-court-${court.id}-${Date.now()}`
-
-					// Create popup content
-					const popupContent = `
-            <div style="text-align: center; padding: 5px;">
-              <h3 style="margin: 0; font-size: 16px; font-weight: bold;">${court.name}</h3>
-              <p style="margin: 5px 0; font-size: 12px;">${sportTypes}</p>
-              ${
-								isAvailable
-									? `
-                <button 
-                  id="${buttonId}" 
-                  style="
-                    background-color: ${isSelected ? '#9333ea' : '#3b82f6'};
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    padding: 6px 12px;
-                    margin-top: 5px;
-                    font-size: 13px;
-                    cursor: pointer;
-                    transition: background-color 0.2s;
-                  "
-                >
-                  ${isSelected ? 'Selected' : 'Select Court'}
-                </button>
-              `
-									: `
-                <div style="
-                  background-color: #f3f4f6;
-                  color: #6b7280;
-                  border-radius: 4px;
-                  padding: 6px 12px;
-                  margin-top: 5px;
-                  font-size: 13px;
-                ">
-                  Unavailable
-                </div>
-              `
-							}
-            </div>
-          `
-
-					// Create popup
-					const popup = L.popup({
-						closeButton: true,
-						className: 'court-popup',
-					}).setContent(popupContent)
-
-					// Bind popup to marker
-					marker.bindPopup(popup)
-
-					// Create handler function for the button
-					const handleCourtSelect = () => {
-						this._handleCourtSelect(court)
-						if (this.map) {
-							this.map.closePopup()
-						}
-					}
-
-					// Add popup open event to safely add event listener to button
-					marker.on('popupopen', () => {
-						// Add click handler to select button
-						const selectButton = document.getElementById(buttonId)
-						if (selectButton) {
-							// Store the handler to remove it later
-							this.popupEventHandlers.set(buttonId, handleCourtSelect)
-							selectButton.addEventListener('click', handleCourtSelect as EventListener)
-						}
-					})
-
-					// Store marker and extend bounds
-					this.markers[court.id] = marker
-					bounds.extend([lat, lng])
-					hasValidCourts = true
-				} catch (e) {
-					console.error(`Error creating marker for court ${court.id}:`, e)
+				// Set marker color based on availability
+				let markerColor: string
+				switch (availabilityStatus) {
+					case 'full':
+						markerColor = '#22c55e' // Green for fully available
+						break
+					case 'partial':
+						markerColor = '#f97316' // Orange for partially available
+						break
+					case 'none':
+					default:
+						markerColor = '#ef4444' // Red for unavailable
 				}
+
+				// Create simple marker icon
+				const isSelected = this.selectedCourtId === court.id
+				const iconSize = isSelected ? 34 : 28
+
+				const iconHtml = `
+					<div style="
+						width: ${iconSize}px; 
+						height: ${iconSize}px; 
+						background-color: ${markerColor}; 
+						border-radius: 50%; 
+						display: flex; 
+						align-items: center; 
+						justify-content: center;
+						color: white;
+						font-weight: bold;
+						border: 2px solid white;
+						box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+					">
+						${index + 1}
+					</div>
+				`
+
+				const L = window.L
+				const icon = L.divIcon({
+					html: iconHtml,
+					iconSize: [iconSize, iconSize],
+					iconAnchor: [iconSize / 2, iconSize / 2],
+					className: '',
+				})
+
+				// Create marker
+				const marker = L.marker([lat, lng], { icon })
+				marker.addTo(this.map)
+
+				// Get court details for popup
+				const sportTypes =
+					court.sportTypes && court.sportTypes.length > 0 ? court.sportTypes.join(', ') : 'Standard court'
+
+				const isAvailable = availabilityStatus !== 'none'
+				const buttonId = `select-court-${court.id}-${Date.now()}`
+
+				// Create simple popup content
+				const popupContent = `
+					<div style="text-align: center; padding: 5px;">
+						<h3 style="margin: 0; font-size: 16px; font-weight: bold;">${court.name}</h3>
+						<p style="margin: 5px 0; font-size: 12px;">${sportTypes}</p>
+						${
+							isAvailable
+								? `<button id="${buttonId}" style="background-color: ${
+										isSelected ? '#9333ea' : '#3b82f6'
+								  }; color: white; border: none; border-radius: 4px; padding: 6px 12px; margin-top: 5px; font-size: 13px; cursor: pointer;">
+									${isSelected ? 'Selected' : 'Select Court'}
+								</button>`
+								: `<div style="background-color: #f3f4f6; color: #6b7280; border-radius: 4px; padding: 6px 12px; margin-top: 5px; font-size: 13px;">
+									Unavailable
+								</div>`
+						}
+					</div>
+				`
+
+				// Create popup
+				const popup = L.popup().setContent(popupContent)
+				marker.bindPopup(popup)
+
+				// Create handler function for the button
+				const handleCourtSelect = () => {
+					this._handleCourtSelect(court)
+					this.map.closePopup()
+				}
+
+				// Add popup open event to safely add event listener to button
+				marker.on('popupopen', () => {
+					const selectButton = document.getElementById(buttonId)
+					if (selectButton) {
+						this.popupEventHandlers.set(buttonId, handleCourtSelect)
+						selectButton.addEventListener('click', handleCourtSelect as EventListener)
+					}
+				})
+
+				// Store marker and extend bounds
+				this.markers[court.id] = marker
+				bounds.extend([lat, lng])
+				hasValidCourts = true
 			})
 
 			// Fit map to show all markers
 			if (hasValidCourts && this.map) {
-				try {
-					this.map.fitBounds(bounds, { padding: [35, 35] })
-				} catch (e) {
-					console.warn('Error fitting bounds:', e)
-					// Fallback to default view
-					this.map.setView([51.505, -0.09], 15)
-				}
+				this.map.fitBounds(bounds, { padding: [30, 30] })
 			}
 
 			// Open popup for selected court
-			if (this.selectedCourtId && this.markers[this.selectedCourtId] && this.map) {
-				try {
-					// First make sure the map is at the right location
-					const marker = this.markers[this.selectedCourtId]
-					const latLng = marker.getLatLng()
-
-					// Center map on selected court
-					this.map.setView([latLng.lat, latLng.lng], this.map.getZoom())
-
-					// Open the popup after a short delay to ensure the map is ready
-					setTimeout(() => {
-						if (this.markers[this.selectedCourtId]) {
-							this.markers[this.selectedCourtId].openPopup()
-						}
-					}, 300)
-				} catch (e) {
-					console.warn('Error focusing selected court:', e)
-				}
+			if (this.selectedCourtId && this.markers[this.selectedCourtId]) {
+				setTimeout(() => {
+					if (this.markers[this.selectedCourtId]) {
+						this.markers[this.selectedCourtId].openPopup()
+					}
+				}, 300)
 			}
 		} catch (error) {
-			console.error('Error updating courts on map:', error)
 			this.error = 'Failed to update courts on map'
 		}
 	}
@@ -660,11 +504,8 @@ export class CourtMapView extends LitElement {
 		const status = this.courtAvailability.get(courtId)
 
 		if (!status) return 'none'
-
 		if (status.fullyAvailable) return 'full'
-
 		if (status.available) return 'partial'
-
 		return 'none'
 	}
 
@@ -693,20 +534,17 @@ export class CourtMapView extends LitElement {
 		this.loading = true
 		this.error = null
 
-		// Destroy existing map if any
 		if (this.map) {
 			this.map.remove()
 			this.map = null
 		}
 
-		// Attempt to reinitialize
 		this._loadLeafletScript()
 			.then(() => {
 				this.leafletLoaded = true
 				this._initializeMap()
 			})
-			.catch(error => {
-				console.error('Error in retry initialization:', error)
+			.catch(() => {
 				this.error = 'Failed to load map. Please check your connection and try again.'
 				this.loading = false
 			})
@@ -717,7 +555,7 @@ export class CourtMapView extends LitElement {
 	 */
 	render() {
 		return html`
-			<div class="map-container ${this.loading ? 'initializing' : ''}">
+			<div class="map-container">
 				${when(
 					this.loading,
 					() => html`
@@ -731,14 +569,13 @@ export class CourtMapView extends LitElement {
 							() => html`
 								<div class="map-error-overlay">
 									<div style="text-align: center;">
-										<div class="error-icon">⚠️</div>
+										<div>⚠️</div>
 										<p>${this.error}</p>
 										<button @click=${() => this._retryInitialization()} class="retry-button">Retry</button>
 									</div>
 								</div>
 							`,
 							() => html`
-								<!-- Map will be mounted here -->
 								<div class="map-legend">
 									<div class="legend-item">
 										<span class="legend-dot dot-available"></span>

@@ -773,7 +773,7 @@ export class DurationSelectionStep extends $LitElement(css`
 	private renderGridLayout(durations: Duration[]): unknown {
 		return html`
 			<div
-				class="grid grid-cols-5 gap-3 py-4"
+				class="grid grid-cols-4 md:grid-cols-5 gap-3 py-4"
 				role="listbox"
 				aria-label="Available Duration Options"
 				aria-multiselectable="false"
@@ -885,8 +885,7 @@ export class DurationSelectionStep extends $LitElement(css`
 			'rounded-lg': true,
 			'transition-all': true,
 			'duration-300': true,
-			'mt-3': true, // Match time select spacing
-			'px-2': true,
+			'p-2': true,
 			'scale-100': this.isActive,
 			'scale-95': !this.isActive && !this.isCompact,
 		}

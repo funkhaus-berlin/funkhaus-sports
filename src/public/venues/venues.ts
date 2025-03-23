@@ -8,7 +8,6 @@ import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 import { Venue } from 'src/db/venue-collection'
 import { CourtBookingSystem } from 'src/public/book/book'
 import { bookingContext, BookingProgressContext, BookingStep } from '../book/context'
-import './venue.card'
 
 @customElement('venue-landing-page')
 export class VenueLandingPage extends $LitElement() {
