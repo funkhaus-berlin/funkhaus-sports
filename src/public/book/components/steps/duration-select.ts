@@ -23,7 +23,13 @@ import {
 	tap,
 } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
-import { availabilityContext, availabilityLoading$, getAvailableDurations } from 'src/availability-context'
+import {
+	availabilityContext,
+	availabilityLoading$,
+	BookingFlowType,
+	getAvailableDurations,
+	getNextStep,
+} from 'src/availability-context'
 import { Court } from 'src/db/courts.collection'
 import { toUserTimezone } from 'src/utils/timezone'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
@@ -413,7 +419,7 @@ export class DurationSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Load durations using the availability context
+	 * Load durations using the availability context, adapted for different flows
 	 */
 	private loadDurations(): void {
 		// Set initial loading state
@@ -432,15 +438,23 @@ export class DurationSelectionStep extends $LitElement(css`
 
 		// Only proceed if we have start time
 		if (this.booking?.startTime) {
-			console.log('Loading durations for all courts at time', this.booking.startTime)
+			console.log('Loading durations for', this.booking.startTime)
 
 			try {
-				// Get available durations from availability context
-				const availableDurations = getAvailableDurations(this.booking.startTime)
+				// Get available durations based on current flow
+				let availableDurations
+
+				// If we're using DATE_COURT_TIME_DURATION flow and have already selected a court,
+				// get durations for this specific court
+				if (this.availability.bookingFlow.type === BookingFlowType.DATE_COURT_TIME_DURATION && this.booking.courtId) {
+					// Get durations available for this specific court
+					availableDurations = getAvailableDurations(this.booking.startTime, this.booking.courtId)
+				} else {
+					// Get durations available across all courts
+					availableDurations = getAvailableDurations(this.booking.startTime)
+				}
 
 				if (availableDurations.length > 0) {
-					// Calculate available courts count
-
 					this.updateState({
 						durations: availableDurations,
 						showingEstimatedPrices: false,
@@ -557,8 +571,7 @@ export class DurationSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Handle duration selection - now should help the user select a court
-	 * Since we may have multiple court options for a given duration
+	 * Handle duration selection based on flow type
 	 */
 	private handleDurationSelect(duration: Duration): void {
 		try {
@@ -571,10 +584,19 @@ export class DurationSelectionStep extends $LitElement(css`
 				// Convert back to UTC for storage
 				const endTime = localEndTime.utc().toISOString()
 
-				bookingContext.set({
+				// Create booking update object
+				const bookingUpdate: Partial<Booking> = {
 					endTime,
 					price: duration.price,
-				})
+				}
+
+				// Check current booking flow - in DATE_COURT_TIME_DURATION, we don't need to clear the court ID
+				// In DATE_TIME_DURATION_COURT flow, proceed with court selection after duration
+				if (this.availability.bookingFlow.type !== BookingFlowType.DATE_COURT_TIME_DURATION) {
+					bookingUpdate.courtId = ''
+				}
+
+				bookingContext.set(bookingUpdate, true)
 			}
 
 			// Always switch to list view after selection
@@ -589,18 +611,13 @@ export class DurationSelectionStep extends $LitElement(css`
 			// Ensure the selected duration is properly centered after selection
 			setTimeout(() => this.scrollToSelectedDuration(), 150)
 
-			// Advance to court selection step
-			BookingProgressContext.set({
-				currentStep: BookingStep.Court,
-			})
+			// Get next step based on current flow
+			const nextStep = getNextStep(BookingStep.Duration)
 
-			// Dispatch event for parent components
-			this.dispatchEvent(
-				new CustomEvent('next', {
-					bubbles: true,
-					composed: true,
-				}),
-			)
+			// Advance to next step in the flow
+			BookingProgressContext.set({
+				currentStep: nextStep,
+			})
 
 			// Announce to screen readers
 			this.announceForScreenReader(`Selected ${this.getFullLabel(duration)} for €${duration.price.toFixed(2)}`)

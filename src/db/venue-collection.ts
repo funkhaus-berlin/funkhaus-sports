@@ -1,3 +1,5 @@
+// src/db/venue-collection.ts
+import { BookingFlowType } from '../availability-context'
 import { FirestoreService } from '../firebase/firestore.service'
 
 // Enums for venue properties
@@ -67,6 +69,8 @@ export interface VenueSettings {
 		startTime: string
 		endTime: string
 	}[]
+	// New field to configure booking flow
+	bookingFlow?: BookingFlowType
 }
 
 export interface Venue {
@@ -94,16 +98,6 @@ export interface Venue {
 	}
 }
 
-export const defaultOperatingHours: OperatingHours = {
-	monday: { open: '09:00', close: '22:00' },
-	tuesday: { open: '09:00', close: '22:00' },
-	wednesday: { open: '09:00', close: '22:00' },
-	thursday: { open: '09:00', close: '22:00' },
-	friday: { open: '09:00', close: '22:00' },
-	saturday: { open: '09:00', close: '22:00' },
-	sunday: { open: '09:00', close: '22:00' },
-}
-
 // Sample venue settings that can be used as defaults
 export const defaultVenueSettings: VenueSettings = {
 	minBookingTime: 30,
@@ -115,6 +109,8 @@ export const defaultVenueSettings: VenueSettings = {
 		refundCutoff: 24,
 		refundPercentage: 80,
 	},
+	// Default to Date -> Court -> Time -> Duration flow
+	bookingFlow: BookingFlowType.DATE_COURT_TIME_DURATION,
 }
 
 // Create Firestore service for venues

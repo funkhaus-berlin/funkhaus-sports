@@ -7,7 +7,12 @@ import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
-import { initializeAvailabilityContext } from 'src/availability-context'
+import {
+	availabilityContext,
+	getBookingFlowSteps,
+	getNextStep,
+	initializeAvailabilityContext,
+} from 'src/availability-context'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
@@ -17,11 +22,10 @@ import { BookingErrorService } from './components/errors/booking-error-service'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep, ErrorCategory } from './context'
 import { PaymentStatusHandler } from './payment-status-handler'
 
-// Import the availability context initialization function
-
 /**
  * Court booking system component
  * Handles the complete booking flow from date selection to payment
+ * Updated to support dynamic ordering of steps based on venue configuration
  */
 @customElement('court-booking-system')
 export class CourtBookingSystem extends $LitElement() {
@@ -35,6 +39,7 @@ export class CourtBookingSystem extends $LitElement() {
 	@select(venuesContext) venues!: Map<string, Venue>
 	@select(bookingContext) booking!: Booking
 	@select(BookingProgressContext) bookingProgress!: BookingProgress
+	@select(availabilityContext) availability!: any
 
 	// DOM references
 	@query('#stripe-element') stripeElement!: HTMLElement
@@ -58,17 +63,6 @@ export class CourtBookingSystem extends $LitElement() {
 
 		// Initialize Stripe
 		this.initializeStripe()
-
-		// Subscribe to booking progress context
-		// BookingProgressContext.$.pipe(
-		// 	filter(() => !!this.bookingProgress),
-		// 	takeUntil(this.disconnecting),
-		// ).subscribe(() => {
-		// 	// Update URL when step changes
-		// 	this.updateUrlForStep(this.bookingProgress.currentStep)
-		// 	// Clear any errors when changing steps
-		// 	BookingErrorService.clearError()
-		// })
 	}
 
 	disconnectedCallback() {
@@ -102,12 +96,10 @@ export class CourtBookingSystem extends $LitElement() {
 		// Subscribe to booking context changes to update stripe amount
 		bookingContext.$.pipe(
 			filter(() => !!this.booking),
-			// calculate the price based on the booking object and ignore the price set in the context, calculate from the pricing service only when starttime, endtime and court is set
 			filter(booking => !!booking.startTime && !!booking.endTime && !!booking.courtId),
 			distinctUntilChanged((prev, curr) => {
 				return prev.startTime === curr.startTime && prev.endTime === curr.endTime && prev.courtId === curr.courtId
 			}),
-			// set the price based on the booking object
 			map(booking => {
 				bookingContext.set({
 					price: pricingService.calculatePrice(
@@ -296,6 +288,31 @@ export class CourtBookingSystem extends $LitElement() {
 		}
 	}
 
+	/**
+	 * Handle navigation to the next step based on current flow
+	 */
+	private handleNextStep(e: CustomEvent): void {
+		if (!this.bookingProgress) return
+
+		const currentStep = this.bookingProgress.currentStep
+		const nextStep = getNextStep(currentStep)
+
+		BookingProgressContext.set({
+			currentStep: nextStep,
+		})
+
+		// Dispatch event for parent components if needed
+		this.dispatchEvent(
+			new CustomEvent('step-change', {
+				detail: {
+					from: currentStep,
+					to: nextStep,
+				},
+				bubbles: true,
+			}),
+		)
+	}
+
 	private renderProgressSteps() {
 		return html` <funkhaus-booking-steps></funkhaus-booking-steps> `
 	}
@@ -304,40 +321,83 @@ export class CourtBookingSystem extends $LitElement() {
 		return html` <sch-busy></sch-busy> `
 	}
 
+	/**
+	 * Determine if a step should be shown based on current booking flow and progress
+	 * Fixed to use position in flow rather than enum values
+	 */
+	private shouldShowStep(step: BookingStep): boolean {
+		if (!this.availability?.bookingFlow) return true
+
+		// Get all steps in the current flow
+		const flowSteps = getBookingFlowSteps()
+
+		// Get the indices in the flow
+		const stepIndex = flowSteps.indexOf(step)
+		const currentStepIndex = flowSteps.indexOf(this.bookingProgress.currentStep)
+
+		// A step should be shown if:
+		// 1. It's in the flow
+		// 2. Its index is less than or equal to the current step's index
+		return stepIndex !== -1 && stepIndex <= currentStepIndex
+	}
+
+	/**
+	 * Render a step component based on step type
+	 */
+	private renderStepComponent(step: BookingStep) {
+		switch (step) {
+			case BookingStep.Date:
+				return html` <date-selection-step class="max-w-full sticky top-0 block my-2 z-0"></date-selection-step> `
+			case BookingStep.Court:
+				return html` <court-select-step class="max-w-full block mt-2 z-10"></court-select-step> `
+			case BookingStep.Time:
+				return html` <time-selection-step class="max-w-full sticky top-0 block mt-2 z-10"></time-selection-step> `
+			case BookingStep.Duration:
+				return html` <duration-selection-step class="max-w-full mt-2 block"></duration-selection-step> `
+			default:
+				return html``
+		}
+	}
+
+	/**
+	 * Render steps dynamically based on the current flow
+	 */
 	private renderCurrentStep() {
 		const currentStep = this.bookingProgress.currentStep
 
+		// If we're at the payment step, render the payment form
+		if (currentStep === BookingStep.Payment) {
+			return html`
+				<booking-summary .booking=${this.booking} .selectedCourt=${this.selectedCourt}></booking-summary>
+
+				<funkhaus-checkout-form
+					.booking=${this.booking}
+					.selectedCourt=${this.selectedCourt}
+					@booking-complete=${this.handleBookingComplete}
+				>
+					<slot slot="stripe-element" name="stripe-element"></slot>
+				</funkhaus-checkout-form>
+			`
+		}
+
+		// Otherwise, render the booking steps in the order defined by the flow
+		if (!this.availability?.bookingFlow) {
+			// If flow isn't available yet, render just the date step
+			return html` <date-selection-step class="max-w-full sticky top-0 block my-2 z-0"></date-selection-step> `
+		}
+
+		// Get all steps in current flow
+		const flowSteps = getBookingFlowSteps()
+
+		// Render components in the correct order
 		return html`
-			${when(
-				currentStep === BookingStep.Payment,
-				() => html`
-					<booking-summary .booking=${this.booking} .selectedCourt=${this.selectedCourt}></booking-summary>
-
-					<funkhaus-checkout-form
-						.booking=${this.booking}
-						.selectedCourt=${this.selectedCourt}
-						@booking-complete=${this.handleBookingComplete}
-					>
-						<slot slot="stripe-element" name="stripe-element"></slot>
-					</funkhaus-checkout-form>
-				`,
-				() => html`
-					<date-selection-step class="max-w-full sticky top-0 block my-2 z-0"></date-selection-step>
-
-					${when(
-						currentStep >= BookingStep.Time,
-						() => html` <time-selection-step class="max-w-full sticky top-0 block mt-2 z-10"></time-selection-step> `,
-					)}
-					${when(
-						currentStep >= BookingStep.Duration,
-						() => html` <duration-selection-step class="max-w-full mt-2 block"></duration-selection-step> `,
-					)}
-					${when(
-						currentStep >= BookingStep.Court,
-						() => html` <court-select-step class="max-w-full block mt-2 z-10"></court-select-step> `,
-					)}
-				`,
-			)}
+			${flowSteps.map(step => {
+				// Only render steps that should be shown based on position in flow
+				if (this.shouldShowStep(step)) {
+					return this.renderStepComponent(step)
+				}
+				return html``
+			})}
 		`
 	}
 

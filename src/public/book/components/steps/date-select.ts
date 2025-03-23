@@ -1,3 +1,4 @@
+import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { css, html, PropertyValues } from 'lit'
@@ -6,6 +7,7 @@ import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { styleMap } from 'lit/directives/style-map.js'
 import { debounceTime, distinctUntilChanged, filter, fromEvent, map, merge, startWith, takeUntil, tap } from 'rxjs'
+import { availabilityContext, getNextStep } from 'src/availability-context'
 import { bookingContext, BookingProgressContext, BookingStep } from '../../context'
 
 // Define golden ratio constant
@@ -57,6 +59,9 @@ export class DateSelectionStep extends $LitElement(css`
 		display: none; /* Chrome, Safari, and Opera */
 	}
 `) {
+	@select(availabilityContext)
+	availability!: any
+
 	// Cached values to improve performance
 	private _today = dayjs()
 	private _todayISO = this._today.format('YYYY-MM-DD')
@@ -496,7 +501,7 @@ export class DateSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Handle date selection
+	 * Handle date selection with dynamic flow support
 	 */
 	private _handleDateClick(date: Date): void {
 		// Don't allow selection of dates before today
@@ -524,9 +529,12 @@ export class DateSelectionStep extends $LitElement(css`
 			endTime: '',
 		})
 
-		// Navigate to Time step
+		// Get the next step from the current flow (respecting the dynamic order)
+		const nextStep = getNextStep(BookingStep.Date)
+
+		// Navigate to the next step
 		BookingProgressContext.set({
-			currentStep: BookingStep.Time,
+			currentStep: nextStep,
 		})
 
 		this.dispatchEvent(new CustomEvent('change', { detail: newValue }))

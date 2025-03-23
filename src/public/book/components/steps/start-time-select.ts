@@ -26,7 +26,9 @@ import {
 	availabilityContext,
 	AvailabilityData,
 	availabilityLoading$,
+	BookingFlowType,
 	getAvailableTimeSlots,
+	getNextStep,
 } from 'src/availability-context'
 import { toUTC } from 'src/utils/timezone'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
@@ -130,12 +132,14 @@ export class TimeSelectionStep extends $LitElement(css`
 		error: string | null
 		autoScrollAttempted: boolean
 		viewMode: 'grid' | 'list'
+		showingEstimatedPrices: boolean
 	}>({
 		timeSlots: [],
 		loading: true,
 		error: null,
 		autoScrollAttempted: false,
 		viewMode: 'grid',
+		showingEstimatedPrices: false,
 	})
 
 	// State properties derived from observables
@@ -253,7 +257,7 @@ export class TimeSelectionStep extends $LitElement(css`
 				// Reset transition flag after animation
 				this.isTransitioning = false
 
-				// Handle auto-scrolling for list view
+				// /* Handle */ auto-scrolling for list view
 				if (viewMode === 'list') {
 					setTimeout(() => {
 						// If booking start time is set, scroll to it
@@ -382,39 +386,78 @@ export class TimeSelectionStep extends $LitElement(css`
 		this.requestUpdate()
 	}
 
-	// Business logic methods - UPDATED to use availability context
+	/**
+	 * Load time slots based on the current booking flow
+	 */
 	private loadTimeSlots(): void {
+		// Set initial loading state
+		this.updateState({
+			loading: true,
+			error: null,
+		})
+
+		// Safety check to make sure booking object exists
+		if (!this.booking) {
+			console.warn('Booking object not available, using estimated times')
+			this.generateDefaultTimeSlots()
+			this.updateState({ loading: false })
+			return
+		}
+
 		try {
-			// Clear existing time slot refs before updating
-			this.clearTimeSlotRefs()
+			// Check current booking flow to determine how to get time slots
+			let timeSlots
 
-			// Get time slots from availability context
-			const timeSlots = getAvailableTimeSlots()
+			// If we're using DATE_COURT_TIME_DURATION flow and have already selected a court,
+			// get only time slots available for this specific court
+			if (this.availability.bookingFlow.type === BookingFlowType.DATE_COURT_TIME_DURATION && this.booking.courtId) {
+				// Get time slots available for this specific court
+				timeSlots = getAvailableTimeSlots(this.booking.courtId)
+			} else {
+				// Get all available time slots across all courts
+				timeSlots = getAvailableTimeSlots()
+			}
 
-			// Update state
-			this.updateState({
-				timeSlots,
-				loading: false,
-				error: this.availability.error,
-			})
+			if (timeSlots.length > 0) {
+				this.updateState({
+					timeSlots,
+					showingEstimatedPrices: false,
+					loading: false,
+					error: this.availability.error,
+				})
 
-			// After data is loaded, try to scroll to appropriate position
-			this.updateComplete.then(() => {
-				if (this.state$.value.viewMode === 'list') {
-					if (this.booking.startTime) {
-						this.scrollToTime(this.booking.startTime)
-					} else if (!this.state$.value.autoScrollAttempted) {
-						this.updateState({ autoScrollAttempted: true })
-						this.scrollToFirstAvailableTime()
-					}
-				}
-			})
-
-			this.announceForScreenReader(`${timeSlots.filter(s => s.available).length} available time slots loaded`)
+				// this.lastSuccessfulData = { timeSlots }
+				this.announceForScreenReader(`${timeSlots.filter(s => s.available).length} time slots available`)
+			} else {
+				// No valid times available - use estimated times as fallback
+				this.updateState({
+					error: 'No valid time options available for this date. Please select a different date.',
+					timeSlots: [],
+					loading: false,
+				})
+				this.generateDefaultTimeSlots()
+			}
 		} catch (error) {
-			console.error('Error loading time slots:', error)
+			console.error('Error getting available time slots:', error)
+			this.updateState({
+				error: 'Error determining available times. Using estimates instead.',
+				timeSlots: [],
+				loading: false,
+			})
 			this.generateDefaultTimeSlots()
 		}
+
+		// After data is loaded, try to scroll to appropriate position
+		this.updateComplete.then(() => {
+			if (this.state$.value.viewMode === 'list') {
+				if (this.booking.startTime) {
+					setTimeout(() => this.scrollToTime(this.booking.startTime), 150)
+				} else if (!this.state$.value.autoScrollAttempted) {
+					this.updateState({ autoScrollAttempted: true })
+					setTimeout(() => this.scrollToFirstAvailableTime(), 150)
+				}
+			}
+		})
 	}
 
 	private generateDefaultTimeSlots(): void {
@@ -496,31 +539,9 @@ export class TimeSelectionStep extends $LitElement(css`
 		this.announceForScreenReader(`${slots.length} estimated time slots loaded`)
 	}
 
-	// UI interaction methods
-	// private toggleView(mode: 'grid' | 'list'): void {
-	// 	if (this.state$.value.viewMode !== mode && !this.isTransitioning) {
-	// 		this.isTransitioning = true
-
-	// 		// Update state with new view mode
-	// 		this.updateState({ viewMode: mode })
-
-	// 		// Reset transition state after a delay for the animation
-	// 		this.isTransitioning = false
-
-	// 		// If switching to list mode, try to scroll after animation completes
-	// 		this.updateComplete.then(() => {
-	// 			if (mode === 'list') {
-	// 				if (this.booking.startTime) {
-	// 					this.scrollToTime(this.booking.startTime)
-	// 				} else if (!this.state$.value.autoScrollAttempted) {
-	// 					this.scrollToFirstAvailableTime()
-	// 				}
-	// 			}
-	// 		})
-	// 	}
-	// }
-
-	// UPDATED: Refactored without using querySelector
+	/**
+	 * Handle time selection based on flow type
+	 */
 	private handleTimeSelect(slot: TimeSlot): void {
 		if (!slot.available) return
 
@@ -533,20 +554,25 @@ export class TimeSelectionStep extends $LitElement(css`
 			// Use the utility to convert to UTC
 			const newStartTime = toUTC(this.booking.date, timeString)
 
-			// Update booking context
+			// Update booking context with time selection
 			let newEndTime = undefined
 			if (!!this.booking.endTime) {
 				const oldDuration = dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute')
 				newEndTime = dayjs(newStartTime).add(oldDuration, 'minute').toISOString()
 			}
-			bookingContext.set(
-				{
-					startTime: newStartTime,
-					courtId: '', // Clear court selection
-					endTime: newEndTime ?? '',
-				},
-				true,
-			)
+
+			const bookingUpdate: Partial<Booking> = {
+				startTime: newStartTime,
+				endTime: newEndTime ?? '',
+			}
+
+			// Check current booking flow - in DATE_COURT_TIME_DURATION, we've already selected a court
+			// In other flows, we need to clear the court selection when changing time
+			if (this.availability.bookingFlow.type !== BookingFlowType.DATE_COURT_TIME_DURATION) {
+				bookingUpdate.courtId = ''
+			}
+
+			bookingContext.set(bookingUpdate, true)
 
 			// Highlight the selected time using our ref system
 			const selectedEl = this.timeSlotRefs.get(slot.value)
@@ -554,13 +580,15 @@ export class TimeSelectionStep extends $LitElement(css`
 				selectedEl.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
 			}
 
-			// Go to duration selection step
-			if (this.bookingProgress.currentStep === BookingStep.Time) {
-				BookingProgressContext.set({
-					currentStep: BookingStep.Duration,
-				})
-			}
+			// Get the next step in the flow
+			const nextStep = getNextStep(BookingStep.Time)
 
+			// Advance to the next step
+			BookingProgressContext.set({
+				currentStep: nextStep,
+			})
+
+			// Dispatch event for parent components
 			this.dispatchEvent(
 				new CustomEvent('next', {
 					bubbles: true,

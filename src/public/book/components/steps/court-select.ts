@@ -1,3 +1,4 @@
+// src/public/book/components/steps/court-select.ts
 import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
@@ -9,7 +10,13 @@ import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
-import { availabilityContext, CourtAvailabilityStatus, getAllCourtsAvailability } from 'src/availability-context'
+import {
+	availabilityContext,
+	BookingFlowType,
+	CourtAvailabilityStatus,
+	getAllCourtsAvailability,
+	getNextStep,
+} from 'src/availability-context'
 import { Court, SportTypeEnum } from 'src/db/courts.collection'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import './court-availability-dialog'
@@ -28,9 +35,7 @@ type AvailabilityStatus = 'full' | 'partial' | 'none'
 
 /**
  * Enhanced Court Selection Component with Map View
- *
- * Extends the existing court selection with a map view option
- * allowing users to visualize and select courts on a map
+ * Updated to support DATE_COURT_TIME_DURATION flow
  */
 @customElement('court-select-step')
 export class CourtSelectStep extends $LitElement(css`
@@ -125,6 +130,13 @@ export class CourtSelectStep extends $LitElement(css`
 	}
 
 	/**
+	 * Determine if we're in DATE_COURT_TIME_DURATION flow
+	 */
+	private get isCourtBeforeTimeFlow(): boolean {
+		return this.availability?.bookingFlow?.type === BookingFlowType.DATE_COURT_TIME_DURATION
+	}
+
+	/**
 	 * Connect to the component lifecycle
 	 */
 	connectedCallback(): void {
@@ -181,14 +193,11 @@ export class CourtSelectStep extends $LitElement(css`
 	 */
 	updated(changedProperties: Map<string, unknown>): void {
 		// If booking data changed and we have necessary data, reload
-		if (
-			(changedProperties.has('booking') || changedProperties.has('bookingProgress')) &&
-			this.booking?.startTime &&
-			this.booking?.endTime
-		) {
+		if ((changedProperties.has('booking') || changedProperties.has('bookingProgress')) && this.booking?.date) {
 			this.loadCourtsWithAvailability()
 		}
 	}
+
 	/**
 	 * Get container classes based on compact mode
 	 */
@@ -208,6 +217,12 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Check if a court can be selected based on availability
 	 */
 	private canSelectCourt(courtId: string): boolean {
+		// In DATE_COURT_TIME_DURATION flow, when selecting court before time,
+		// all courts should be selectable
+		if (this.isCourtBeforeTimeFlow && !this.booking.startTime) {
+			return true
+		}
+
 		const status = this.courtAvailability.get(courtId)
 		// Allow selection if at least partially available
 		return !!status?.available
@@ -217,6 +232,12 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Get court availability status
 	 */
 	private getCourtAvailabilityStatus(courtId: string): AvailabilityStatus {
+		// In DATE_COURT_TIME_DURATION flow, when selecting court before time,
+		// all courts should show as fully available
+		if (this.isCourtBeforeTimeFlow && !this.booking.startTime) {
+			return 'full'
+		}
+
 		const status = this.courtAvailability.get(courtId)
 
 		if (!status) return 'none'
@@ -244,14 +265,21 @@ export class CourtSelectStep extends $LitElement(css`
 		this.error = null
 
 		try {
-			// Get court availability statuses from the availability context
-			const courtAvailabilities = getAllCourtsAvailability(this.booking.startTime, this.calculateDuration())
+			let availabilityMap = new Map<string, CourtAvailabilityStatus>()
 
-			// Create map of court ID to availability status for efficient lookups
-			const availabilityMap = new Map<string, CourtAvailabilityStatus>()
-			courtAvailabilities.forEach(status => {
-				availabilityMap.set(status.courtId, status)
-			})
+			// If we're in DATE_COURT_TIME_DURATION flow and don't have start time yet,
+			// we don't need to check availability - we're selecting court first
+			if (this.isCourtBeforeTimeFlow && !this.booking.startTime) {
+				console.log('DATE_COURT_TIME_DURATION flow: Showing all courts without availability check')
+			} else {
+				// Get court availability statuses from the availability context
+				const courtAvailabilities = getAllCourtsAvailability(this.booking.startTime, this.calculateDuration())
+
+				// Create map of court ID to availability status for efficient lookups
+				courtAvailabilities.forEach(status => {
+					availabilityMap.set(status.courtId, status)
+				})
+			}
 
 			// Store the map in state
 			this.courtAvailability = availabilityMap
@@ -261,25 +289,34 @@ export class CourtSelectStep extends $LitElement(css`
 				court => court.status === 'active' && court.venueId === this.booking.venueId,
 			)
 
-			// Sort courts by availability
-			const sortedCourts = venueCourts.sort((a, b) => {
-				// Get availability statuses
-				const aStatus = availabilityMap.get(a.id)
-				const bStatus = availabilityMap.get(b.id)
+			// If we're in DATE_COURT_TIME_DURATION flow and don't have start time yet,
+			// we don't need to sort by availability - we're selecting court first
+			let sortedCourts = venueCourts
 
-				// Sort fully available courts first
-				if ((aStatus?.fullyAvailable || false) !== (bStatus?.fullyAvailable || false)) {
-					return aStatus?.fullyAvailable || false ? -1 : 1
-				}
+			if (!this.isCourtBeforeTimeFlow || this.booking.startTime) {
+				// Sort courts by availability
+				sortedCourts = venueCourts.sort((a, b) => {
+					// Get availability statuses
+					const aStatus = availabilityMap.get(a.id)
+					const bStatus = availabilityMap.get(b.id)
 
-				// Then sort by partial availability
-				if ((aStatus?.available || false) !== (bStatus?.available || false)) {
-					return aStatus?.available || false ? -1 : 1
-				}
+					// Sort fully available courts first
+					if ((aStatus?.fullyAvailable || false) !== (bStatus?.fullyAvailable || false)) {
+						return aStatus?.fullyAvailable || false ? -1 : 1
+					}
 
-				// Finally sort by name
-				return a.name.localeCompare(b.name)
-			})
+					// Then sort by partial availability
+					if ((aStatus?.available || false) !== (bStatus?.available || false)) {
+						return aStatus?.available || false ? -1 : 1
+					}
+
+					// Finally sort by name
+					return a.name.localeCompare(b.name)
+				})
+			} else {
+				// Just sort by name in the DATE_COURT_TIME_DURATION flow when selecting court first
+				sortedCourts = venueCourts.sort((a, b) => a.name.localeCompare(b.name))
+			}
 
 			this.selectedVenueCourts = sortedCourts
 			this.lastSuccessfulData = { courts: sortedCourts }
@@ -356,9 +393,12 @@ export class CourtSelectStep extends $LitElement(css`
 		this.pendingCourtSelection = null
 		this.showConfirmationDialog = false
 
-		// Advance to Payment step
+		// Get the next step from the current flow
+		const nextStep = getNextStep(BookingStep.Court)
+
+		// Advance to the next step in the flow
 		BookingProgressContext.set({
-			currentStep: BookingStep.Payment,
+			currentStep: nextStep,
 		})
 
 		// Animate the selected court if in list view
@@ -379,6 +419,8 @@ export class CourtSelectStep extends $LitElement(css`
 					timeOption: option,
 					adjustedTimes: option !== 'original',
 				},
+				bubbles: true,
+				composed: true,
 			}),
 		)
 	}
@@ -387,6 +429,13 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Handle court selection
 	 */
 	private handleCourtSelect(court: Court): void {
+		// In DATE_COURT_TIME_DURATION flow, when selecting court before time,
+		// we don't need to check availability - we're selecting court first
+		if (this.isCourtBeforeTimeFlow && !this.booking.startTime) {
+			this.confirmCourtSelection(court)
+			return
+		}
+
 		// Don't allow selecting unavailable courts
 		if (!this.canSelectCourt(court.id)) {
 			return
@@ -408,9 +457,6 @@ export class CourtSelectStep extends $LitElement(css`
 
 	/**
 	 * Handle dialog events
-	 */
-	/**
-	 * Update this method in your court-select-step.ts file to ensure correct handling of options
 	 */
 	private handleDialogConfirm(e: CustomEvent): void {
 		const { court, option, timeSlot } = e.detail
@@ -460,9 +506,12 @@ export class CourtSelectStep extends $LitElement(css`
 		this.pendingCourtSelection = null
 		this.showConfirmationDialog = false
 
-		// Advance to Payment step
+		// Get the next step from the current flow
+		const nextStep = getNextStep(BookingStep.Court)
+
+		// Advance to the next step in the flow
 		BookingProgressContext.set({
-			currentStep: BookingStep.Payment,
+			currentStep: nextStep,
 		})
 
 		// Animate the selected court if in list view
@@ -484,6 +533,8 @@ export class CourtSelectStep extends $LitElement(css`
 					adjustedTimes: option !== 'original',
 					timeSlot,
 				},
+				bubbles: true,
+				composed: true,
 			}),
 		)
 	}
@@ -499,6 +550,7 @@ export class CourtSelectStep extends $LitElement(css`
 		this.pendingCourtSelection = null
 		this.showConfirmationDialog = false
 	}
+
 	/**
 	 * Render the map or list view based on current view mode
 	 */
@@ -546,8 +598,6 @@ export class CourtSelectStep extends $LitElement(css`
 				? html`
 						<court-availability-dialog
 							.court=${this.pendingCourtSelection}
-							.availability=${this.courtAvailability.get(this.pendingCourtSelection.id)!}
-							.booking=${this.booking}
 							.open=${this.showConfirmationDialog}
 							@confirm-selection=${this.handleDialogConfirm}
 							@cancel-selection=${this.handleDialogCancel}

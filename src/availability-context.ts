@@ -1,15 +1,32 @@
-// src/public/book/availability.context.ts
+// src/availability-context.ts
 
 import { createContext } from '@mhmo91/schmancy'
 import dayjs from 'dayjs'
 import { BehaviorSubject, combineLatest, Observable, of } from 'rxjs'
 import { distinctUntilChanged, filter, map, shareReplay, switchMap, takeUntil, tap } from 'rxjs/operators'
 import { courtsContext } from 'src/admin/venues/courts/context'
+import { venuesContext } from 'src/admin/venues/venue-context'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
 import { BookingsDB } from 'src/db/bookings.collection'
+import { Venue } from 'src/db/venue-collection'
 import { getUserTimezone, isTimeSlotInPast } from 'src/utils/timezone'
-import { Booking, bookingContext } from './public/book/context'
+import { Booking, bookingContext, BookingStep } from './public/book/context'
 import { Duration, TimeSlot } from './public/book/types'
+
+// Define booking flow type enumeration
+export enum BookingFlowType {
+	DATE_COURT_TIME_DURATION = 'date_court_time_duration',
+	DATE_TIME_DURATION_COURT = 'date_time_duration_court',
+	DATE_TIME_COURT_DURATION = 'date_time_court_duration',
+}
+
+// Define booking flow configuration
+export interface BookingFlowConfig {
+	type: BookingFlowType
+	steps: BookingStep[]
+	nextStep: Record<BookingStep, BookingStep>
+	prevStep: Record<BookingStep, BookingStep>
+}
 
 // Define interfaces for availability data
 export interface TimeSlotAvailability {
@@ -44,6 +61,66 @@ export interface AvailabilityData {
 	bookings: Booking[] // All bookings for this date
 	loading: boolean
 	error: string | null
+	bookingFlow: BookingFlowConfig // New field for booking flow configuration
+	venueName: string // Added for UI display purposes
+}
+
+// Create booking flow configurations
+export const BOOKING_FLOWS: Record<BookingFlowType, BookingFlowConfig> = {
+	[BookingFlowType.DATE_COURT_TIME_DURATION]: {
+		type: BookingFlowType.DATE_COURT_TIME_DURATION,
+		steps: [BookingStep.Date, BookingStep.Court, BookingStep.Time, BookingStep.Duration, BookingStep.Payment],
+		nextStep: {
+			[BookingStep.Date]: BookingStep.Court,
+			[BookingStep.Court]: BookingStep.Time,
+			[BookingStep.Time]: BookingStep.Duration,
+			[BookingStep.Duration]: BookingStep.Payment,
+			[BookingStep.Payment]: BookingStep.Payment,
+		},
+		prevStep: {
+			[BookingStep.Date]: BookingStep.Date,
+			[BookingStep.Court]: BookingStep.Date,
+			[BookingStep.Time]: BookingStep.Court,
+			[BookingStep.Duration]: BookingStep.Time,
+			[BookingStep.Payment]: BookingStep.Duration,
+		},
+	},
+	[BookingFlowType.DATE_TIME_DURATION_COURT]: {
+		type: BookingFlowType.DATE_TIME_DURATION_COURT,
+		steps: [BookingStep.Date, BookingStep.Time, BookingStep.Duration, BookingStep.Court, BookingStep.Payment],
+		nextStep: {
+			[BookingStep.Date]: BookingStep.Time,
+			[BookingStep.Time]: BookingStep.Duration,
+			[BookingStep.Duration]: BookingStep.Court,
+			[BookingStep.Court]: BookingStep.Payment,
+			[BookingStep.Payment]: BookingStep.Payment,
+		},
+		prevStep: {
+			[BookingStep.Date]: BookingStep.Date,
+			[BookingStep.Time]: BookingStep.Date,
+			[BookingStep.Duration]: BookingStep.Time,
+			[BookingStep.Court]: BookingStep.Duration,
+			[BookingStep.Payment]: BookingStep.Court,
+		},
+	},
+	[BookingFlowType.DATE_TIME_COURT_DURATION]: {
+		type: BookingFlowType.DATE_TIME_COURT_DURATION,
+		steps: [BookingStep.Date, BookingStep.Time, BookingStep.Court, BookingStep.Duration, BookingStep.Payment],
+		nextStep: {
+			[BookingStep.Date]: BookingStep.Time,
+			[BookingStep.Time]: BookingStep.Court,
+			[BookingStep.Court]: BookingStep.Duration,
+			[BookingStep.Duration]: BookingStep.Payment,
+			[BookingStep.Payment]: BookingStep.Payment,
+		},
+		prevStep: {
+			[BookingStep.Date]: BookingStep.Date,
+			[BookingStep.Time]: BookingStep.Date,
+			[BookingStep.Court]: BookingStep.Time,
+			[BookingStep.Duration]: BookingStep.Court,
+			[BookingStep.Payment]: BookingStep.Duration,
+		},
+	},
 }
 
 // Default empty state
@@ -55,6 +132,8 @@ const defaultAvailability: AvailabilityData = {
 	bookings: [],
 	loading: false,
 	error: null,
+	venueName: '',
+	bookingFlow: BOOKING_FLOWS[BookingFlowType.DATE_TIME_DURATION_COURT], // Default flow
 }
 
 // Create the context
@@ -67,6 +146,26 @@ const errorSubject = new BehaviorSubject<string | null>(null)
 // Public observables
 export const availabilityLoading$ = loadingSubject.asObservable()
 export const errorLoading$ = errorSubject.asObservable()
+
+/**
+ * Determine the booking flow type based on venue settings
+ * @param venue The venue object
+ * @returns The appropriate booking flow type
+ */
+export function getBookingFlowForVenue(venue: Venue | null): BookingFlowType {
+	if (!venue) return BookingFlowType.DATE_TIME_DURATION_COURT // Default
+
+	// Check venue settings for booking flow configuration
+	// You can add logic here to check venue.settings.bookingFlow or other properties
+
+	// For now, we'll default to the new required flow
+	if (venue.settings?.bookingFlow) {
+		return venue.settings.bookingFlow as BookingFlowType
+	}
+
+	// Default to the new requirement: Date -> Court -> Time -> Duration
+	return BookingFlowType.DATE_TIME_DURATION_COURT
+}
 
 /**
  * Generate timeslots for a given day
@@ -169,7 +268,11 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 	)
 
 	// Main data stream
-	combineLatest([dateVenueChanges$, courtsContext.$.pipe(filter(courts => courts.size > 0))])
+	combineLatest([
+		dateVenueChanges$,
+		courtsContext.$.pipe(filter(courts => courts.size > 0)),
+		venuesContext.$.pipe(filter(venues => venues.size > 0)),
+	])
 		.pipe(
 			tap(() => {
 				loadingSubject.next(true)
@@ -185,7 +288,19 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 					true,
 				)
 			}),
-			switchMap(([{ date, venueId }, allCourts]) => {
+			filter(([, allCourts, allVenues]) => !!allCourts && !!allVenues),
+			switchMap(([booking, allCourts, allVenues]) => {
+				const { date, venueId } = booking
+				console.log('Booking data:', booking)
+				// Get the venue object
+				const venue = allVenues.get(venueId) || null
+				// Determine booking flow based on venue settings
+				const bookingFlowType = getBookingFlowForVenue(venue)
+				const bookingFlow = BOOKING_FLOWS[bookingFlowType]
+
+				// Get venue name for display
+				const venueName = venue?.name || 'Unknown Venue'
+
 				// Get active courts for this venue
 				const activeCourts = Array.from(allCourts.values()).filter(
 					court => court.status === 'active' && court.venueId === venueId,
@@ -201,12 +316,14 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 						timeSlots: [],
 						activeCourtIds: [],
 						bookings: [],
+						bookingFlow,
+						venueName,
 					})
 				}
 
 				// Generate initial time slots
 				const timeSlots = generateTimeSlots(date, activeCourtIds)
-				console.log(date)
+
 				// Fetch bookings for this date
 				return BookingsDB.subscribeToCollection([
 					{ key: 'date', operator: '==', value: dayjs(date).format('YYYY-MM-DD') },
@@ -225,6 +342,8 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 							timeSlots: processedTimeSlots,
 							activeCourtIds,
 							bookings,
+							bookingFlow,
+							venueName,
 						}
 					}),
 				)
@@ -269,6 +388,34 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 		})
 }
 
+/**
+ * Get the next step in the booking flow
+ * @param currentStep The current booking step
+ * @returns The next step in the flow
+ */
+export function getNextStep(currentStep: BookingStep): BookingStep {
+	const { nextStep } = availabilityContext.value.bookingFlow
+	return nextStep[currentStep]
+}
+
+/**
+ * Get the previous step in the booking flow
+ * @param currentStep The current booking step
+ * @returns The previous step in the flow
+ */
+export function getPreviousStep(currentStep: BookingStep): BookingStep {
+	const { prevStep } = availabilityContext.value.bookingFlow
+	return prevStep[currentStep]
+}
+
+/**
+ * Get all steps in the current booking flow
+ * @returns Array of BookingStep in order
+ */
+export function getBookingFlowSteps(): BookingStep[] {
+	return availabilityContext.value.bookingFlow.steps
+}
+
 // Utility functions for querying the availability context
 
 /**
@@ -310,10 +457,23 @@ export function isCourtAvailableForDuration(courtId: string, startTime: string, 
 
 /**
  * Get all time slots with availability information
+ * Supports filtering by court ID for the Date -> Court -> Time -> Duration flow
  */
-export function getAvailableTimeSlots(): TimeSlot[] {
+export function getAvailableTimeSlots(courtId?: string): TimeSlot[] {
 	const availability = availabilityContext.value
 
+	// If we have a specific court ID (for Date -> Court -> Time flow)
+	if (courtId) {
+		// Filter time slots that are available for this specific court
+		const ts = availability.timeSlots.map(slot => ({
+			label: slot.time,
+			value: slot.timeValue,
+			available: slot.courtAvailability[courtId] === true,
+		}))
+		return filterPastTimeSlots(ts, availability.date)
+	}
+
+	// Otherwise, return all time slots
 	const ts = availability.timeSlots.map(slot => ({
 		label: slot.time,
 		value: slot.timeValue,
@@ -323,11 +483,33 @@ export function getAvailableTimeSlots(): TimeSlot[] {
 }
 
 /**
- * Get all available durations for a specific start time
+ * Get all available courts for a specific time
+ * Used in Date -> Time -> Court flow
  */
-export function getAvailableDurations(startTime: string): Duration[] {
+export function getAvailableCourtsForTime(startTime: string): string[] {
 	const availability = availabilityContext.value
-	if (!startTime || availability.activeCourtIds.length === 0) return []
+	if (!startTime) return []
+
+	// Format time to match time slots
+	const timeString = dayjs(startTime).format('HH:mm')
+
+	// Find the time slot for this time
+	const slot = availability.timeSlots.find(s => s.time === timeString)
+	if (!slot) return []
+
+	// Return all court IDs that are available at this time
+	return Object.entries(slot.courtAvailability)
+		.filter(([_, isAvailable]) => isAvailable)
+		.map(([courtId]) => courtId)
+}
+
+/**
+ * Get all available durations for a specific start time and court
+ * Supports both Date -> Time -> Duration -> Court and Date -> Court -> Time -> Duration flows
+ */
+export function getAvailableDurations(startTime: string, courtId?: string): Duration[] {
+	const availability = availabilityContext.value
+	if (!startTime) return []
 
 	// Format time string
 	const formattedTime = dayjs(startTime).format('HH:mm')
@@ -346,12 +528,45 @@ export function getAvailableDurations(startTime: string): Duration[] {
 		{ label: '5h', value: 300 },
 	]
 
-	// Filter durations based on availability
+	// If court ID is provided (Date -> Court -> Time -> Duration flow)
+	if (courtId) {
+		return standardDurations
+			.map(duration => {
+				// Check if this duration is available for the specific court
+				const isAvailable = isCourtAvailableForDuration(courtId, formattedTime, duration.value)
+
+				if (!isAvailable) return null
+
+				// Get the court for price calculation
+				const court = courtsContext.value.get(courtId)
+				if (!court) return null
+
+				// Calculate price for this court and duration
+				const startDateTime = dayjs(startTime)
+				const endDateTime = startDateTime.add(duration.value, 'minute')
+
+				const price = pricingService.calculatePrice(
+					court,
+					startDateTime.toISOString(),
+					endDateTime.toISOString(),
+					bookingContext.value.userId,
+				)
+
+				return {
+					...duration,
+					price,
+				}
+			})
+			.filter((duration): duration is Duration => duration !== null)
+	}
+
+	// Logic for Date -> Time -> Duration -> Court flow
+	// Filter durations based on availability across all courts
 	return standardDurations
 		.map(duration => {
 			// Find courts available for this duration
-			const availableCourts = availability.activeCourtIds.filter(courtId =>
-				isCourtAvailableForDuration(courtId, formattedTime, duration.value),
+			const availableCourts = availability.activeCourtIds.filter(id =>
+				isCourtAvailableForDuration(id, formattedTime, duration.value),
 			)
 
 			if (availableCourts.length === 0) return null
@@ -390,15 +605,8 @@ export function getAvailableDurations(startTime: string): Duration[] {
 /**
  * Get availability status for all courts at a specific time and duration
  */
-/**
- * Determines availability status for all courts during a specific time period
- *
- * @param startTime ISO string for the requested start time
- * @param durationMinutes Duration in minutes
- * @returns Array of court availability statuses
- */
 export function getAllCourtsAvailability(startTime?: string, durationMinutes?: number): CourtAvailabilityStatus[] {
-	const DEBUG = true // Set to true for detailed logging
+	const DEBUG = false // Set to true for detailed logging
 
 	// Get availability data from context
 	const availability = availabilityContext.value
@@ -536,13 +744,6 @@ function calculateDuration(startTime?: string, endTime?: string): number {
 
 /**
  * Filter time slots to mark past ones as unavailable
- *
- * This function wraps your existing getAvailableTimeSlots function,
- * applying a filter to mark any time slots in the past as unavailable.
- *
- * @param timeSlots The original time slots from your existing implementation
- * @param date The date to check against (defaults to booking context date)
- * @returns The same time slots with past ones marked as unavailable
  */
 export function filterPastTimeSlots(timeSlots: TimeSlot[], date?: string): TimeSlot[] {
 	// Use provided date or get from booking context
@@ -566,18 +767,4 @@ export function filterPastTimeSlots(timeSlots: TimeSlot[], date?: string): TimeS
 			available: !isPastSlot && slot.available,
 		}
 	})
-}
-
-/**
- * Get all time slots for the current date
- */
-export function getFilteredTimeSlots(date?: string): TimeSlotAvailability[] {
-	const availability = availabilityContext.value
-	const targetDate = date || availability.date
-
-	if (!targetDate || availability.timeSlots.length === 0) {
-		return []
-	}
-
-	return availability.timeSlots
 }

@@ -1,20 +1,33 @@
+// src/public/book/components/steps/steps.ts
 import { color, SchmancyTheme, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
+import { availabilityContext, getBookingFlowSteps, getPreviousStep } from 'src/availability-context'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 
 /**
  * Step item interface
  */
 export interface Step {
+	step: BookingStep
 	label: string
 	icon: string
 }
 
+// Define all step configurations
+const STEP_CONFIG: Record<BookingStep, { label: string; icon: string }> = {
+	[BookingStep.Date]: { label: 'Date', icon: 'event' },
+	[BookingStep.Court]: { label: 'Court', icon: 'sports_tennis' },
+	[BookingStep.Time]: { label: 'Time', icon: 'schedule' },
+	[BookingStep.Duration]: { label: 'Duration', icon: 'timer' },
+	[BookingStep.Payment]: { label: 'Payment', icon: 'payment' },
+}
+
 /**
  * A reusable horizontal steps component with animations
+ * Enhanced to support dynamic step ordering based on venue configuration
  * Uses Schmancy UI components for a consistent Material 3 experience
  */
 @customElement('funkhaus-booking-steps')
@@ -43,11 +56,28 @@ export class FunkhausBookingSteps extends $LitElement() {
 	@select(bookingContext)
 	booking!: Booking
 
+	@select(availabilityContext)
+	availability!: any
+
+	/**
+	 * Get the steps in current flow
+	 */
+	private get currentSteps(): Step[] {
+		// Get the ordered steps from the availability context
+		const orderedSteps = getBookingFlowSteps()
+
+		// Map to Step objects with labels and icons
+		return orderedSteps.map(step => ({
+			step,
+			...STEP_CONFIG[step],
+		}))
+	}
+
 	/**
 	 * Current step getter for cleaner access
 	 */
-	private get currentStep(): number {
-		return this.bookingProgress?.currentStep || 1
+	private get currentStep(): BookingStep {
+		return this.bookingProgress?.currentStep || BookingStep.Date
 	}
 
 	connectedCallback() {
@@ -65,15 +95,19 @@ export class FunkhausBookingSteps extends $LitElement() {
 	/**
 	 * Animate the transition between steps using Web Animations API
 	 */
-	private animateStepChange(fromStep: number, toStep: number) {
+	private animateStepChange(fromStep: BookingStep, toStep: BookingStep) {
 		this.animating = true
 
 		// Get the step elements that need animation
 		const stepElements = this.shadowRoot?.querySelectorAll('.step-icon') || []
 		const connectors = this.shadowRoot?.querySelectorAll('.connector-line') || []
 
+		// Get the indices in the current flow
+		const fromIndex = this.getStepIndex(fromStep)
+		const toIndex = this.getStepIndex(toStep)
+
 		// Find the specific elements we want to animate
-		const targetStepIcon = stepElements[toStep - 1] as HTMLElement
+		const targetStepIcon = stepElements[toIndex] as HTMLElement
 
 		if (targetStepIcon) {
 			// Create a bounce animation for the new active step
@@ -84,8 +118,8 @@ export class FunkhausBookingSteps extends $LitElement() {
 		}
 
 		// Animate connectors if moving forward
-		if (toStep > fromStep) {
-			for (let i = fromStep - 1; i < toStep - 1; i++) {
+		if (toIndex > fromIndex) {
+			for (let i = fromIndex; i < toIndex; i++) {
 				if (connectors[i]) {
 					connectors[i].animate(
 						[
@@ -108,11 +142,31 @@ export class FunkhausBookingSteps extends $LitElement() {
 	}
 
 	/**
+	 * Get the index of a step in the current flow
+	 */
+	private getStepIndex(step: BookingStep): number {
+		return this.currentSteps.findIndex(s => s.step === step)
+	}
+
+	/**
+	 * Check if a step should be considered active based on its position in the flow
+	 * compared to the current active step
+	 */
+	private isStepActive(stepToCheck: BookingStep): boolean {
+		// Get the indices in the current flow
+		const currentStepIndex = this.getStepIndex(this.currentStep)
+		const checkStepIndex = this.getStepIndex(stepToCheck)
+
+		// A step is active if its index is less than or equal to the current step's index
+		return checkStepIndex <= currentStepIndex
+	}
+
+	/**
 	 * Helper method to render a single step
 	 */
 	private renderStep(step: Step, index: number) {
-		const stepNumber = index + 1
-		const isActive = this.currentStep >= stepNumber
+		const stepNumber = step.step
+		const isActive = this.isStepActive(stepNumber)
 		const isCurrent = this.currentStep === stepNumber
 
 		// Classes for step container
@@ -181,9 +235,14 @@ export class FunkhausBookingSteps extends $LitElement() {
 
 	/**
 	 * Helper method to render connector line
+	 * Modified to determine if connector is active based on position in flow
 	 */
-	private renderConnector(nextStep: number) {
-		const isActive = this.currentStep >= nextStep
+	private renderConnector(nextStepIndex: number) {
+		// Get the next step from the flow
+		const nextStep = this.currentSteps[nextStepIndex].step
+
+		// A connector is active if the next step is active (which means current step index >= next step index - 1)
+		const isActive = this.isStepActive(nextStep)
 
 		const connectorClasses = {
 			'connector-line': true,
@@ -206,54 +265,50 @@ export class FunkhausBookingSteps extends $LitElement() {
 
 	/**
 	 * Handle step click events when clickable is true
-	 * Improved to reset the state of steps ahead when navigating backward
+	 * Updated to work with dynamic step ordering
 	 */
-	private handleStepClick(stepNumber: number) {
+	private handleStepClick(stepNumber: BookingStep) {
 		// Only allow clicking on completed steps (and current step)
-		const isActive = this.currentStep >= stepNumber
+		const isActive = this.isStepActive(stepNumber)
 
 		if (this.clickable && !this.animating && isActive) {
 			// Going backward in the flow
-			if (stepNumber < this.currentStep) {
+			if (stepNumber !== this.currentStep) {
 				// Reset booking data based on which step we're navigating to
 				const resetData: Partial<Booking> = {}
 
-				// Clear data for steps ahead of the selected step
-				switch (stepNumber) {
-					case BookingStep.Date:
-						// Reset everything when going back to first step
-						resetData.date = ''
-						resetData.courtId = ''
-						resetData.startTime = ''
-						resetData.endTime = ''
-						resetData.price = 0
-						break
+				// Get the ordered steps
+				const steps = this.currentSteps.map(s => s.step)
 
-					case BookingStep.Time:
-						// Keep date, but reset time, duration, court and payment
-						resetData.courtId = ''
-						resetData.startTime = ''
-						resetData.endTime = ''
-						resetData.price = 0
-						break
+				// Find the indices of current and target steps
+				const currentIndex = steps.indexOf(this.currentStep)
+				const targetIndex = steps.indexOf(stepNumber)
 
-					case BookingStep.Duration:
-						// Keep date and time, but reset duration, court and payment
-						resetData.courtId = ''
-						resetData.endTime = ''
-						resetData.price = 0
-						break
+				// If we're moving backward
+				if (targetIndex < currentIndex) {
+					// Clear data for steps between target and current
+					for (let i = targetIndex + 1; i <= currentIndex; i++) {
+						const stepToClear = steps[i]
 
-					case BookingStep.Court:
-						// Keep date, time, and duration but reset court
-						resetData.courtId = ''
-						resetData.price = 0
-						break
-				}
+						// Clear data based on the step type
+						switch (stepToClear) {
+							case BookingStep.Court:
+								resetData.courtId = ''
+								break
+							case BookingStep.Time:
+								resetData.startTime = ''
+								resetData.endTime = ''
+								break
+							case BookingStep.Duration:
+								resetData.endTime = ''
+								break
+						}
+					}
 
-				// Update the booking context with reset data
-				if (Object.keys(resetData).length > 0) {
-					bookingContext.set(resetData, true)
+					// Update the booking context with reset data
+					if (Object.keys(resetData).length > 0) {
+						bookingContext.set(resetData, true)
+					}
 				}
 			}
 
@@ -265,6 +320,9 @@ export class FunkhausBookingSteps extends $LitElement() {
 	}
 
 	render() {
+		// Get steps based on current booking flow
+		const steps = this.currentSteps
+
 		return html`
 			<schmancy-flex
 				justify="between"
@@ -272,12 +330,12 @@ export class FunkhausBookingSteps extends $LitElement() {
 				wrap="nowrap"
 				class="transition-all duration-500 w-full overflow-x-auto px-2"
 			>
-				${this.bookingProgress.steps.map((step, index) => {
+				${steps.map((step, index) => {
 					// For all but the last step, create a combined step+connector group
-					if (index < this.bookingProgress.steps.length - 1) {
+					if (index < steps.length - 1) {
 						return html`
 							<div class="flex items-center flex-shrink-0 min-w-max">${this.renderStep(step, index)}</div>
-							<div class="flex-grow min-w-2 max-w-24">${this.renderConnector(index + 2)}</div>
+							<div class="flex-grow min-w-2 max-w-24">${this.renderConnector(index + 1)}</div>
 						`
 					}
 
