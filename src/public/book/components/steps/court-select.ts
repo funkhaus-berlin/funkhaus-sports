@@ -3,6 +3,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { css, html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
+import { cache } from 'lit/directives/cache.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
@@ -595,76 +596,78 @@ export class CourtSelectStep extends $LitElement(css`
 				)}
 
 				<!-- Content based on view mode -->
-				${this.viewMode === ViewMode.MAP
-					? html`
-							<court-map-view
-								.courts=${this.selectedVenueCourts}
-								.selectedCourtId=${this.booking?.courtId}
-								.courtAvailability=${this.courtAvailability}
-								@court-select=${(e: CustomEvent) => this.handleCourtSelect(e.detail.court)}
-							></court-map-view>
-					  `
-					: html`
-							<!-- Original grid layout with sport court cards -->
-							<div
-								class="grid grid-cols-2 md:grid-cols-3 justify-between gap-3 ${classMap(this.getContainerClasses())}"
-								role="listbox"
-								aria-label="Available Courts"
-								aria-multiselectable="false"
-							>
-								${repeat(
-									this.selectedVenueCourts,
-									court => court.id,
-									court => html`
-										<div
-											data-court-id="${court.id}"
-											role="option"
-											aria-selected="${this.booking?.courtId === court.id ? 'true' : 'false'}"
-											aria-disabled="${!this.canSelectCourt(court.id) ? 'true' : 'false'}"
-											class="relative"
-										>
-											<sport-court-card
-												id="${court.id}"
-												name="${court.name}"
-												type="${(court.sportTypes?.[0]?.toLowerCase() as SportTypeEnum) || 'volleyball'}"
-												.selected="${this.booking?.courtId === court.id}"
-												.disabled="${!this.canSelectCourt(court.id)}"
-												.compact="${this.isCompactView}"
-												@court-click="${() => this.handleCourtSelect(court)}"
-											></sport-court-card>
+				${cache(
+					this.viewMode === ViewMode.MAP
+						? html`
+								<court-map-view
+									.courts=${this.selectedVenueCourts}
+									.selectedCourtId=${this.booking?.courtId}
+									.courtAvailability=${this.courtAvailability}
+									@court-select=${(e: CustomEvent) => this.handleCourtSelect(e.detail.court)}
+								></court-map-view>
+						  `
+						: html`
+								<!-- Original grid layout with sport court cards -->
+								<div
+									class="grid grid-cols-2 md:grid-cols-3 justify-between gap-3 ${classMap(this.getContainerClasses())}"
+									role="listbox"
+									aria-label="Available Courts"
+									aria-multiselectable="false"
+								>
+									${repeat(
+										this.selectedVenueCourts,
+										court => court.id,
+										court => html`
+											<div
+												data-court-id="${court.id}"
+												role="option"
+												aria-selected="${this.booking?.courtId === court.id ? 'true' : 'false'}"
+												aria-disabled="${!this.canSelectCourt(court.id) ? 'true' : 'false'}"
+												class="relative"
+											>
+												<sport-court-card
+													id="${court.id}"
+													name="${court.name}"
+													type="${(court.sportTypes?.[0]?.toLowerCase() as SportTypeEnum) || 'volleyball'}"
+													.selected="${this.booking?.courtId === court.id}"
+													.disabled="${!this.canSelectCourt(court.id)}"
+													.compact="${this.isCompactView}"
+													@court-click="${() => this.handleCourtSelect(court)}"
+												></sport-court-card>
 
-											<!-- Availability badge -->
-											${this.getCourtAvailabilityStatus(court.id) === 'full'
-												? html`
-														<div
-															class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-sm text-xs border border-emerald-200"
-														>
-															Available
-														</div>
-												  `
-												: this.getCourtAvailabilityStatus(court.id) === 'partial'
-												? html`
-														<div class="absolute top-0 left-0 z-10">
+												<!-- Availability badge -->
+												${this.getCourtAvailabilityStatus(court.id) === 'full'
+													? html`
 															<div
-																class="bg-amber-50 text-amber-800 text-xs px-2 py-0.5 m-1 rounded-sm border border-amber-200"
+																class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-sm text-xs border border-emerald-200"
 															>
-																Limited availability
+																Available
 															</div>
-														</div>
-												  `
-												: html`
-														<div
-															class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-slate-100 text-slate-500 rounded-sm text-xs border border-slate-200 flex items-center"
-														>
-															<schmancy-icon size="12px" class="mr-1">block</schmancy-icon>
-															<span>Unavailable</span>
-														</div>
-												  `}
-										</div>
-									`,
-								)}
-							</div>
-					  `}
+													  `
+													: this.getCourtAvailabilityStatus(court.id) === 'partial'
+													? html`
+															<div class="absolute top-0 left-0 z-10">
+																<div
+																	class="bg-amber-50 text-amber-800 text-xs px-2 py-0.5 m-1 rounded-sm border border-amber-200"
+																>
+																	Limited availability
+																</div>
+															</div>
+													  `
+													: html`
+															<div
+																class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-slate-100 text-slate-500 rounded-sm text-xs border border-slate-200 flex items-center"
+															>
+																<schmancy-icon size="12px" class="mr-1">block</schmancy-icon>
+																<span>Unavailable</span>
+															</div>
+													  `}
+											</div>
+										`,
+									)}
+								</div>
+						  `,
+				)}
 			</div>
 		`
 	}

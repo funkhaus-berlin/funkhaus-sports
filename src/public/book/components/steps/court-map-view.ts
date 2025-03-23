@@ -288,6 +288,7 @@ export class CourtMapView extends LitElement {
 	 * Initialize the map with simplified options
 	 */
 	private _initializeMap(): void {
+		alert('Initializing map')
 		requestAnimationFrame(() => {
 			if (!this.mapContainer || !window.L) {
 				this.error = 'Could not initialize map'
@@ -313,7 +314,7 @@ export class CourtMapView extends LitElement {
 
 				// Add a basic tile layer
 				L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-					maxZoom: 25,
+					maxZoom: 22,
 					attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
 				}).addTo(this.map)
 
