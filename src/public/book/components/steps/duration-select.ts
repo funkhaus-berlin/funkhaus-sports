@@ -446,7 +446,7 @@ export class DurationSelectionStep extends $LitElement(css`
 
 				// If we're using DATE_COURT_TIME_DURATION flow and have already selected a court,
 				// get durations for this specific court
-				if (this.availability.bookingFlow.type === BookingFlowType.DATE_COURT_TIME_DURATION && this.booking.courtId) {
+				if (this.availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION && this.booking.courtId) {
 					// Get durations available for this specific court
 					availableDurations = getAvailableDurations(this.booking.startTime, this.booking.courtId)
 				} else {
@@ -592,7 +592,7 @@ export class DurationSelectionStep extends $LitElement(css`
 
 				// Check current booking flow - in DATE_COURT_TIME_DURATION, we don't need to clear the court ID
 				// In DATE_TIME_DURATION_COURT flow, proceed with court selection after duration
-				if (this.availability.bookingFlow.type !== BookingFlowType.DATE_COURT_TIME_DURATION) {
+				if (this.availability.bookingFlowType !== BookingFlowType.DATE_COURT_TIME_DURATION) {
 					bookingUpdate.courtId = ''
 				}
 
@@ -611,12 +611,9 @@ export class DurationSelectionStep extends $LitElement(css`
 			// Ensure the selected duration is properly centered after selection
 			setTimeout(() => this.scrollToSelectedDuration(), 150)
 
-			// Get next step based on current flow
-			const nextStep = getNextStep(BookingStep.Duration)
-
 			// Advance to next step in the flow
 			BookingProgressContext.set({
-				currentStep: nextStep,
+				currentStep: getNextStep('Duration'),
 			})
 
 			// Announce to screen readers

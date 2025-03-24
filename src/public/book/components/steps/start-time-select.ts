@@ -410,7 +410,7 @@ export class TimeSelectionStep extends $LitElement(css`
 
 			// If we're using DATE_COURT_TIME_DURATION flow and have already selected a court,
 			// get only time slots available for this specific court
-			if (this.availability.bookingFlow.type === BookingFlowType.DATE_COURT_TIME_DURATION && this.booking.courtId) {
+			if (this.availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION && this.booking.courtId) {
 				// Get time slots available for this specific court
 				timeSlots = getAvailableTimeSlots(this.booking.courtId)
 			} else {
@@ -568,7 +568,7 @@ export class TimeSelectionStep extends $LitElement(css`
 
 			// Check current booking flow - in DATE_COURT_TIME_DURATION, we've already selected a court
 			// In other flows, we need to clear the court selection when changing time
-			if (this.availability.bookingFlow.type !== BookingFlowType.DATE_COURT_TIME_DURATION) {
+			if (this.availability.bookingFlowType !== BookingFlowType.DATE_COURT_TIME_DURATION) {
 				bookingUpdate.courtId = ''
 			}
 
@@ -581,11 +581,10 @@ export class TimeSelectionStep extends $LitElement(css`
 			}
 
 			// Get the next step in the flow
-			const nextStep = getNextStep(BookingStep.Time)
 
 			// Advance to the next step
 			BookingProgressContext.set({
-				currentStep: nextStep,
+				currentStep: getNextStep('Time'),
 			})
 
 			// Dispatch event for parent components

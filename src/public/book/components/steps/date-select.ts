@@ -530,14 +530,10 @@ export class DateSelectionStep extends $LitElement(css`
 		})
 
 		// Get the next step from the current flow (respecting the dynamic order)
-		const nextStep = getNextStep(BookingStep.Date)
-
 		// Navigate to the next step
 		BookingProgressContext.set({
-			currentStep: nextStep,
+			currentStep: getNextStep('Date'),
 		})
-
-		this.dispatchEvent(new CustomEvent('change', { detail: newValue }))
 	}
 
 	/**

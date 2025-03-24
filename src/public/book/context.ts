@@ -97,11 +97,7 @@ export enum BookingStep {
 }
 
 export class BookingProgress {
-	currentStep: BookingStep = BookingStep.Date
-
-	// Added error state to the progress context
-	currentError: BookingError | null = null
-	fieldErrors: Record<string, string> = {}
+	currentStep: number = 1 // Default to the first step
 
 	steps = [
 		{ step: BookingStep.Date, label: 'Date', icon: 'event' },
@@ -111,7 +107,9 @@ export class BookingProgress {
 		{ step: BookingStep.Payment, label: 'Payment', icon: 'payment' },
 	]
 
-	// Helper methods for error management
+	currentError: BookingError | null = null
+	fieldErrors: Record<string, string> = {}
+
 	setError(error: BookingError): void {
 		this.currentError = error
 

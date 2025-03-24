@@ -10,8 +10,12 @@ import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Venue } from 'src/db/venue-collection'
 import { getUserTimezone, isTimeSlotInPast } from 'src/utils/timezone'
-import { Booking, bookingContext, BookingStep } from './public/book/context'
+import { Booking, bookingContext } from './public/book/context'
 import { Duration, TimeSlot } from './public/book/types'
+
+// src/availability-context.ts - Key updates only
+
+// Other imports remain the same
 
 // Define booking flow type enumeration
 export enum BookingFlowType {
@@ -20,12 +24,78 @@ export enum BookingFlowType {
 	DATE_TIME_COURT_DURATION = 'date_time_court_duration',
 }
 
-// Define booking flow configuration
-export interface BookingFlowConfig {
-	type: BookingFlowType
-	steps: BookingStep[]
-	nextStep: Record<BookingStep, BookingStep>
-	prevStep: Record<BookingStep, BookingStep>
+// Updated interface for step objects
+
+export type StepLabel = 'Date' | 'Court' | 'Time' | 'Duration' | 'Payment'
+export interface BookingFlowStep {
+	step: number
+	label: StepLabel
+	icon: string
+}
+
+export type BookingFlowConfig = BookingFlowStep[]
+
+// Updated BOOKING_FLOWS constant with the new structure
+export const BOOKING_FLOWS: Record<BookingFlowType, BookingFlowConfig> = {
+	[BookingFlowType.DATE_COURT_TIME_DURATION]: [
+		{ step: 1, label: 'Date', icon: 'event' },
+		{ step: 2, label: 'Court', icon: 'sports_tennis' },
+		{ step: 3, label: 'Time', icon: 'schedule' },
+		{ step: 4, label: 'Duration', icon: 'timer' },
+		{ step: 5, label: 'Payment', icon: 'payment' },
+	],
+	[BookingFlowType.DATE_TIME_DURATION_COURT]: [
+		{ step: 1, label: 'Date', icon: 'event' },
+		{ step: 2, label: 'Time', icon: 'schedule' },
+		{ step: 3, label: 'Duration', icon: 'timer' },
+		{ step: 4, label: 'Court', icon: 'sports_tennis' },
+		{ step: 5, label: 'Payment', icon: 'payment' },
+	],
+	[BookingFlowType.DATE_TIME_COURT_DURATION]: [
+		{ step: 1, label: 'Date', icon: 'event' },
+		{ step: 2, label: 'Time', icon: 'schedule' },
+		{ step: 3, label: 'Court', icon: 'sports_tennis' },
+		{ step: 4, label: 'Duration', icon: 'timer' },
+		{ step: 5, label: 'Payment', icon: 'payment' },
+	],
+}
+
+// Updated AvailabilityData interface
+export interface AvailabilityData {
+	date: string // YYYY-MM-DD
+	venueId: string
+	timeSlots: TimeSlotAvailability[]
+	activeCourtIds: string[]
+	bookings: Booking[]
+	loading: boolean
+	error: string | null
+	bookingFlowType: BookingFlowType // Changed from bookingFlow: BookingFlowConfig
+	venueName: string
+}
+
+// Default state updated
+const defaultAvailability: AvailabilityData = {
+	date: '',
+	venueId: '',
+	timeSlots: [],
+	activeCourtIds: [],
+	bookings: [],
+	loading: false,
+	error: null,
+	bookingFlowType: BookingFlowType.DATE_COURT_TIME_DURATION, // Default flow type
+	venueName: '',
+}
+
+// Helper functions updated to work with the new structure
+export function getNextStep(step: StepLabel): number {
+	const steps = getBookingFlowSteps()
+	const currentStepIndex = steps.findIndex(s => s.label === step)
+	return currentStepIndex < steps.length - 1 ? steps[currentStepIndex + 1].step : -1
+}
+
+export function getBookingFlowSteps(): BookingFlowConfig {
+	const flowType = availabilityContext.value.bookingFlowType
+	return BOOKING_FLOWS[flowType]
 }
 
 // Define interfaces for availability data
@@ -50,90 +120,6 @@ export interface DurationAvailability {
 	label: string
 	price: number
 	availableCourts: string[]
-}
-
-// Data structure to store availability information
-export interface AvailabilityData {
-	date: string // YYYY-MM-DD
-	venueId: string
-	timeSlots: TimeSlotAvailability[]
-	activeCourtIds: string[] // List of active court IDs for this venue
-	bookings: Booking[] // All bookings for this date
-	loading: boolean
-	error: string | null
-	bookingFlow: BookingFlowConfig // New field for booking flow configuration
-	venueName: string // Added for UI display purposes
-}
-
-// Create booking flow configurations
-export const BOOKING_FLOWS: Record<BookingFlowType, BookingFlowConfig> = {
-	[BookingFlowType.DATE_COURT_TIME_DURATION]: {
-		type: BookingFlowType.DATE_COURT_TIME_DURATION,
-		steps: [BookingStep.Date, BookingStep.Court, BookingStep.Time, BookingStep.Duration, BookingStep.Payment],
-		nextStep: {
-			[BookingStep.Date]: BookingStep.Court,
-			[BookingStep.Court]: BookingStep.Time,
-			[BookingStep.Time]: BookingStep.Duration,
-			[BookingStep.Duration]: BookingStep.Payment,
-			[BookingStep.Payment]: BookingStep.Payment,
-		},
-		prevStep: {
-			[BookingStep.Date]: BookingStep.Date,
-			[BookingStep.Court]: BookingStep.Date,
-			[BookingStep.Time]: BookingStep.Court,
-			[BookingStep.Duration]: BookingStep.Time,
-			[BookingStep.Payment]: BookingStep.Duration,
-		},
-	},
-	[BookingFlowType.DATE_TIME_DURATION_COURT]: {
-		type: BookingFlowType.DATE_TIME_DURATION_COURT,
-		steps: [BookingStep.Date, BookingStep.Time, BookingStep.Duration, BookingStep.Court, BookingStep.Payment],
-		nextStep: {
-			[BookingStep.Date]: BookingStep.Time,
-			[BookingStep.Time]: BookingStep.Duration,
-			[BookingStep.Duration]: BookingStep.Court,
-			[BookingStep.Court]: BookingStep.Payment,
-			[BookingStep.Payment]: BookingStep.Payment,
-		},
-		prevStep: {
-			[BookingStep.Date]: BookingStep.Date,
-			[BookingStep.Time]: BookingStep.Date,
-			[BookingStep.Duration]: BookingStep.Time,
-			[BookingStep.Court]: BookingStep.Duration,
-			[BookingStep.Payment]: BookingStep.Court,
-		},
-	},
-	[BookingFlowType.DATE_TIME_COURT_DURATION]: {
-		type: BookingFlowType.DATE_TIME_COURT_DURATION,
-		steps: [BookingStep.Date, BookingStep.Time, BookingStep.Court, BookingStep.Duration, BookingStep.Payment],
-		nextStep: {
-			[BookingStep.Date]: BookingStep.Time,
-			[BookingStep.Time]: BookingStep.Court,
-			[BookingStep.Court]: BookingStep.Duration,
-			[BookingStep.Duration]: BookingStep.Payment,
-			[BookingStep.Payment]: BookingStep.Payment,
-		},
-		prevStep: {
-			[BookingStep.Date]: BookingStep.Date,
-			[BookingStep.Time]: BookingStep.Date,
-			[BookingStep.Court]: BookingStep.Time,
-			[BookingStep.Duration]: BookingStep.Court,
-			[BookingStep.Payment]: BookingStep.Duration,
-		},
-	},
-}
-
-// Default empty state
-const defaultAvailability: AvailabilityData = {
-	date: '',
-	venueId: '',
-	timeSlots: [],
-	activeCourtIds: [],
-	bookings: [],
-	loading: false,
-	error: null,
-	venueName: '',
-	bookingFlow: BOOKING_FLOWS[BookingFlowType.DATE_TIME_DURATION_COURT], // Default flow
 }
 
 // Create the context
@@ -291,11 +277,15 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 			filter(([, allCourts, allVenues]) => !!allCourts && !!allVenues),
 			switchMap(([booking, allCourts, allVenues]) => {
 				const { date, venueId } = booking
-				console.log('Booking data:', booking)
+
 				// Get the venue object
 				const venue = allVenues.get(venueId) || null
-				// Determine booking flow based on venue settings
+
+				// Get just the flow type instead of the full flow config
 				const bookingFlowType = getBookingFlowForVenue(venue)
+
+				// Other calculations remain the same
+
 				const bookingFlow = BOOKING_FLOWS[bookingFlowType]
 
 				// Get venue name for display
@@ -342,7 +332,7 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 							timeSlots: processedTimeSlots,
 							activeCourtIds,
 							bookings,
-							bookingFlow,
+							bookingFlowType, // Changed from bookingFlow
 							venueName,
 						}
 					}),
@@ -387,36 +377,6 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 			})
 		})
 }
-
-/**
- * Get the next step in the booking flow
- * @param currentStep The current booking step
- * @returns The next step in the flow
- */
-export function getNextStep(currentStep: BookingStep): BookingStep {
-	const { nextStep } = availabilityContext.value.bookingFlow
-	return nextStep[currentStep]
-}
-
-/**
- * Get the previous step in the booking flow
- * @param currentStep The current booking step
- * @returns The previous step in the flow
- */
-export function getPreviousStep(currentStep: BookingStep): BookingStep {
-	const { prevStep } = availabilityContext.value.bookingFlow
-	return prevStep[currentStep]
-}
-
-/**
- * Get all steps in the current booking flow
- * @returns Array of BookingStep in order
- */
-export function getBookingFlowSteps(): BookingStep[] {
-	return availabilityContext.value.bookingFlow.steps
-}
-
-// Utility functions for querying the availability context
 
 /**
  * Check if a court is available at a specific time

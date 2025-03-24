@@ -130,13 +130,6 @@ export class CourtSelectStep extends $LitElement(css`
 	}
 
 	/**
-	 * Determine if we're in DATE_COURT_TIME_DURATION flow
-	 */
-	private get isCourtBeforeTimeFlow(): boolean {
-		return this.availability?.bookingFlow?.type === BookingFlowType.DATE_COURT_TIME_DURATION
-	}
-
-	/**
 	 * Connect to the component lifecycle
 	 */
 	connectedCallback(): void {
@@ -393,12 +386,9 @@ export class CourtSelectStep extends $LitElement(css`
 		this.pendingCourtSelection = null
 		this.showConfirmationDialog = false
 
-		// Get the next step from the current flow
-		const nextStep = getNextStep(BookingStep.Court)
-
 		// Advance to the next step in the flow
 		BookingProgressContext.set({
-			currentStep: nextStep,
+			currentStep: this.bookingProgress.currentStep + 1,
 		})
 
 		// Animate the selected court if in list view
@@ -425,9 +415,11 @@ export class CourtSelectStep extends $LitElement(css`
 		)
 	}
 
-	/**
-	 * Handle court selection
-	 */
+	private get isCourtBeforeTimeFlow(): boolean {
+		return this.availability?.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION
+	}
+
+	// Update the handleCourtSelect method:
 	private handleCourtSelect(court: Court): void {
 		// In DATE_COURT_TIME_DURATION flow, when selecting court before time,
 		// we don't need to check availability - we're selecting court first
@@ -454,7 +446,6 @@ export class CourtSelectStep extends $LitElement(css`
 		// For fully available courts, proceed directly
 		this.confirmCourtSelection(court)
 	}
-
 	/**
 	 * Handle dialog events
 	 */
@@ -507,11 +498,10 @@ export class CourtSelectStep extends $LitElement(css`
 		this.showConfirmationDialog = false
 
 		// Get the next step from the current flow
-		const nextStep = getNextStep(BookingStep.Court)
 
 		// Advance to the next step in the flow
 		BookingProgressContext.set({
-			currentStep: nextStep,
+			currentStep: getNextStep('Court'),
 		})
 
 		// Animate the selected court if in list view

@@ -159,17 +159,6 @@ export class VenuBookingsList extends $LitElement() {
 		this.applyFilters()
 	}
 
-	/**
-	 * View booking details
-	 */
-	// viewBooking(booking: Booking): void {
-	// 	// sheet.open({
-	// 	// 	component: new BookingDetails(booking),
-	// 	// 	position: SchmancySheetPosition.Side,
-	// 	// 	header: 'hidden',
-	// 	// })
-	// }
-
 	render(): TemplateResult {
 		return html`
 			<schmancy-surface ${fullHeight()} type="container" rounded="all">
@@ -177,13 +166,11 @@ export class VenuBookingsList extends $LitElement() {
 					<!-- Header -->
 					<schmancy-grid cols="1fr auto" align="start">
 						<schmancy-typography type="headline" token="sm">Venue Bookings</schmancy-typography>
-						<schmancy-chip readOnly class="pointer-events-none" label=${`${this.bookings.size} Bookings`}
-							>${this.bookings.size} Bookings</schmancy-chip
-						>
+						<schmancy-chip readOnly class="pointer-events-none">${this.bookings.size} Bookings</schmancy-chip>
 					</schmancy-grid>
 
 					<!-- Filters -->
-					<booking-filter .courts=${this.courts} .users=${this.bookings}></booking-filter>
+					<booking-filter .courts=${this.courts}></booking-filter>
 
 					<!-- Bookings Table -->
 					<div class="overflow-y-auto">

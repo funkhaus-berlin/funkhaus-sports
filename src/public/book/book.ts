@@ -9,8 +9,8 @@ import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 import {
 	availabilityContext,
+	BookingFlowStep,
 	getBookingFlowSteps,
-	getNextStep,
 	initializeAvailabilityContext,
 } from 'src/availability-context'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
@@ -295,44 +295,7 @@ export class CourtBookingSystem extends $LitElement() {
 	private renderProcessingOverlay() {
 		return html` <sch-busy></sch-busy> `
 	}
-
-	/**
-	 * Determine if a step should be shown based on current booking flow and progress
-	 * Fixed to use position in flow rather than enum values
-	 */
-	private shouldShowStep(step: BookingStep): boolean {
-		if (!this.availability?.bookingFlow) return true
-
-		// Get all steps in the current flow
-		const flowSteps = getBookingFlowSteps()
-
-		// Get the indices in the flow
-		const stepIndex = flowSteps.indexOf(step)
-		const currentStepIndex = flowSteps.indexOf(this.bookingProgress.currentStep)
-
-		// A step should be shown if:
-		// 1. It's in the flow
-		// 2. Its index is less than or equal to the current step's index
-		return stepIndex !== -1 && stepIndex <= currentStepIndex
-	}
-
-	/**
-	 * Render a step component based on step type
-	 */
-	private renderStepComponent(step: BookingStep) {
-		switch (step) {
-			case BookingStep.Date:
-				return html` <date-selection-step class="max-w-full sticky top-0 block my-2 z-0"></date-selection-step> `
-			case BookingStep.Court:
-				return html` <court-select-step class="max-w-full block mt-2 z-10"></court-select-step> `
-			case BookingStep.Time:
-				return html` <time-selection-step class="max-w-full sticky top-0 block mt-2 z-10"></time-selection-step> `
-			case BookingStep.Duration:
-				return html` <duration-selection-step class="max-w-full mt-2 block"></duration-selection-step> `
-			default:
-				return html``
-		}
-	}
+	// Key updates for src/public/book/book.ts
 
 	/**
 	 * Render steps dynamically based on the current flow
@@ -341,7 +304,8 @@ export class CourtBookingSystem extends $LitElement() {
 		const currentStep = this.bookingProgress.currentStep
 
 		// If we're at the payment step, render the payment form
-		if (currentStep === BookingStep.Payment) {
+		if (currentStep === 5) {
+			// Using numeric values now instead of enum
 			return html`
 				<booking-summary .booking=${this.booking} .selectedCourt=${this.selectedCourt}></booking-summary>
 
@@ -356,12 +320,12 @@ export class CourtBookingSystem extends $LitElement() {
 		}
 
 		// Otherwise, render the booking steps in the order defined by the flow
-		if (!this.availability?.bookingFlow) {
+		if (!this.availability?.bookingFlowType) {
 			// If flow isn't available yet, render just the date step
 			return html` <date-selection-step class="max-w-full sticky top-0 block my-2 z-0"></date-selection-step> `
 		}
 
-		// Get all steps in current flow
+		// Get all steps in current flow as numeric values
 		const flowSteps = getBookingFlowSteps()
 
 		// Render components in the correct order
@@ -374,6 +338,44 @@ export class CourtBookingSystem extends $LitElement() {
 				return html``
 			})}
 		`
+	}
+
+	/**
+	 * Determine if a step should be shown based on current booking flow and progress
+	 */
+	private shouldShowStep(step: BookingFlowStep): boolean {
+		if (!this.availability?.bookingFlowType) return true
+
+		// Get all steps in the current flow
+		const flowSteps = getBookingFlowSteps()
+
+		// Get the indices in the flow
+		const stepIndex = flowSteps.indexOf(step)
+		const currentStepIndex = flowSteps.findIndex(s => s.step === this.bookingProgress.currentStep)
+
+		// A step should be shown if:
+		// 1. It's in the flow
+		// 2. Its index is less than or equal to the current step's index
+		return stepIndex !== -1 && stepIndex <= currentStepIndex
+	}
+
+	/**
+	 * Render a step component based on step number
+	 */
+	private renderStepComponent(step: BookingFlowStep) {
+		const stepLabel = step.label
+		switch (stepLabel) {
+			case 'Date': // Date (was BookingStep.Date)
+				return html` <date-selection-step class="max-w-full sticky top-0 block my-2 z-0"></date-selection-step> `
+			case 'Court': // Court (was BookingStep.Court)
+				return html` <court-select-step class="max-w-full block mt-2 z-10"></court-select-step> `
+			case 'Time': // Time (was BookingStep.Time)
+				return html` <time-selection-step class="max-w-full sticky top-0 block mt-2 z-10"></time-selection-step> `
+			case 'Duration': // Duration (was BookingStep.Duration)
+				return html` <duration-selection-step class="max-w-full mt-2 block"></duration-selection-step> `
+			default:
+				return html``
+		}
 	}
 
 	render() {
