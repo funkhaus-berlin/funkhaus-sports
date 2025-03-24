@@ -211,8 +211,8 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	try {
 		// Generate QR code
 		const qrCodeData = await QRCode.toDataURL(data.bookingId)
-		doc.image(qrCodeData, 450, 50, { width: 90 })
-		doc.font('Regular').text('Ticket QR-CODE', 450, 145, { width: 90 })
+		doc.image(qrCodeData, 450, 50, { width: 80, height: 80 })
+		doc.font('Regular').text('Your Ticket', 450, 135)
 	} catch (err) {
 		console.error('Error generating QR code:', err)
 	}
