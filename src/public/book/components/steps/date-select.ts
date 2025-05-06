@@ -522,12 +522,10 @@ export class DateSelectionStep extends $LitElement(css`
 			}
 		}, 50)
 
+		// Only update the date, preserving other user selections
 		bookingContext.set({
-			date: newValue,
-			courtId: '',
-			startTime: '',
-			endTime: '',
-		})
+			date: newValue
+		}, true)
 
 		// Get the next step from the current flow (respecting the dynamic order)
 		// Navigate to the next step

@@ -1,6 +1,6 @@
 import { $notify, area, SchmancyInputChangeEvent } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth'
+import { signInWithEmailAndPassword } from 'firebase/auth'
 import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { auth } from 'src/firebase/firebase'
@@ -50,31 +50,30 @@ export default class FunkhausSportsSignin extends $LitElement() {
 			.catch(error => {
 				this.busy = false
 				this.showForgotPass = true
-				this.formError = 'Invalid credentials, please try again'
-				$notify.error('Invalid credentials, please try again')
+				
+				// Handle specific Firebase error codes
+				if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+					this.formError = 'Invalid email or password. Please try again.'
+				} else if (error.code === 'auth/too-many-requests') {
+					this.formError = 'Too many failed login attempts. Please try again later.'
+				} else {
+					this.formError = 'Error signing in. Please try again.'
+				}
+				
+				$notify.error(this.formError)
 				console.error(error)
 			})
 	}
 
-	resetPassword() {
-		// Validate email first
-		if (!this.credentials.email) {
-			$notify.error('Please enter your email address')
-			return
-		}
-
-		// reset password
-		this.busy = true
-		sendPasswordResetEmail(auth, this.credentials.email)
-			.then(() => {
-				this.busy = false
-				$notify.success('Password reset email sent successfully')
+	navigateToResetPage() {
+		// Dynamic import to avoid circular dependency
+		import('./password-reset').then(() => {
+			area.push({
+				component: document.createElement('funkhaus-sports-password-reset') as any,
+				area: 'root',
+				historyStrategy: 'replace'
 			})
-			.catch(error => {
-				this.busy = false
-				$notify.error('Error sending password reset email')
-				console.error(error)
-			})
+		})
 	}
 
 	protected render() {
@@ -182,7 +181,7 @@ export default class FunkhausSportsSignin extends $LitElement() {
 						<schmancy-grid justify="center" gap="sm" alignItems="center">
 							<schmancy-typography align="center" type="label" token="sm"> Forgot your password? </schmancy-typography>
 							<schmancy-button
-								@click=${this.resetPassword}
+								@click=${this.navigateToResetPage}
 								variant="text"
 								style="color: var(--brand-primary)"
 								.disabled=${this.busy}

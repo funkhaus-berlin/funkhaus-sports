@@ -327,7 +327,6 @@ export class TimeSelectionStep extends $LitElement(css`
 		bookingContext.$.pipe(
 			takeUntil(this.disconnecting),
 			filter(booking => !!booking.date && !!booking.venueId),
-			distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.venueId === curr.venueId),
 			tap(() => {
 				this.updateState({
 					autoScrollAttempted: false,
@@ -335,8 +334,17 @@ export class TimeSelectionStep extends $LitElement(css`
 					error: null,
 				})
 			}),
+			// Listen for changes to date, venue, or court ID to refresh time slots
+			distinctUntilChanged((prev, curr) => 
+				prev.date === curr.date && 
+				prev.venueId === curr.venueId &&
+				prev.courtId === curr.courtId
+			),
 			shareReplay(1),
-		).subscribe()
+		).subscribe(() => {
+			// Reload time slots when booking data changes (including court selection)
+			this.loadTimeSlots()
+		})
 	}
 
 	private subscribeToProgressContext(): void {
@@ -566,11 +574,8 @@ export class TimeSelectionStep extends $LitElement(css`
 				endTime: newEndTime ?? '',
 			}
 
-			// Check current booking flow - in DATE_COURT_TIME_DURATION, we've already selected a court
-			// In other flows, we need to clear the court selection when changing time
-			if (this.availability.bookingFlowType !== BookingFlowType.DATE_COURT_TIME_DURATION) {
-				bookingUpdate.courtId = ''
-			}
+			// We now preserve the court selection regardless of flow type to improve user experience
+			// This lets the user change time without losing their court selection
 
 			bookingContext.set(bookingUpdate, true)
 
@@ -783,24 +788,53 @@ export class TimeSelectionStep extends $LitElement(css`
 		`
 	}
 
-	// UPDATED: Add ref to scroll container
+	/**
+	 * Ensure we have a minimum number of time slots for consistent layout
+	 * Add placeholders for small result sets
+	 */
+	private ensureMinimumSlots(slots: TimeSlot[]): (TimeSlot | { placeholder: true })[] {
+		const minSlots = 5; // Minimum number of slots to display
+		
+		if (slots.length >= minSlots) {
+			return slots;
+		}
+		
+		// Add placeholder items to reach minimum count
+		const displayItems = [...slots];
+		const placeholdersNeeded = minSlots - slots.length;
+		
+		for (let i = 0; i < placeholdersNeeded; i++) {
+			displayItems.push({ placeholder: true } as any);
+		}
+		
+		return displayItems;
+	}
+
+	// UPDATED: Add ref to scroll container and ensure minimum slots
 	private renderListLayout(slots: TimeSlot[]): unknown {
+		const displayItems = this.ensureMinimumSlots(slots);
+		
 		return html`
 			<div
 				${ref(this.scrollContainerRef)}
-				class="options-scroll-container grid grid-flow-col  py-2 overflow-x-auto scrollbar-hide transition-all duration-300 first:pl-1 last:pr-1
+				class="options-scroll-container grid grid-flow-col py-2 overflow-x-auto scrollbar-hide transition-all duration-300 first:pl-1 last:pr-1
           ${this.isCompact ? 'gap-2' : 'gap-3'}"
 				role="listbox"
 				aria-label="Available Time Slots"
 				aria-multiselectable="false"
 			>
-				<!-- <schmancy-surface class="sticky left-2 z-10" type="low">
-					<schmancy-icon-button variant="filled tonal" class="my-auto  mr-2 z-10 "> schedule </schmancy-icon-button>
-				</schmancy-surface> -->
 				${repeat(
-					slots,
-					slot => slot.value,
-					slot => this.renderTimeSlot(slot),
+					displayItems,
+					(item, index) => 'placeholder' in item ? `placeholder-${index}` : (item as TimeSlot).value,
+					(item) => {
+						if ('placeholder' in item) {
+							// Create an empty placeholder tile with same dimensions but invisible
+							return html`
+								<div class="w-14 h-10 invisible"></div>
+							`;
+						}
+						return this.renderTimeSlot(item as TimeSlot);
+					}
 				)}
 			</div>
 		`

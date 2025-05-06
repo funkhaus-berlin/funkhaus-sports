@@ -1,11 +1,12 @@
-// src/admin/courts/form.ts
+// src/courts/form.ts
 import { $notify, SchmancyInputChangeEvent, SchmancySelectChangeEvent, select, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { html } from 'lit'
-import { customElement, state } from 'lit/decorators.js'
+import { html, TemplateResult } from 'lit'
+import { customElement, property, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { takeUntil } from 'rxjs'
-import { Court, CourtsDB, CourtTypeEnum, Pricing } from 'src/db/courts.collection'
+import { Court, CourtsDB, CourtTypeEnum, Pricing, SportTypeEnum } from 'src/db/courts.collection'
+import { Venue } from 'src/db/venue-collection'
 import { confirm } from 'src/schmancy'
 import { venueContext, venuesContext } from '../venue-context'
 
@@ -23,33 +24,70 @@ export class CourtForm extends $LitElement() {
 		courtType: 'indoor',
 		pricing: { baseHourlyRate: 0 },
 		status: 'active',
+		sportTypes: ['pickleball']
 	}
 
 	@select(venuesContext) venues!: Map<string, any>
+	@select(venueContext) venueData!: Partial<Venue>
 
 	@state() busy = false
 	@state() isCloning = false
+	@property({ type: String }) venueId: string = ''
 
 	constructor(private editingCourt?: Court) {
 		super()
 		if (editingCourt) {
 			this.court = { ...editingCourt }
+			this.venueId = editingCourt.venueId
 		}
 	}
 
 	connectedCallback() {
 		super.connectedCallback()
-
-		// If we're not editing a court, set the venueId from context
-		if (!this.editingCourt && this.venues?.size > 0) {
-			const currentVenueId = venuesContext.value.values().next().value?.id
-			if (currentVenueId) {
-				this.court = {
-					...this.court,
-					venueId: currentVenueId,
-				}
+		
+		// Set venueId with simple priority logic
+		if (this.venueData?.id) {
+			this.venueId = this.venueData.id
+		}
+		
+		// Set the venueId on the court object
+		if (this.venueId) {
+			this.court = {
+				...this.court,
+				venueId: this.venueId,
 			}
 		}
+
+		// Ensure sportTypes is initialized properly
+		if (!this.court.sportTypes || !Array.isArray(this.court.sportTypes)) {
+			this.court.sportTypes = ['pickleball']
+		}
+	}
+
+	// Toggle sport type selection (add or remove from array)
+	toggleSportType(sportType: keyof typeof SportTypeEnum) {
+		let updatedSportTypes: (keyof typeof SportTypeEnum)[] = []
+		
+		// Ensure sportTypes is an array
+		if (!this.court.sportTypes || !Array.isArray(this.court.sportTypes)) {
+			updatedSportTypes = [sportType]
+		} else {
+			// Check if the sport type is already in the array
+			if (this.court.sportTypes.includes(sportType)) {
+				// Don't allow removing the last sport type
+				if (this.court.sportTypes.length === 1) {
+					return
+				}
+				// Remove it
+				updatedSportTypes = this.court.sportTypes.filter(type => type !== sportType)
+			} else {
+				// Add it
+				updatedSportTypes = [...this.court.sportTypes, sportType]
+			}
+		}
+
+		// Update the court object
+		this.updateProps('sportTypes', updatedSportTypes)
 	}
 
 	render() {
@@ -85,6 +123,37 @@ export class CourtForm extends $LitElement() {
 									>`,
 							)}
 						</schmancy-select>
+						
+						<!-- Sport Types Selection (Multi-select) -->
+						<div>
+							<p class="text-sm font-medium mb-2">Sport Types</p>
+							<div class="flex flex-wrap gap-2">
+								${Object.values(SportTypeEnum).map(
+									sportType => html`
+										<schmancy-chip
+											.selected=${Array.isArray(this.court.sportTypes) && this.court.sportTypes.includes(sportType as keyof typeof SportTypeEnum)}
+											@click=${() => this.toggleSportType(sportType as keyof typeof SportTypeEnum)}
+											label=${formatEnum(sportType)}
+										>
+											${formatEnum(sportType)}
+										</schmancy-chip>
+									`
+								)}
+							</div>
+							<p class="text-xs text-gray-500 mt-1">Select one or more sport types for this court</p>
+						</div>
+						
+						<!-- Court Previews -->
+						<div class="mt-2 border rounded p-2 bg-gray-50">
+							<div class="text-sm font-medium mb-2">Court Previews</div>
+							<div class="flex flex-wrap gap-6 justify-center">
+								${Array.isArray(this.court.sportTypes) && this.court.sportTypes.length > 0 
+									? this.court.sportTypes.map(sportType => 
+										this.renderCourtPreview(sportType as keyof typeof SportTypeEnum)) 
+									: this.renderCourtPreview('pickleball' as keyof typeof SportTypeEnum)
+								}
+							</div>
+						</div>
 					</div>
 
 					<!-- Pricing -->
@@ -190,20 +259,17 @@ export class CourtForm extends $LitElement() {
 
 	cloneCourt = () => {
 		this.isCloning = true
-
-		// Update the court object to create a new one based on the existing one
 		this.court = {
 			...this.court,
 			name: `${this.court.name} (Copy)`,
-			id: undefined, // Remove the ID so a new one will be created
+			id: undefined,
 		}
-
-		// Force a re-render
 		this.requestUpdate()
 	}
 
 	onSave = () => {
 		this.busy = true
+		
 		// Basic validation
 		if (!this.court.name?.trim()) {
 			$notify.error('Court name is required')
@@ -211,15 +277,16 @@ export class CourtForm extends $LitElement() {
 			return
 		}
 
+		// Get venue ID from context if not already set
 		if (!this.court.venueId) {
-			// Get venue ID from context if missing
-			const currentVenueId = venueContext.value.id
-			if (!currentVenueId) {
-				$notify.error('Venue information is missing')
-				this.busy = false
-				return
-			}
-			this.court.venueId = currentVenueId
+			this.court.venueId = this.venueData?.id
+		}
+
+		// Final validation for venue ID
+		if (!this.court.venueId) {
+			$notify.error('Unable to determine the venue. Please try again or refresh the page.')
+			this.busy = false
+			return
 		}
 
 		if (!this.court.pricing || this.court.pricing.baseHourlyRate <= 0) {
@@ -267,6 +334,52 @@ export class CourtForm extends $LitElement() {
 				this.busy = false
 			},
 		})
+	}
+
+	// Render court preview for a specific sport type
+	renderCourtPreview(sportType: keyof typeof SportTypeEnum): TemplateResult {
+		switch (sportType) {
+			case 'padel':
+				return html`
+					<div class="flex flex-col items-center">
+						<img 
+							src="/svg/padel-court.svg" 
+							alt="Padel Court" 
+							width="180" 
+							height="100"
+							class="object-contain"
+						/>
+						<span class="text-xs mt-1">Padel</span>
+					</div>
+				`;
+			case 'volleyball':
+				return html`
+					<div class="flex flex-col items-center">
+						<img 
+							src="/svg/volleyball-court.svg" 
+							alt="Volleyball Court" 
+							width="180" 
+							height="100"
+							class="object-contain"
+						/>
+						<span class="text-xs mt-1">Volleyball</span>
+					</div>
+				`;
+			case 'pickleball':
+			default:
+				return html`
+					<div class="flex flex-col items-center">
+						<img 
+							src="/svg/pickleball-court.svg" 
+							alt="Pickleball Court" 
+							width="180" 
+							height="100"
+							class="object-contain"
+						/>
+						<span class="text-xs mt-1">Pickleball</span>
+					</div>
+				`;
+		}
 	}
 
 	private async confirmDelete(id: string) {

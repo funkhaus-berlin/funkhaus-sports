@@ -7,7 +7,7 @@ import { takeUntil } from 'rxjs'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { formatEnum } from '../components/venue-form'
-import { venuesContext } from '../venue-context'
+import { venueContext, venuesContext } from '../venue-context'
 import { courtsContext, selectMyCourts } from './context'
 import { CourtForm } from './court-form'
 
@@ -23,7 +23,6 @@ export class VenueCourts extends $LitElement() {
 	@property({ type: String }) venueId: string = ''
 	@state() loading: boolean = true
 	@state() error: string | null = null
-	@state() selectedVenueId: string = ''
 
 	// Status configuration
 	private statusConfig = {
@@ -83,11 +82,7 @@ export class VenueCourts extends $LitElement() {
 			align: 'right',
 			render: (court: Court) => html`
 				<schmancy-icon-button
-					@click=${() => {
-						sheet.open({
-							component: new CourtForm(court),
-						})
-					}}
+					@click=${() => sheet.open({ component: new CourtForm(court) })}
 					title="Edit"
 					>edit</schmancy-icon-button
 				>
@@ -95,21 +90,44 @@ export class VenueCourts extends $LitElement() {
 		},
 	]
 
-	// If venueId is provided, use it as the filter
+	@select(venueContext)
+	venueData!: Partial<Venue>
+
 	connectedCallback() {
 		super.connectedCallback()
+		this.loading = true
 
-		selectMyCourts.pipe(takeUntil(this.disconnecting)).subscribe(courts => {
-			console.log('selected', courts)
-			this.courts = courts
-			this.loading = false
-			this.requestUpdate()
+		// Get venueId from context if available
+		if (this.venueData?.id) {
+			this.venueId = this.venueData.id
+		}
+
+		// Fetch courts
+		selectMyCourts.pipe(takeUntil(this.disconnecting)).subscribe({
+			next: courts => {
+				this.courts = courts
+				this.loading = false
+				this.requestUpdate()
+			},
+			error: err => {
+				console.error('Error loading courts:', err)
+				this.error = 'Failed to load courts. Please try again.'
+				this.loading = false
+				this.requestUpdate()
+			},
 		})
 	}
 
-	// Handle venue selection change
-	handleVenueChange(e: CustomEvent) {
-		this.selectedVenueId = e.detail.value
+	// Method to create a new court
+	openAddCourtForm() {
+		const courtForm = new CourtForm()
+		if (this.venueId) {
+			courtForm.venueId = this.venueId
+		}
+		
+		sheet.open({
+			component: courtForm,
+		})
 	}
 
 	render() {
@@ -117,31 +135,80 @@ export class VenueCourts extends $LitElement() {
 			<schmancy-grid class="py-4" gap="md" ${fullHeight()} rows="auto 1fr">
 				<schmancy-nav-drawer-appbar>
 					<schmancy-grid cols="auto 1fr auto" gap="md" align="center">
-						<schmancy-typography type="headline" token="sm"> Courts Management </schmancy-typography>
+						<schmancy-typography type="headline" token="sm">
+							Courts Management
+							${when(
+								this.venueData?.name,
+								() => html`<span class="text-sm ml-2 text-surface-on-variant">(${this.venueData.name})</span>`,
+							)}
+						</schmancy-typography>
 						<span></span>
 						<schmancy-button
 							variant="filled"
-							@click=${() => {
-								const courtForm = new CourtForm()
-								sheet.open({
-									component: courtForm,
-								})
-							}}
+							@click=${() => this.openAddCourtForm()}
+							?disabled=${!this.venueId || this.loading}
 						>
 							<schmancy-icon>add</schmancy-icon>Add Court
 						</schmancy-button>
 					</schmancy-grid>
 				</schmancy-nav-drawer-appbar>
-				${when(
-					courtsContext.ready === true,
-					() =>
-						html`<schmancy-table-v2
-							.cols=${this.columns.map(_ => '1fr').join(' ')}
-							.columns=${this.columns}
-							.data=${Array.from(this.courts.values())}
-							sortable
-						></schmancy-table-v2>`,
-				)}
+
+				<!-- Content Area with Loading, Error, and Data States -->
+				<div class="flex flex-col flex-1 overflow-hidden">
+					${when(
+						this.loading,
+						() => html`
+							<div class="flex-1 flex items-center justify-center">
+								<div class="text-center">
+									<div
+										class="inline-block w-8 h-8 border-4 border-t-primary-default border-r-outlineVariant border-b-outlineVariant border-l-outlineVariant rounded-full animate-spin mb-3"
+									></div>
+									<div>Loading courts...</div>
+								</div>
+							</div>
+						`,
+						() =>
+							when(
+								this.error,
+								() => html`
+									<div class="flex-1 flex items-center justify-center">
+										<div class="bg-error-container p-6 rounded-lg text-center max-w-md">
+											<schmancy-icon size="32px" class="text-error-default mb-2">error_outline</schmancy-icon>
+											<p class="text-error-on-container mb-4">${this.error}</p>
+											<schmancy-button @click=${() => window.location.reload()} variant="filled">Retry</schmancy-button>
+										</div>
+									</div>
+								`,
+								() =>
+									when(courtsContext.ready === true, () =>
+										when(
+											this.courts && this.courts.size > 0,
+											() => html`
+												<schmancy-table
+													.cols=${this.columns.map(_ => '1fr').join(' ')}
+													.columns=${this.columns}
+													.data=${Array.from(this.courts.values())}
+													sortable
+												></schmancy-table>
+											`,
+											() => html`
+												<div class="flex-1 flex items-center justify-center">
+													<div class="text-center p-6">
+														<schmancy-icon size="48px" class="text-surface-on-variant opacity-50 mb-3"
+															>sports_tennis</schmancy-icon
+														>
+														<p class="mb-4">No courts found for this venue.</p>
+														<schmancy-button variant="filled" @click=${() => this.openAddCourtForm()}>
+															<schmancy-icon>add</schmancy-icon>Add Court
+														</schmancy-button>
+													</div>
+												</div>
+											`,
+										),
+									),
+							),
+					)}
+				</div>
 			</schmancy-grid>
 		`
 	}

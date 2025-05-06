@@ -15,7 +15,7 @@ import { Booking } from 'src/public/book/context'
 import { courtsContext } from '../courts/context'
 import { venueContext } from '../venue-context'
 import './bookings-filter'
-import { bookingFilterContext, BookingsContext, DEFAULT_DATE_RANGE } from './bookings.context'
+import { bookingFilterContext, BookingsContext, DEFAULT_DATE_RANGE, TBookingFilter } from './bookings.context'
 // Extend dayjs with isBetween plugin
 dayjs.extend(isBetween)
 
@@ -28,7 +28,7 @@ export class VenuBookingsList extends $LitElement() {
 	courts!: Map<string, Court>
 
 	@select(bookingFilterContext)
-	bookingFilter!: any
+	bookingFilter!: TBookingFilter
 
 	@select(BookingsContext) bookings!: Map<string, Booking>
 	@state() filteredBookings: Booking[] = []
@@ -237,7 +237,7 @@ export class VenuBookingsList extends $LitElement() {
 		}
 
 		return html`
-			<schmancy-table-v2
+			<schmancy-table
 				.cols=${'minmax(150px, 1fr) minmax(150px, 1fr) 150px 150px 100px 100px'}
 				.columns=${[
 					{ name: 'Customer', key: 'userName', align: 'left', sortable: true },
@@ -250,7 +250,7 @@ export class VenuBookingsList extends $LitElement() {
 				.data=${this.filteredBookings}
 				keyField="id"
 				sortable
-			></schmancy-table-v2>
+			></schmancy-table>
 		`
 	}
 }

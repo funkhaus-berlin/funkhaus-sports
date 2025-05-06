@@ -208,38 +208,82 @@ export class CourtSelectStep extends $LitElement(css`
 
 	/**
 	 * Check if a court can be selected based on availability
+	 * A court is considered available if it has at least one available time slot
+	 * for any duration, even if no specific time/duration is selected yet
 	 */
 	private canSelectCourt(courtId: string): boolean {
-		// In DATE_COURT_TIME_DURATION flow, when selecting court before time,
-		// all courts should be selectable
-		if (this.isCourtBeforeTimeFlow && !this.booking.startTime) {
-			return true
+		// After date selection, all courts should be selectable if they have any availability
+		if (!this.booking.startTime) {
+			// If no time selected yet, court is available if it has any time slots available
+			return this.hasAnyAvailableTimeSlots(courtId);
+		}
+		
+		// If time is selected but no duration, court is available if the selected time is available
+		if (this.booking.startTime && !this.booking.endTime) {
+			return this.isTimeAvailableForCourt(courtId, this.booking.startTime);
 		}
 
-		const status = this.courtAvailability.get(courtId)
+		// If both time and duration are selected, use the standard availability checks
+		const status = this.courtAvailability.get(courtId);
 		// Allow selection if at least partially available
-		return !!status?.available
+		return !!status?.available;
+	}
+	
+	/**
+	 * Check if a court has any available time slots on the selected date
+	 */
+	private hasAnyAvailableTimeSlots(courtId: string): boolean {
+		// Get all time slots from availability context
+		const timeSlots = availabilityContext.value.timeSlots;
+		
+		// Court is available if any time slot is available for this court
+		return timeSlots.some(slot => slot.courtAvailability[courtId] === true);
+	}
+	
+	/**
+	 * Check if a specific time is available for a court
+	 */
+	private isTimeAvailableForCourt(courtId: string, timeString: string): boolean {
+		// Get the time value in minutes
+		const timeValue = dayjs(timeString).hour() * 60 + dayjs(timeString).minute();
+		
+		// Find the time slot for this time
+		const slot = availabilityContext.value.timeSlots.find(s => s.timeValue === timeValue);
+		
+		// If no slot found or slot doesn't have this court, it's not available
+		if (!slot || !slot.courtAvailability[courtId]) {
+			return false;
+		}
+		
+		return slot.courtAvailability[courtId] === true;
 	}
 
 	/**
 	 * Get court availability status
+	 * Return 'full', 'partial', or 'none' based on court availability
 	 */
 	private getCourtAvailabilityStatus(courtId: string): AvailabilityStatus {
-		// In DATE_COURT_TIME_DURATION flow, when selecting court before time,
-		// all courts should show as fully available
-		if (this.isCourtBeforeTimeFlow && !this.booking.startTime) {
-			return 'full'
+		// After date selection, court availability is based on available time slots
+		if (!this.booking.startTime) {
+			// If court has any available time slots, mark as fully available
+			return this.hasAnyAvailableTimeSlots(courtId) ? 'full' : 'none';
+		}
+		
+		// If time is selected but no duration, court is available/unavailable based on that time
+		if (this.booking.startTime && !this.booking.endTime) {
+			return this.isTimeAvailableForCourt(courtId, this.booking.startTime) ? 'full' : 'none';
 		}
 
-		const status = this.courtAvailability.get(courtId)
-
-		if (!status) return 'none'
-
-		if (status.fullyAvailable) return 'full'
-
-		if (status.available) return 'partial'
-
-		return 'none'
+		// If both time and duration are selected, use the standard availability status
+		const status = this.courtAvailability.get(courtId);
+		
+		if (!status) return 'none';
+		
+		if (status.fullyAvailable) return 'full';
+		
+		if (status.available) return 'partial';
+		
+		return 'none';
 	}
 
 	/**
@@ -261,18 +305,14 @@ export class CourtSelectStep extends $LitElement(css`
 			let availabilityMap = new Map<string, CourtAvailabilityStatus>()
 
 			// If we're in DATE_COURT_TIME_DURATION flow and don't have start time yet,
-			// we don't need to check availability - we're selecting court first
-			if (this.isCourtBeforeTimeFlow && !this.booking.startTime) {
-				console.log('DATE_COURT_TIME_DURATION flow: Showing all courts without availability check')
-			} else {
-				// Get court availability statuses from the availability context
-				const courtAvailabilities = getAllCourtsAvailability(this.booking.startTime, this.calculateDuration())
+			// Always get accurate court availability using our improved calculation
+			// which now handles the case when no duration is provided
+			const courtAvailabilities = getAllCourtsAvailability(this.booking.startTime, this.calculateDuration())
 
-				// Create map of court ID to availability status for efficient lookups
-				courtAvailabilities.forEach(status => {
-					availabilityMap.set(status.courtId, status)
-				})
-			}
+			// Create map of court ID to availability status for efficient lookups
+			courtAvailabilities.forEach(status => {
+				availabilityMap.set(status.courtId, status)
+			})
 
 			// Store the map in state
 			this.courtAvailability = availabilityMap
@@ -282,11 +322,10 @@ export class CourtSelectStep extends $LitElement(css`
 				court => court.status === 'active' && court.venueId === this.booking.venueId,
 			)
 
-			// If we're in DATE_COURT_TIME_DURATION flow and don't have start time yet,
-			// we don't need to sort by availability - we're selecting court first
+			// Only sort by availability if we're not showing all courts as available
 			let sortedCourts = venueCourts
 
-			if (!this.isCourtBeforeTimeFlow || this.booking.startTime) {
+			if (!this.shouldShowAllCourtsAvailable) {
 				// Sort courts by availability
 				sortedCourts = venueCourts.sort((a, b) => {
 					// Get availability statuses
@@ -307,7 +346,7 @@ export class CourtSelectStep extends $LitElement(css`
 					return a.name.localeCompare(b.name)
 				})
 			} else {
-				// Just sort by name in the DATE_COURT_TIME_DURATION flow when selecting court first
+				// Just sort by name when showing all courts as available
 				sortedCourts = venueCourts.sort((a, b) => a.name.localeCompare(b.name))
 			}
 
@@ -380,16 +419,21 @@ export class CourtSelectStep extends $LitElement(css`
 		}
 
 		// Update booking context with selected court and adjusted times
+		// This will trigger real-time updates of time and duration availability
 		bookingContext.set(bookingUpdate)
 
 		// Reset dialog state
 		this.pendingCourtSelection = null
 		this.showConfirmationDialog = false
 
-		// Advance to the next step in the flow
-		BookingProgressContext.set({
-			currentStep: this.bookingProgress.currentStep + 1,
-		})
+		// Only advance to the next step if we're in the initial flow and haven't selected time yet
+		// Otherwise, we want to stay on the current step to enable changing selections freely
+		if (this.isCourtBeforeTimeFlow && !this.booking.startTime) {
+			// Advance to the next step in the flow (only for initial selection)
+			BookingProgressContext.set({
+				currentStep: getNextStep('Court'),
+			})
+		}
 
 		// Animate the selected court if in list view
 		if (this.viewMode === ViewMode.LIST) {
@@ -418,16 +462,25 @@ export class CourtSelectStep extends $LitElement(css`
 	private get isCourtBeforeTimeFlow(): boolean {
 		return this.availability?.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION
 	}
+	
+	/**
+	 * Determine if we're in a flow state where all courts should be shown as available
+	 * This applies when:
+	 * 1. We're in DATE_COURT_TIME_DURATION flow and selecting court before time, OR
+	 * 2. We're looking at courts after time selection in any flow
+	 */
+	/**
+	 * We no longer need to artificially show all courts as available
+	 * since we've improved the availability calculation to handle missing duration
+	 * This is kept for compatibility but will always return false
+	 */
+	private get shouldShowAllCourtsAvailable(): boolean {
+		// No longer needed as the availability calculation now handles this case properly
+		return false
+	}
 
 	// Update the handleCourtSelect method:
 	private handleCourtSelect(court: Court): void {
-		// In DATE_COURT_TIME_DURATION flow, when selecting court before time,
-		// we don't need to check availability - we're selecting court first
-		if (this.isCourtBeforeTimeFlow && !this.booking.startTime) {
-			this.confirmCourtSelection(court)
-			return
-		}
-
 		// Don't allow selecting unavailable courts
 		if (!this.canSelectCourt(court.id)) {
 			return
@@ -436,7 +489,9 @@ export class CourtSelectStep extends $LitElement(css`
 		// Check if court is partially available
 		const availabilityStatus = this.getCourtAvailabilityStatus(court.id)
 
-		if (availabilityStatus === 'partial') {
+		// Only show the confirmation dialog for partially available courts
+		// when both time and duration are selected
+		if (availabilityStatus === 'partial' && this.booking.startTime && this.booking.endTime) {
 			// Show confirmation dialog for partially available courts
 			this.pendingCourtSelection = court
 			this.showConfirmationDialog = true
@@ -497,12 +552,14 @@ export class CourtSelectStep extends $LitElement(css`
 		this.pendingCourtSelection = null
 		this.showConfirmationDialog = false
 
-		// Get the next step from the current flow
-
-		// Advance to the next step in the flow
-		BookingProgressContext.set({
-			currentStep: getNextStep('Court'),
-		})
+		// Only advance to the next step if we're in the initial flow and haven't selected time yet
+		// Otherwise, we want to stay on the current step to enable changing selections freely
+		if (this.isCourtBeforeTimeFlow && !this.booking.startTime) {
+			// Advance to the next step in the flow (only for initial selection)
+			BookingProgressContext.set({
+				currentStep: getNextStep('Court'),
+			})
+		}
 
 		// Animate the selected court if in list view
 		if (this.viewMode === ViewMode.LIST) {

@@ -32,4 +32,4 @@ export const bookingFilterContext = createContext<TBookingFilter>(
 	},
 	'local',
 	'booking-filter',
-) as SchmancyStoreObject<TBookingFilter>
+)

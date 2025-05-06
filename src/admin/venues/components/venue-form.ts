@@ -4,6 +4,7 @@ import {
 	schmancyCheckBoxChangeEvent,
 	SchmancyInputChangeEvent,
 	SchmancySelectChangeEvent,
+	select,
 	sheet,
 } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
@@ -13,7 +14,8 @@ import { takeUntil } from 'rxjs'
 import { FacilityEnum, OperatingHours, Venue, VenuesDB, VenueTypeEnum } from 'src/db/venue-collection'
 import { auth } from 'src/firebase/firebase'
 import { confirm } from 'src/schmancy'
-// Import the venue card component (add this import)
+// Import the venue context and venue card component
+import { venueContext } from '../venue-context'
 import './venue-info-card'
 
 // Format enum values to display labels
@@ -29,6 +31,8 @@ export class VenueForm extends $LitElement() {
 	@state() formErrors: Record<string, string> = {}
 
 	@state() venue!: Venue
+	@select(venueContext) venueData!: Partial<Venue>
+
 	constructor(initialData?: Venue) {
 		super()
 		if (initialData) {
@@ -39,8 +43,19 @@ export class VenueForm extends $LitElement() {
 			this.initializeNewVenue()
 		}
 
-		console.log(initialData)
+		console.log('VenueForm initialized with data:', initialData)
 		this.dispatchEvent(new CustomEvent('fullscreen', { bubbles: true, composed: true, detail: true }))
+	}
+
+	// Handle case where venue data comes from context
+	connectedCallback() {
+		super.connectedCallback()
+
+		// If we don't have an initialized venue but have one in context, use that
+		if (!this.venue?.id && this.venueData?.id) {
+			console.log('Using venue from context in VenueForm:', this.venueData)
+			this.venue = this.venueData as Venue
+		}
 	}
 
 	// Initialize new venue with default values
@@ -543,14 +558,16 @@ export class VenueForm extends $LitElement() {
 			} as Venue
 			console.log('Updating venue with ID:', venue.id)
 		} else {
-			// Create new venue
+			// Create new venue with explicit UUID
+			const newVenueId = crypto.randomUUID();
 			venue = {
 				...this.venue,
+				id: newVenueId, // Set a specific UUID for new venues
 				updatedAt: new Date().toISOString(),
 				createdAt: new Date().toISOString(),
 				createdBy: auth.currentUser?.uid || '',
 			} as Venue
-			console.log('Creating new venue')
+			console.log('Creating new venue with generated ID:', newVenueId)
 		}
 
 		// Save to database with explicit handling for updates vs. creates
@@ -559,12 +576,11 @@ export class VenueForm extends $LitElement() {
 		if (this.venue.id) {
 			// For updates, explicitly pass the original ID as second parameter
 			console.log(`Updating venue ${this.venue.id} with data:`, venue)
-			alert('Updating venue' + this.venue.id)
 			saveOperation = VenuesDB.upsert(venue, this.venue.id)
 		} else {
-			// For new venues, let the service generate an ID
+			// For new venues, explicitly pass the newly generated ID
 			console.log('Creating new venue with data:', venue)
-			saveOperation = VenuesDB.upsert(venue)
+			saveOperation = VenuesDB.upsert(venue, venue.id)
 		}
 
 		saveOperation.pipe(takeUntil(this.disconnecting)).subscribe({

@@ -150,7 +150,7 @@ export function getBookingFlowForVenue(venue: Venue | null): BookingFlowType {
 	}
 
 	// Default to the new requirement: Date -> Court -> Time -> Duration
-	return BookingFlowType.DATE_TIME_DURATION_COURT
+	return BookingFlowType.DATE_COURT_TIME_DURATION
 }
 
 /**
@@ -418,22 +418,34 @@ export function isCourtAvailableForDuration(courtId: string, startTime: string, 
 /**
  * Get all time slots with availability information
  * Supports filtering by court ID for the Date -> Court -> Time -> Duration flow
+ * Enhanced to handle both flow types consistently
  */
 export function getAvailableTimeSlots(courtId?: string): TimeSlot[] {
 	const availability = availabilityContext.value
+	const booking = bookingContext.value
+	
+	// Use courtId parameter or fall back to selected court in booking
+	const effectiveCourtId = courtId || booking.courtId
 
-	// If we have a specific court ID (for Date -> Court -> Time flow)
-	if (courtId) {
+	// Check for specific flow type
+	const isDateCourtTimeFlow = availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION
+
+	// If we have a specific court ID and it's the DATE_COURT_TIME_DURATION flow
+	// Or if a court is already selected in any flow
+	if (effectiveCourtId) {
+		console.log(`Getting time slots for specific court: ${effectiveCourtId}`)
 		// Filter time slots that are available for this specific court
 		const ts = availability.timeSlots.map(slot => ({
 			label: slot.time,
 			value: slot.timeValue,
-			available: slot.courtAvailability[courtId] === true,
+			available: slot.courtAvailability[effectiveCourtId] === true,
+			courtId: effectiveCourtId,
 		}))
 		return filterPastTimeSlots(ts, availability.date)
 	}
 
-	// Otherwise, return all time slots
+	// Otherwise, return all time slots that have any available court
+	console.log(`Getting time slots with any available court`)
 	const ts = availability.timeSlots.map(slot => ({
 		label: slot.time,
 		value: slot.timeValue,
@@ -466,10 +478,16 @@ export function getAvailableCourtsForTime(startTime: string): string[] {
 /**
  * Get all available durations for a specific start time and court
  * Supports both Date -> Time -> Duration -> Court and Date -> Court -> Time -> Duration flows
+ * Enhanced to handle both flow types consistently and respect court selection
  */
 export function getAvailableDurations(startTime: string, courtId?: string): Duration[] {
 	const availability = availabilityContext.value
+	const booking = bookingContext.value
+	
 	if (!startTime) return []
+
+	// Use courtId parameter or fall back to selected court in booking
+	const effectiveCourtId = courtId || booking.courtId
 
 	// Format time string
 	const formattedTime = dayjs(startTime).format('HH:mm')
@@ -488,17 +506,18 @@ export function getAvailableDurations(startTime: string, courtId?: string): Dura
 		{ label: '5h', value: 300 },
 	]
 
-	// If court ID is provided (Date -> Court -> Time -> Duration flow)
-	if (courtId) {
+	// If we have a specific court ID from parameter or booking
+	if (effectiveCourtId) {
+		console.log(`Getting durations for specific court: ${effectiveCourtId}`)
 		return standardDurations
 			.map(duration => {
 				// Check if this duration is available for the specific court
-				const isAvailable = isCourtAvailableForDuration(courtId, formattedTime, duration.value)
+				const isAvailable = isCourtAvailableForDuration(effectiveCourtId, formattedTime, duration.value)
 
 				if (!isAvailable) return null
 
 				// Get the court for price calculation
-				const court = courtsContext.value.get(courtId)
+				const court = courtsContext.value.get(effectiveCourtId)
 				if (!court) return null
 
 				// Calculate price for this court and duration
@@ -515,6 +534,7 @@ export function getAvailableDurations(startTime: string, courtId?: string): Dura
 				return {
 					...duration,
 					price,
+					courtId: effectiveCourtId, // Add the courtId for reference
 				}
 			})
 			.filter((duration): duration is Duration => duration !== null)
@@ -564,6 +584,7 @@ export function getAvailableDurations(startTime: string, courtId?: string): Dura
 
 /**
  * Get availability status for all courts at a specific time and duration
+ * Enhanced to handle missing duration by checking single time slot availability
  */
 export function getAllCourtsAvailability(startTime?: string, durationMinutes?: number): CourtAvailabilityStatus[] {
 	const DEBUG = false // Set to true for detailed logging
@@ -574,21 +595,23 @@ export function getAllCourtsAvailability(startTime?: string, durationMinutes?: n
 
 	// Use parameters or fall back to booking context
 	const effectiveStartTime = startTime || booking.startTime
-	const effectiveDuration = durationMinutes || calculateDuration(booking.startTime, booking.endTime)
 
 	if (DEBUG) {
-		console.log(`Checking availability for startTime=${effectiveStartTime}, duration=${effectiveDuration}min`)
+		console.log(`Checking availability for startTime=${effectiveStartTime}, duration=${durationMinutes || 'not provided'}min`)
 	}
 
-	// If missing required data, return empty array
-	if (!effectiveStartTime || !effectiveDuration) {
-		if (DEBUG) console.log('Missing start time or duration, returning empty array')
+	// If missing start time, return empty array
+	if (!effectiveStartTime) {
+		if (DEBUG) console.log('Missing start time, returning empty array')
 		return []
 	}
 
 	// Convert start time to minutes since midnight for easier comparison
 	const timeObj = dayjs(effectiveStartTime)
 	const startMinutes = timeObj.hour() * 60 + timeObj.minute()
+	
+	// If duration is provided, use it; otherwise check only the start time slot
+	const effectiveDuration = durationMinutes || calculateDuration(booking.startTime, booking.endTime) || 30
 	const endMinutes = startMinutes + effectiveDuration
 
 	if (DEBUG) {

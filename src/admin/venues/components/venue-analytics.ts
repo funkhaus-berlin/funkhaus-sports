@@ -1,9 +1,13 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { css, html } from 'lit'
+import { select } from '@mhmo91/schmancy'
 import { customElement, property, state } from 'lit/decorators.js'
+import { filter, takeUntil } from 'rxjs'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
+import { courtsContext, selectMyCourts } from '../courts/context'
+import { venueContext } from '../venue-context'
 import { formatEnum } from './venue-form'
+import { css, html } from 'lit'
 
 @customElement('venue-analytics')
 export class VenueAnalytics extends $LitElement(css`
@@ -173,13 +177,73 @@ export class VenueAnalytics extends $LitElement(css`
 		margin-right: 0.5rem;
 	}
 `) {
-	@property({ type: Object }) venue!: Venue
-	@property({ type: Object }) courts!: Map<string, Court>
+	@property({ type: Object }) venue?: Venue
+	@state() courts: Map<string, Court> = new Map()
 	@state() timeRange: '7days' | '30days' | '90days' = '30days'
 	@state() chartType: 'revenue' | 'utilization' | 'bookings' = 'revenue'
+	@state() loading: boolean = true
+	@state() error: string | null = null
+	@state() venueId: string = ''
+
+	// Select from venue context
+	@select(venueContext, undefined, {
+		required: true,
+	})
+	venueData!: Partial<Venue>
+
+	connectedCallback() {
+		super.connectedCallback()
+
+		console.log('VenueAnalytics connected, current venue:', this.venue)
+
+		// If we have a venue from a property, use it
+		if (this.venue) {
+			this.venueId = this.venue.id
+		}
+		// Otherwise try to get venue ID from context
+		else if (this.venueData?.id) {
+			this.venueId = this.venueData.id
+
+			// Also set the venue property
+			this.venue = this.venueData as Venue
+		}
+
+		// Get courts for this venue from the context
+		if (this.venueId) {
+			console.log('VenueAnalytics loading courts for venue:', this.venueId)
+			selectMyCourts.pipe(takeUntil(this.disconnecting)).subscribe({
+				next: courts => {
+					console.log('VenueAnalytics loaded courts:', courts.size)
+					this.courts = courts
+					this.loading = false
+					this.requestUpdate()
+				},
+				error: err => {
+					console.error('Error loading courts for analytics:', err)
+					this.error = 'Failed to load court data'
+					this.loading = false
+					this.requestUpdate()
+				},
+			})
+		} else {
+			console.warn('VenueAnalytics: No venue ID available')
+			this.loading = false
+		}
+	}
 
 	// Calculate court utilization metrics
 	getCourtUtilization() {
+		// Check if courts is defined before accessing size
+		if (!this.courts) {
+			console.warn('Courts data is not available in venue analytics')
+			return {
+				totalCourts: 0,
+				activeCourts: 0,
+				utilizationPercentage: 0,
+				capacityUtilization: this.venue?.maxCourtCapacity ? 0 : 100,
+			}
+		}
+
 		const totalCourts = this.courts.size
 		const activeCourts = Array.from(this.courts.values()).filter(c => c.status === 'active').length
 		const utilizationPercentage = totalCourts > 0 ? Math.round((activeCourts / totalCourts) * 100) : 0
@@ -188,7 +252,7 @@ export class VenueAnalytics extends $LitElement(css`
 			totalCourts,
 			activeCourts,
 			utilizationPercentage,
-			capacityUtilization: this.venue.maxCourtCapacity
+			capacityUtilization: this.venue?.maxCourtCapacity
 				? Math.round((totalCourts / this.venue.maxCourtCapacity) * 100)
 				: 100,
 		}
@@ -196,6 +260,16 @@ export class VenueAnalytics extends $LitElement(css`
 
 	// Calculate operational metrics
 	getOperationalMetrics() {
+		// Ensure venue data is available
+		if (!this.venue) {
+			console.warn('Venue data is not available for operational metrics')
+			return {
+				operationalDays: 0,
+				weeklyHours: 0,
+				potentialRevenue: 0,
+			}
+		}
+
 		const operationalDays = this.venue.operatingHours
 			? Object.values(this.venue.operatingHours).filter(hours => hours !== null).length
 			: 0
@@ -212,6 +286,16 @@ export class VenueAnalytics extends $LitElement(css`
 					weeklyHours += (closeMinutes - openMinutes) / 60
 				}
 			})
+		}
+
+		// Check if courts data is available
+		if (!this.courts) {
+			console.warn('Courts data is not available for calculating potential revenue')
+			return {
+				operationalDays,
+				weeklyHours,
+				potentialRevenue: 0,
+			}
 		}
 
 		// Calculate potential revenue per week based on active courts and operating hours
@@ -234,6 +318,12 @@ export class VenueAnalytics extends $LitElement(css`
 		const courtsBySport: Record<string, number> = {}
 		const courtsByType: Record<string, number> = {}
 
+		// Check if courts is defined before using it
+		if (!this.courts) {
+			console.warn('Courts data is not available for type distribution')
+			return { courtsBySport, courtsByType }
+		}
+
 		Array.from(this.courts.values()).forEach(court => {
 			// Count by court type
 			const type = court.courtType || 'standard'
@@ -250,8 +340,26 @@ export class VenueAnalytics extends $LitElement(css`
 
 	// Calculate revenue metrics
 	getRevenueMetrics() {
+		// Check if courts is defined before accessing size
+		if (!this.courts) {
+			console.warn('Courts data is not available for revenue metrics')
+			return {
+				totalHourlyRate: 0,
+				averageRate: 0,
+				medianRate: 0,
+				rateDistribution: this.getEmptyRateDistribution(),
+			}
+		}
+
 		const totalCourts = this.courts.size
-		if (totalCourts === 0) return { totalHourlyRate: 0, averageRate: 0, medianRate: 0, rateDistribution: {} }
+		if (totalCourts === 0) {
+			return {
+				totalHourlyRate: 0,
+				averageRate: 0,
+				medianRate: 0,
+				rateDistribution: this.getEmptyRateDistribution(),
+			}
+		}
 
 		const rates = Array.from(this.courts.values())
 			.map(court => court.pricing?.baseHourlyRate || 0)
@@ -293,9 +401,38 @@ export class VenueAnalytics extends $LitElement(css`
 		}
 	}
 
+	// Helper method to create empty rate distribution
+	private getEmptyRateDistribution() {
+		const rateDistribution: Record<string, { count: number; percentage: number; color: string }> = {}
+		const rateRanges = [
+			{ min: 0, max: 20, label: '€0-20', color: '#eaddff' },
+			{ min: 20, max: 40, label: '€20-40', color: '#d0bcff' },
+			{ min: 40, max: 60, label: '€40-60', color: '#9a82db' },
+			{ min: 60, max: 80, label: '€60-80', color: '#7f67be' },
+			{ min: 80, max: Infinity, label: '€80+', color: '#6750a4' },
+		]
+
+		rateRanges.forEach(range => {
+			rateDistribution[range.label] = {
+				count: 0,
+				percentage: 0,
+				color: range.color,
+			}
+		})
+
+		return rateDistribution
+	}
+
 	// Generate business insights based on metrics
 	getBusinessInsights() {
 		const insights: string[] = []
+
+		// Ensure we have both venue and courts data
+		if (!this.venue || !this.courts) {
+			console.warn('Missing data for generating business insights')
+			return insights
+		}
+
 		const utilization = this.getCourtUtilization()
 		const operational = this.getOperationalMetrics()
 		const revenue = this.getRevenueMetrics()
@@ -357,6 +494,41 @@ export class VenueAnalytics extends $LitElement(css`
 	}
 
 	render() {
+		// Show loading state
+		if (this.loading) {
+			return html`
+				<div class="p-5 text-center">
+					<div
+						class="inline-block w-8 h-8 border-4 border-t-primary-default border-r-outlineVariant border-b-outlineVariant border-l-outlineVariant rounded-full animate-spin mb-3"
+					></div>
+					<p>Loading analytics data...</p>
+				</div>
+			`
+		}
+
+		// Show error state if there's an error
+		if (this.error) {
+			return html`
+				<div class="p-5 text-center bg-error-container rounded-lg mt-5">
+					<schmancy-icon style="font-size: 48px;" class="text-error-default mb-3">error_outline</schmancy-icon>
+					<p class="text-error-on-container mb-2">${this.error}</p>
+					<p class="text-error-on-container text-sm">Please try again later</p>
+				</div>
+			`
+		}
+
+		// Add safeguards to check if the component has required data
+		if (!this.venue) {
+			return html`
+				<div class="p-5 text-center bg-surface-container-low rounded-lg mt-5">
+					<schmancy-icon style="font-size: 48px; opacity: 0.5;" class="mb-3">error_outline</schmancy-icon>
+					<p class="text-surface-on-variant mb-2">Venue data not available</p>
+					<p class="text-surface-on-variant text-sm">Please select a venue to view analytics</p>
+				</div>
+			`
+		}
+
+		// Get metrics with built-in null checks
 		const utilizationMetrics = this.getCourtUtilization()
 		const operationalMetrics = this.getOperationalMetrics()
 		const revenueMetrics = this.getRevenueMetrics()

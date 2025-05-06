@@ -141,21 +141,44 @@ export class FirestoreService<T extends DocumentData> {
 	 * Create or update a document
 	 */
 	upsert(data: Partial<T>, id?: string, merge: boolean = true): Observable<T> {
+		// Generate a document ID if not provided
 		let documentId = id
 		if (!id) {
 			documentId = uuidv4()
+			console.log(`Generated new ID for ${this.collectionName} document:`, documentId)
+		} else {
+			// Ensure the ID is a string
+			documentId = String(id)
 		}
-		const docRef = doc(this.db, this.collectionName, documentId!)
+		
+		// Log operation for debugging
+		console.log(`${data.id ? 'Updating' : 'Creating'} ${this.collectionName} document:`, {
+			documentId, 
+			dataId: data.id,
+			collection: this.collectionName
+		})
+		
+		// Create document reference
+		const docRef = doc(this.db, this.collectionName, documentId)
 
+		// Prepare document data, ensuring the ID is correctly set
 		const timestamp = new Date().toISOString()
 		const docData = {
+			// Remove any existing ID from data to prevent conflicts
+			...Object.fromEntries(Object.entries(data).filter(([key]) => key !== 'id')),
+			// Always set the correct document ID
 			id: documentId,
-			...data,
 			updatedAt: timestamp,
 		} as any
+		
+		console.log(`Saving ${this.collectionName} document:`, { path: `${this.collectionName}/${documentId}`, data: docData })
 
+		// Perform the database operation
 		return from(setDoc(docRef, docData, { merge: merge })).pipe(
-			map(() => ({ id: documentId, ...docData } as any as T)),
+			map(() => {
+				console.log(`Successfully saved ${this.collectionName} document:`, documentId)
+				return ({ id: documentId, ...docData } as any as T)
+			}),
 			catchError(error => {
 				console.error(`Error upserting document in ${this.collectionName}:`, error)
 				return throwError(() => error)
@@ -167,11 +190,18 @@ export class FirestoreService<T extends DocumentData> {
 	 * Delete a document
 	 */
 	delete(id: string): Observable<void> {
-		const docRef = doc(this.db, this.collectionName, id)
+		if (!id || typeof id !== 'string' || id.trim() === '') {
+			console.error(`Invalid ID provided for deletion: "${id}" (${typeof id})`);
+			return throwError(() => new Error(`Invalid document ID: "${id}"`));
+		}
+		
+		console.log(`Deleting document: ${this.collectionName}/${id}`);
+		const docRef = doc(this.db, this.collectionName, id);
+		
 		return from(deleteDoc(docRef)).pipe(
 			catchError(error => {
-				console.error(`Error deleting document from ${this.collectionName}:`, error)
-				return throwError(() => error)
+				console.error(`Error deleting document from ${this.collectionName}:`, error);
+				return throwError(() => error);
 			}),
 		)
 	}

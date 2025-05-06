@@ -21,29 +21,50 @@ export default class FunkhausAdmin extends $LitElement() {
 
 	connectedCallback(): void {
 		super.connectedCallback()
+		// Set up auth state listener
 		from(auth.authStateReady())
 			.pipe(takeUntil(this.disconnecting))
 			.subscribe({
 				next: () => {
-					const user = auth.currentUser
-					console.log('User', user)
-					if (!user) {
-						this.redirectToLogin()
-					} else {
-						userContext.set(JSON.parse(JSON.stringify(user)))
-						// Initialize with venues as default
-						if (!area.current.get('admin')) {
-							this.navigateToVenues()
-						}
-					}
+					this.checkUserAuth()
 				},
 			})
+
+		// Also set up a listener for auth state changes
+		auth.onAuthStateChanged((user) => {
+			if (!user) {
+				this.redirectToLogin()
+			} else {
+				userContext.set(JSON.parse(JSON.stringify(user)))
+				// Initialize with venues as default
+				if (!area.current.get('admin')) {
+					this.navigateToVenues()
+				}
+			}
+		})
 
 		// Handle fullscreen events
 		this.setupFullscreenListeners()
 
 		// Handle route changes
 		this.setupRouteListeners()
+	}
+
+	private checkUserAuth(): void {
+		const user = auth.currentUser
+		console.log('Current user:', user)
+		
+		if (!user) {
+			this.redirectToLogin()
+		} else {
+			// User is logged in
+			userContext.set(JSON.parse(JSON.stringify(user)))
+			
+			// Initialize with venues as default if no area is set
+			if (!area.current.get('admin')) {
+				this.navigateToVenues()
+			}
+		}
 	}
 
 	private redirectToLogin(): void {

@@ -12,11 +12,11 @@ import { courtsContext } from './admin/venues/courts/context'
 import { venuesContext } from './admin/venues/venue-context'
 import { CourtsDB } from './db/courts.collection'
 import { VenuesDB } from './db/venue-collection'
+import './map'
 import { BookingConfirmationRoute } from './public/booking-confirmation/booking-confirmation-route'
+import './public/shared'
 import { VenueLandingPage } from './public/venues/venues'
 import './schmancy'
-import './public/shared'
-import './map'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -34,10 +34,36 @@ export class AppIndex extends $LitElement() {
 			fromEvent(window, 'online')
 				.pipe(take(1))
 				.subscribe(() => {})
-		} else {
 		}
+
 		const query = new URLSearchParams(location.search)
-		if (query.has('admin')) {
+		const path = window.location.pathname
+
+		// Handle password reset from email link
+		if (query.has('oobCode') && query.has('mode') && query.get('mode') === 'resetPassword') {
+			// Dynamic import to avoid circular dependencies
+			import('./admin/password-reset-action').then(() => {
+				area.push({
+					component: document.createElement('funkhaus-sports-password-reset-action') as any,
+					area: 'root',
+				})
+			})
+			return
+		}
+
+		// Handle admin login page
+		if (path.startsWith('/login') || path.startsWith('/signin') || query.has('signin')) {
+			import('./admin/signin').then(() => {
+				area.push({
+					component: document.createElement('funkhaus-sports-signin') as any,
+					area: 'root',
+				})
+			})
+			return
+		}
+
+		// Handle admin panel
+		if (query.has('admin') || path.startsWith('/admin')) {
 			area.push({
 				component: FunkhausAdmin,
 				area: 'root',
