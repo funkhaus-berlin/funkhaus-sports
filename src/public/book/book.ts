@@ -340,34 +340,40 @@ export class CourtBookingSystem extends $LitElement() {
 		`
 	}
 
-	/**
-	 * Determine if a step should be shown based on current booking flow and progress
-	 * Modified to implement sequential step display with expanded steps tracking
-	 */
-	private shouldShowStep(step: BookingFlowStep): boolean {
-		if (!this.availability?.bookingFlowType) return true
 
-		// Get all steps in the current flow
-		const flowSteps = getBookingFlowSteps()
+/**
+ * Determine if a step should be shown based on current booking flow and progress
+ * Modified to implement sequential step display with expanded steps tracking
+ * Further modified to hide Duration step if no time is selected
+ */
+private shouldShowStep(step: BookingFlowStep): boolean {
+  if (!this.availability?.bookingFlowType) return true
 
-		// Get the indices in the flow
-		const stepIndex = flowSteps.indexOf(step)
-		
-		// Check if this step's number is in the expandedSteps array
-		const isExpanded = this.bookingProgress.expandedSteps.includes(step.step)
-		
-		// Update maxStepReached if needed
-		const currentStepIndex = flowSteps.findIndex(s => s.step === this.bookingProgress.currentStep)
-		if (currentStepIndex > this.bookingProgress.maxStepReached) {
-			BookingProgressContext.set({
-				maxStepReached: currentStepIndex,
-			})
-		}
-		
-		// A step should be shown if it's in the expandedSteps array
-		return stepIndex !== -1 && isExpanded
-	}
+  // Get all steps in the current flow
+  const flowSteps = getBookingFlowSteps()
 
+  // Get the indices in the flow
+  const stepIndex = flowSteps.indexOf(step)
+  
+  // Check if this step's number is in the expandedSteps array
+  const isExpanded = this.bookingProgress.expandedSteps.includes(step.step)
+  
+  // Update maxStepReached if needed
+  const currentStepIndex = flowSteps.findIndex(s => s.step === this.bookingProgress.currentStep)
+  if (currentStepIndex > this.bookingProgress.maxStepReached) {
+    BookingProgressContext.set({
+      maxStepReached: currentStepIndex,
+    })
+  }
+  
+  // Special case for Duration step - only show if time is selected
+  if (step.label === 'Duration' && !this.booking.startTime) {
+    return false;
+  }
+  
+  // A step should be shown if it's in the expandedSteps array
+  return stepIndex !== -1 && isExpanded
+}
 	/**
 	 * Render a step component based on step number
 	 */
