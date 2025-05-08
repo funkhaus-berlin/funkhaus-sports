@@ -2,7 +2,6 @@ import { area, mutationObserver } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { css, html, nothing } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
-import { classMap } from 'lit/directives/class-map.js'
 import { styleMap } from 'lit/directives/style-map.js'
 import { when } from 'lit/directives/when.js'
 import { delay, fromEvent, merge, startWith, takeUntil } from 'rxjs'
@@ -134,7 +133,6 @@ export default class FunkhausVenueCard extends $LitElement(
 			zIndex: '5',
 			pointerEvents: 'none',
 		}
-		console.log('Rendering venue card:', primaryColor)
 
 		return html`
 			<schmancy-theme .color="${primaryColor}">
@@ -148,11 +146,11 @@ export default class FunkhausVenueCard extends $LitElement(
 					@mouseenter=${() => (this.isHovered = true)}
 					@mouseleave=${() => (this.isHovered = false)}
 					hidden
-					class=${classMap(cardClasses)}
-					style=${styleMap(cardStyles)}
+					class=${this.classMap(cardClasses)}
+					style=${this.styleMap(cardStyles)}
 				>
 					<!-- Subtle overlay for better text contrast -->
-					<div style=${styleMap(overlayStyle)}></div>
+					<div style=${this.styleMap(overlayStyle)}></div>
 
 					<!-- Booking badge that appears on hover -->
 					<schmancy-button

@@ -7,17 +7,17 @@ import { customElement, state } from 'lit/decorators.js'
 import { cache } from 'lit/directives/cache.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
-import { when } from 'lit/directives/when.js'
 import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import {
 	availabilityContext,
 	BookingFlowType,
 	CourtAvailabilityStatus,
+	CourtPreferences,
 	getAllCourtsAvailability,
-	getNextStep,
 } from 'src/availability-context'
-import { Court, SportTypeEnum } from 'src/db/courts.collection'
+import { Court, CourtTypeEnum, SportTypeEnum } from 'src/db/courts.collection'
+import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import './court-availability-dialog'
 import './court-map-view'
@@ -31,11 +31,39 @@ enum ViewMode {
 	MAP = 'map',
 }
 
+/**
+ * Player count options for filtering
+ */
+enum PlayerCountOption {
+	TWO = 2,
+	FOUR = 4,
+	SIX_PLUS = 6,
+}
+
+/**
+ * Availability status types for courts
+ */
 type AvailabilityStatus = 'full' | 'partial' | 'none'
 
 /**
+ * Time slot selection for court booking
+ */
+interface TimeSlot {
+	start: string
+	end: string
+}
+
+/**
+ * Cache entry for court availability information
+ */
+interface CourtAvailabilityInfo {
+	canSelect: boolean
+	status: AvailabilityStatus
+}
+
+/**
  * Enhanced Court Selection Component with Map View
- * Updated to support DATE_COURT_TIME_DURATION flow
+ * Supports multiple booking flow types, filtering, and availability visualization
  */
 @customElement('court-select-step')
 export class CourtSelectStep extends $LitElement(css`
@@ -45,12 +73,10 @@ export class CourtSelectStep extends $LitElement(css`
 			transform: scale(1);
 			box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5);
 		}
-
 		70% {
 			transform: scale(1.05);
 			box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
 		}
-
 		100% {
 			transform: scale(1);
 			box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
@@ -61,29 +87,96 @@ export class CourtSelectStep extends $LitElement(css`
 		animation: pulse 1.5s ease-out;
 	}
 
-	/* View toggle styles */
-	.view-toggle-btn {
-		padding: 0.5rem;
-		border-radius: 0.375rem;
-		display: flex;
+	/* Filter styles */
+	.filter-section {
+		padding: 0.75rem 1rem;
+		border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+		margin-bottom: 0.5rem;
+	}
+
+	.filter-chip {
+		padding: 0.15rem 0.5rem;
+		border-radius: 9999px;
+		font-size: 0.7rem;
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
+		cursor: pointer;
 		transition: all 0.2s ease;
+		margin-right: 0.2rem;
+		margin-bottom: 0.2rem;
+		min-width: 1.8rem;
+		height: 1.8rem;
 	}
 
-	.view-toggle-btn.active {
-		background-color: var(--schmancy-sys-color-primary-container, #e0e7ff);
-		color: var(--schmancy-sys-color-primary-default, #4f46e5);
+	.filter-chip.selected {
+		background-color: var(--schmancy-sys-color-primary-default, #4f46e5);
+		color: white;
 	}
 
-	.view-toggle-container {
+	.filter-chip:not(.selected) {
 		background-color: var(--schmancy-sys-color-surface-variant, #f3f4f6);
-		border-radius: 0.375rem;
-		padding: 0.25rem;
-		display: flex;
-		gap: 0.25rem;
+		color: var(--schmancy-sys-color-on-surface-variant, #4b5563);
+	}
+
+	.filter-chip:hover:not(.selected) {
+		background-color: var(--schmancy-sys-color-surface-variant-hover, #e5e7eb);
+	}
+
+	.filter-label {
+		font-size: 0.875rem;
+		font-weight: 500;
+		display: inline-block;
+		white-space: nowrap;
+	}
+
+	.filter-group {
+		margin-bottom: 0.75rem;
+	}
+
+	/* Scrollbar hiding */
+	.scrollbar-hide {
+		-ms-overflow-style: none; /* IE and Edge */
+		scrollbar-width: none; /* Firefox */
+	}
+
+	.scrollbar-hide::-webkit-scrollbar {
+		display: none; /* Chrome, Safari, and Opera */
+	}
+
+	/* Transition styles for view changes */
+	.transition-container {
+		transition: all 0.3s ease;
+	}
+
+	/* View transition system */
+	.view-container {
+		position: relative;
+		min-height: 100px; /* Minimum height to prevent collapse during transitions */
+	}
+
+	.grid-view,
+	.list-view {
+		opacity: 0;
+		visibility: hidden;
+		transition: opacity 300ms ease, visibility 0ms 300ms;
+		position: absolute;
+		width: 100%;
+		top: 0;
+		left: 0;
+	}
+
+	.grid-view.active,
+	.list-view.active {
+		opacity: 1;
+		visibility: visible;
+		transition: opacity 300ms ease, visibility 0ms;
+		position: relative;
 	}
 `) {
+	//#region Context and State
+
+	// Context selections
 	@select(courtsContext, undefined, { required: true })
 	allCourts!: Map<string, Court>
 
@@ -93,61 +186,117 @@ export class CourtSelectStep extends $LitElement(css`
 	@select(BookingProgressContext, undefined, { required: true })
 	bookingProgress!: BookingProgress
 
-	// Add availability context
 	@select(availabilityContext, undefined, { required: true })
-	availability!: any
+	availability!: {
+		timeSlots: Array<{
+			timeValue: number
+			courtAvailability: Record<string, boolean>
+		}>
+		date: string
+		bookingFlowType: BookingFlowType
+	}
 
+	// Component state
 	@state() selectedVenueCourts: Court[] = []
 	@state() loading: boolean = true
 	@state() error: string | null = null
-
-	// Court availability statuses
 	@state() courtAvailability: Map<string, CourtAvailabilityStatus> = new Map()
-
-	// State for confirmation dialog
 	@state() showConfirmationDialog: boolean = false
 	@state() pendingCourtSelection: Court | null = null
-
-	// New state for view mode
 	@state() viewMode: ViewMode = ViewMode.LIST
+	@state() courtPreferences: CourtPreferences = {}
+	@state() isActive: boolean = false
+	@state() isTransitioning: boolean = false
 
-	// Track the last successful court data fetch for better UX during errors
+	// Performance optimization caches
+	private courtAvailabilityInfoCache = new Map<string, CourtAvailabilityInfo>()
 	private lastSuccessfulData: { courts: Court[] } | null = null
 
-	/**
-	 * Toggle between list and map views
-	 */
-	private toggleViewMode(mode: ViewMode): void {
-		this.viewMode = mode
-		this.requestUpdate()
-	}
+	// Tracking state for availability checks
+	private _lastCheckedDate: string = ''
+	private _lastCheckedVenueId: string = ''
+	private _forceAvailabilityCheck: boolean = false
+
+	//#endregion
+
+	//#region Lifecycle Methods
 
 	/**
-	 * Determine if compact view should be used based on current step
-	 */
-	get isCompactView(): boolean {
-		return this.bookingProgress.currentStep !== BookingStep.Court
-	}
-
-	/**
-	 * Connect to the component lifecycle
+	 * Set up subscriptions when component is connected to DOM
 	 */
 	connectedCallback(): void {
 		super.connectedCallback()
-
-		// Subscribe to availability context for court status
 		this.subscribeToAvailabilityUpdates()
+
+		// Add subscription to BookingProgressContext to track active state
+		BookingProgressContext.$.pipe(
+			takeUntil(this.disconnecting),
+			map(progress => progress.currentStep),
+			distinctUntilChanged(),
+			map(x => {
+				// Find the position of Court step in the steps array
+				const courtStepIndex = this.bookingProgress.steps.findIndex(s => s.step === BookingStep.Court)
+				// Convert to 1-based position
+				const courtStepPosition = courtStepIndex + 1
+
+				// Check if this position matches the current step
+				return x === courtStepPosition
+			}),
+			filter(() => !this.isTransitioning),
+		).subscribe(isActive => {
+			// Set transitioning flag to enable smooth animations
+			this.isTransitioning = true
+
+			// Update active state
+			this.isActive = isActive
+
+			// Reset transitioning flag after animation time
+			setTimeout(() => {
+				this.isTransitioning = false
+				this.requestUpdate()
+			}, 350)
+
+			this.requestUpdate()
+		})
 	}
 
 	/**
-	 * Set up subscriptions to booking and availability data
+	 * Handle updates to component properties
+	 * Checks for booking changes that require availability updates
+	 */
+	updated(changedProperties: Map<string, unknown>): void {
+		if (changedProperties.has('booking') && this.booking?.date) {
+			const oldBooking = changedProperties.get('booking') as Booking | undefined
+
+			if (oldBooking) {
+				const timeChanged = oldBooking.startTime !== this.booking.startTime
+				const durationChanged = oldBooking.endTime !== this.booking.endTime
+
+				// Force availability check on time/duration changes
+				if (timeChanged || durationChanged) {
+					this._forceAvailabilityCheck = true
+				}
+			}
+
+			this.loadCourtsWithAvailability()
+		} else if (changedProperties.has('bookingProgress') && this.booking?.date) {
+			// Just load courts without forcing availability check
+			this.loadCourtsWithAvailability()
+		}
+	}
+
+	//#endregion
+
+	//#region Data Subscription Methods
+
+	/**
+	 * Subscribe to booking and availability context updates
 	 */
 	private subscribeToAvailabilityUpdates(): void {
 		// Subscribe to booking context changes
 		bookingContext.$.pipe(
 			takeUntil(this.disconnecting),
-			filter(booking => !!booking), // Ensure booking exists
-			// Listen for changes to start time, end time, or other relevant properties
+			filter(booking => !!booking),
 			map(booking => ({
 				startTime: booking.startTime,
 				endTime: booking.endTime,
@@ -162,7 +311,6 @@ export class CourtSelectStep extends $LitElement(css`
 					prev.venueId === curr.venueId,
 			),
 		).subscribe(() => {
-			console.log('Booking changes detected, reloading court availability')
 			this.loadCourtsWithAvailability()
 		})
 
@@ -170,10 +318,8 @@ export class CourtSelectStep extends $LitElement(css`
 		availabilityContext.$.pipe(
 			takeUntil(this.disconnecting),
 			filter(availability => !!availability && !!this.booking?.date),
-			// Only reload when availability for our current date changes
 			filter(availability => availability.date === this.booking.date),
 		).subscribe(() => {
-			console.log('Availability context updated, reloading court availability')
 			this.loadCourtsWithAvailability()
 		})
 
@@ -181,198 +327,119 @@ export class CourtSelectStep extends $LitElement(css`
 		this.loadCourtsWithAvailability()
 	}
 
-	/**
-	 * Update when relevant properties change
-	 */
-	updated(changedProperties: Map<string, unknown>): void {
-		// If booking data changed and we have necessary data, reload
-		if ((changedProperties.has('booking') || changedProperties.has('bookingProgress')) && this.booking?.date) {
-			this.loadCourtsWithAvailability()
-		}
-	}
+	//#endregion
+
+	//#region Availability Checking Methods
 
 	/**
-	 * Get container classes based on compact mode
-	 */
-	private getContainerClasses(): Record<string, boolean> {
-		const compact = this.isCompactView
-		return {
-			'gap-4': !compact,
-			'gap-2': compact,
-			'py-2': !compact,
-			'py-0': compact,
-			'transition-all': true,
-			'duration-300': true,
-		}
-	}
-
-	/**
-	 * Check if a court can be selected based on availability
-	 * A court is considered available if it has at least one available time slot
-	 * for any duration, even if no specific time/duration is selected yet
-	 */
-	private canSelectCourt(courtId: string): boolean {
-		// After date selection, all courts should be selectable if they have any availability
-		if (!this.booking.startTime) {
-			// If no time selected yet, court is available if it has any time slots available
-			return this.hasAnyAvailableTimeSlots(courtId);
-		}
-		
-		// If time is selected but no duration, court is available if the selected time is available
-		if (this.booking.startTime && !this.booking.endTime) {
-			return this.isTimeAvailableForCourt(courtId, this.booking.startTime);
-		}
-
-		// If both time and duration are selected, use the standard availability checks
-		const status = this.courtAvailability.get(courtId);
-		// Allow selection if at least partially available
-		return !!status?.available;
-	}
-	
-	/**
-	 * Check if a court has any available time slots on the selected date
+	 * Check if a court has any available time slots
 	 */
 	private hasAnyAvailableTimeSlots(courtId: string): boolean {
-		// Get all time slots from availability context
-		const timeSlots = availabilityContext.value.timeSlots;
-		
-		// Court is available if any time slot is available for this court
-		return timeSlots.some(slot => slot.courtAvailability[courtId] === true);
+		const timeSlots = availabilityContext.value?.timeSlots || []
+		return timeSlots.some(slot => slot.courtAvailability?.[courtId] === true)
 	}
-	
+
 	/**
 	 * Check if a specific time is available for a court
 	 */
 	private isTimeAvailableForCourt(courtId: string, timeString: string): boolean {
-		// Get the time value in minutes
-		const timeValue = dayjs(timeString).hour() * 60 + dayjs(timeString).minute();
-		
-		// Find the time slot for this time
-		const slot = availabilityContext.value.timeSlots.find(s => s.timeValue === timeValue);
-		
-		// If no slot found or slot doesn't have this court, it's not available
-		if (!slot || !slot.courtAvailability[courtId]) {
-			return false;
+		if (!timeString) return false
+
+		const timeValue = dayjs(timeString).hour() * 60 + dayjs(timeString).minute()
+		const slot = availabilityContext.value?.timeSlots?.find(s => s.timeValue === timeValue)
+
+		if (!slot || !slot.courtAvailability?.[courtId]) {
+			return false
 		}
-		
-		return slot.courtAvailability[courtId] === true;
+
+		return slot.courtAvailability[courtId] === true
 	}
 
 	/**
-	 * Get court availability status
-	 * Return 'full', 'partial', or 'none' based on court availability
+	 * Clear the availability cache
+	 */
+	private resetAvailabilityCache(): void {
+		this.courtAvailabilityInfoCache.clear()
+	}
+
+	/**
+	 * Get availability info for a court
+	 * Returns an object with canSelect and status properties
+	 */
+	private getCourtAvailabilityInfo(courtId: string): CourtAvailabilityInfo {
+		// Return from cache if available
+		if (this.courtAvailabilityInfoCache.has(courtId)) {
+			return this.courtAvailabilityInfoCache.get(courtId)!
+		}
+
+		let result: CourtAvailabilityInfo
+
+		// If no time selected, check for any available time slots
+		if (!this.isTimeSelected()) {
+			const hasAvailable = this.hasAnyAvailableTimeSlots(courtId)
+			result = {
+				canSelect: hasAvailable,
+				status: hasAvailable ? 'full' : 'none',
+			}
+		}
+		// If time but no duration selected
+		else if (this.isTimeSelected() && !this.isDurationSelected()) {
+			const isTimeAvailable = this.isTimeAvailableForCourt(courtId, this.booking.startTime)
+			result = {
+				canSelect: isTimeAvailable,
+				status: isTimeAvailable ? 'full' : 'none',
+			}
+		}
+		// If both time and duration selected
+		else {
+			const status = this.courtAvailability.get(courtId)
+
+			if (!status) {
+				result = { canSelect: false, status: 'none' }
+			} else if (status.fullyAvailable) {
+				result = { canSelect: true, status: 'full' }
+			} else if (status.available) {
+				result = { canSelect: true, status: 'partial' }
+			} else {
+				result = { canSelect: false, status: 'none' }
+			}
+		}
+
+		// Store result in cache
+		this.courtAvailabilityInfoCache.set(courtId, result)
+		return result
+	}
+
+	/**
+	 * Check if a court can be selected based on its availability
+	 */
+	private canSelectCourt(courtId: string): boolean {
+		return this.getCourtAvailabilityInfo(courtId).canSelect
+	}
+
+	/**
+	 * Get the availability status of a court (full, partial, none)
 	 */
 	private getCourtAvailabilityStatus(courtId: string): AvailabilityStatus {
-		// After date selection, court availability is based on available time slots
-		if (!this.booking.startTime) {
-			// If court has any available time slots, mark as fully available
-			return this.hasAnyAvailableTimeSlots(courtId) ? 'full' : 'none';
-		}
-		
-		// If time is selected but no duration, court is available/unavailable based on that time
-		if (this.booking.startTime && !this.booking.endTime) {
-			return this.isTimeAvailableForCourt(courtId, this.booking.startTime) ? 'full' : 'none';
-		}
-
-		// If both time and duration are selected, use the standard availability status
-		const status = this.courtAvailability.get(courtId);
-		
-		if (!status) return 'none';
-		
-		if (status.fullyAvailable) return 'full';
-		
-		if (status.available) return 'partial';
-		
-		return 'none';
+		return this.getCourtAvailabilityInfo(courtId).status
 	}
 
 	/**
-	 * Retry loading courts
+	 * Check if time has been selected in the booking
 	 */
-	private retryLoading(): void {
-		// Trigger a reload of courts with availability
-		this.loadCourtsWithAvailability()
+	private isTimeSelected(): boolean {
+		return !!this.booking?.startTime
 	}
 
 	/**
-	 * Load courts with availability data
+	 * Check if both time and duration have been selected in the booking
 	 */
-	private loadCourtsWithAvailability(): void {
-		this.loading = true
-		this.error = null
-
-		try {
-			let availabilityMap = new Map<string, CourtAvailabilityStatus>()
-
-			// If we're in DATE_COURT_TIME_DURATION flow and don't have start time yet,
-			// Always get accurate court availability using our improved calculation
-			// which now handles the case when no duration is provided
-			const courtAvailabilities = getAllCourtsAvailability(this.booking.startTime, this.calculateDuration())
-
-			// Create map of court ID to availability status for efficient lookups
-			courtAvailabilities.forEach(status => {
-				availabilityMap.set(status.courtId, status)
-			})
-
-			// Store the map in state
-			this.courtAvailability = availabilityMap
-
-			// Load venue courts
-			const venueCourts = Array.from(this.allCourts.values()).filter(
-				court => court.status === 'active' && court.venueId === this.booking.venueId,
-			)
-
-			// Only sort by availability if we're not showing all courts as available
-			let sortedCourts = venueCourts
-
-			if (!this.shouldShowAllCourtsAvailable) {
-				// Sort courts by availability
-				sortedCourts = venueCourts.sort((a, b) => {
-					// Get availability statuses
-					const aStatus = availabilityMap.get(a.id)
-					const bStatus = availabilityMap.get(b.id)
-
-					// Sort fully available courts first
-					if ((aStatus?.fullyAvailable || false) !== (bStatus?.fullyAvailable || false)) {
-						return aStatus?.fullyAvailable || false ? -1 : 1
-					}
-
-					// Then sort by partial availability
-					if ((aStatus?.available || false) !== (bStatus?.available || false)) {
-						return aStatus?.available || false ? -1 : 1
-					}
-
-					// Finally sort by name
-					return a.name.localeCompare(b.name)
-				})
-			} else {
-				// Just sort by name when showing all courts as available
-				sortedCourts = venueCourts.sort((a, b) => a.name.localeCompare(b.name))
-			}
-
-			this.selectedVenueCourts = sortedCourts
-			this.lastSuccessfulData = { courts: sortedCourts }
-			this.loading = false
-			this.error = null
-			this.requestUpdate()
-		} catch (error) {
-			console.error('Error loading court availability:', error)
-
-			// Use last successful data if available
-			if (this.lastSuccessfulData) {
-				this.selectedVenueCourts = this.lastSuccessfulData.courts
-				this.error = 'Unable to refresh court data. Showing previously loaded courts.'
-			} else {
-				this.error = 'Failed to load available courts. Please try again.'
-			}
-
-			this.loading = false
-			this.requestUpdate()
-		}
+	private isDurationSelected(): boolean {
+		return !!this.booking?.startTime && !!this.booking?.endTime
 	}
 
 	/**
-	 * Calculate current duration from booking start and end times
+	 * Calculate booking duration in minutes
 	 */
 	private calculateDuration(): number {
 		if (!this.booking.startTime || !this.booking.endTime) {
@@ -389,109 +456,206 @@ export class CourtSelectStep extends $LitElement(css`
 		}
 	}
 
+	//#endregion
+
+	//#region Data Loading Methods
+
 	/**
-	 * Confirm court selection with chosen time option
+	 * Load courts with availability data
+	 * This is the main method for fetching and processing court data
 	 */
-	private confirmCourtSelection(
-		court: Court,
-		option: 'partial' | 'alternative' | 'original' = 'original',
-		timeSlot?: { start: string; end: string },
-	): void {
-		// Create booking update object
+	private loadCourtsWithAvailability(): void {
+		this.loading = true
+		this.error = null
+		this.resetAvailabilityCache()
+
+		try {
+			// Get court availabilities based on current booking time and duration
+			const courtAvailabilities = getAllCourtsAvailability(this.booking.startTime, this.calculateDuration())
+
+			// Create map of court ID to availability status for efficient lookups
+			const availabilityMap = new Map<string, CourtAvailabilityStatus>()
+			courtAvailabilities.forEach(status => {
+				availabilityMap.set(status.courtId, status)
+			})
+
+			this.courtAvailability = availabilityMap
+
+			// Load venue courts
+			const venueCourts = Array.from(this.allCourts.values()).filter(
+				court => court.status === 'active' && court.venueId === this.booking.venueId,
+			)
+
+			// Apply filters and sort
+			const filteredCourts = this.applyCourtPreferenceFilters(venueCourts)
+			const sortedCourts = this.sortCourtsByAvailability(filteredCourts)
+
+			// Update state
+			this.selectedVenueCourts = sortedCourts
+			this.lastSuccessfulData = { courts: sortedCourts }
+			this.loading = false
+			this.error = null
+			this.requestUpdate()
+
+			// Check if we need to reset time/duration selections due to unavailability
+			this.checkAvailabilityAndResetIfNeeded()
+		} catch (error) {
+			this.handleLoadingError(error)
+		}
+	}
+
+	/**
+	 * Check if current time/duration selections need to be reset due to unavailability
+	 */
+	private checkAvailabilityAndResetIfNeeded(): void {
+		const shouldCheckAvailability =
+			this.isTimeSelected() &&
+			// We're actively changing key booking parameters, not just navigating steps
+			(this.booking.date !== this._lastCheckedDate ||
+				this.booking.venueId !== this._lastCheckedVenueId ||
+				this._forceAvailabilityCheck)
+
+		if (shouldCheckAvailability) {
+			// Store current values for future reference
+			this._lastCheckedDate = this.booking.date
+			this._lastCheckedVenueId = this.booking.venueId
+			this._forceAvailabilityCheck = false
+
+			// Check availability with a small delay to ensure everything has updated
+			setTimeout(() => this.checkAndResetUnavailableSelections(), 100)
+		}
+	}
+
+	/**
+	 * Handle errors when loading courts
+	 */
+	private handleLoadingError(error: unknown): void {
+		console.error('Error loading court availability:', error)
+
+		// Use last successful data if available
+		if (this.lastSuccessfulData) {
+			this.selectedVenueCourts = this.lastSuccessfulData.courts
+			this.error = 'Unable to refresh court data. Showing previously loaded courts.'
+		} else {
+			this.error = 'Failed to load available courts. Please try again.'
+		}
+
+		this.loading = false
+		this.requestUpdate()
+	}
+
+	/**
+	 * Retry loading courts after an error
+	 */
+	private retryLoading(): void {
+		this._forceAvailabilityCheck = true
+		this.loadCourtsWithAvailability()
+	}
+
+	/**
+	 * Check if any courts are available with current time and duration
+	 * Only reset time/duration if they are actually unavailable
+	 */
+	private checkAndResetUnavailableSelections(): void {
+		// Only proceed if we have courts and time/duration selections
+		if (!this.selectedVenueCourts?.length || !this.isTimeSelected()) {
+			return
+		}
+
+		// Check if any courts are available with current selections
+		const hasAvailableCourts = this.selectedVenueCourts.some(court => this.canSelectCourt(court.id))
+
+		// If no courts are available with current selections
+		if (!hasAvailableCourts) {
+			console.log('Courts unavailable with current selections, checking alternatives')
+
+			if (this.isDurationSelected()) {
+				this.checkAndResetDuration()
+			} else {
+				this.resetTimeSelection()
+			}
+		}
+		// If courts are available with current selections, we don't need to reset anything
+	}
+
+	/**
+	 * Check if the duration needs to be reset due to unavailability
+	 */
+	private checkAndResetDuration(): void {
+		// First check if the time is available without the duration
+		const hasAvailableCourtsWithoutDuration = this.selectedVenueCourts.some(court =>
+			this.isTimeAvailableForCourt(court.id, this.booking.startTime),
+		)
+
+		if (hasAvailableCourtsWithoutDuration) {
+			// Only the duration is the problem, so clear just the duration
+			console.log('Duration caused unavailability, resetting only duration')
+			const bookingUpdate = { ...this.booking, endTime: undefined }
+			bookingContext.set(bookingUpdate)
+		} else {
+			// Both time and duration are problems, reset both
+			console.log('Both time and duration unavailable, resetting both')
+			const bookingUpdate = {
+				...this.booking,
+				startTime: undefined,
+				endTime: undefined,
+			}
+			bookingContext.set(bookingUpdate)
+		}
+	}
+
+	/**
+	 * Reset time selection due to unavailability
+	 */
+	private resetTimeSelection(): void {
+		console.log('Selected time is unavailable, resetting')
 		const bookingUpdate = {
 			...this.booking,
-			courtId: court.id,
+			startTime: undefined,
 		}
-
-		// If using an alternative time slot, adjust booking times
-		if (timeSlot && (option === 'partial' || option === 'alternative')) {
-			// Create Date objects for the start and end times
-			const bookingDate = dayjs(this.booking.date).format('YYYY-MM-DD')
-			const startTime = dayjs(`${bookingDate}T${timeSlot.start}:00`)
-			const endTime = dayjs(`${bookingDate}T${timeSlot.end}:00`)
-
-			// Update booking with adjusted times
-			bookingUpdate.startTime = startTime.toISOString()
-			bookingUpdate.endTime = endTime.toISOString()
-
-			// Log the time adjustment
-			console.log(`Adjusted booking time to ${option} slot: ${timeSlot.start} - ${timeSlot.end}`)
-		}
-
-		// Update booking context with selected court and adjusted times
-		// This will trigger real-time updates of time and duration availability
 		bookingContext.set(bookingUpdate)
-
-		// Reset dialog state
-		this.pendingCourtSelection = null
-		this.showConfirmationDialog = false
-
-		// Only advance to the next step if we're in the initial flow and haven't selected time yet
-		// Otherwise, we want to stay on the current step to enable changing selections freely
-		if (this.isCourtBeforeTimeFlow && !this.booking.startTime) {
-			// Advance to the next step in the flow (only for initial selection)
-			BookingProgressContext.set({
-				currentStep: getNextStep('Court'),
-			})
-		}
-
-		// Animate the selected court if in list view
-		if (this.viewMode === ViewMode.LIST) {
-			setTimeout(() => {
-				const selectedCourtElement = this.shadowRoot?.querySelector(`[data-court-id="${court.id}"]`)
-				if (selectedCourtElement) {
-					selectedCourtElement.classList.add('pulse-animation')
-				}
-			}, 50)
-		}
-
-		// Fire change event for parent components
-		this.dispatchEvent(
-			new CustomEvent('next', {
-				detail: {
-					court,
-					timeOption: option,
-					adjustedTimes: option !== 'original',
-				},
-				bubbles: true,
-				composed: true,
-			}),
-		)
 	}
 
-	private get isCourtBeforeTimeFlow(): boolean {
-		return this.availability?.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION
-	}
-	
 	/**
-	 * Determine if we're in a flow state where all courts should be shown as available
-	 * This applies when:
-	 * 1. We're in DATE_COURT_TIME_DURATION flow and selecting court before time, OR
-	 * 2. We're looking at courts after time selection in any flow
+	 * Sort courts by availability status and name
 	 */
-	/**
-	 * We no longer need to artificially show all courts as available
-	 * since we've improved the availability calculation to handle missing duration
-	 * This is kept for compatibility but will always return false
-	 */
-	private get shouldShowAllCourtsAvailable(): boolean {
-		// No longer needed as the availability calculation now handles this case properly
-		return false
+	private sortCourtsByAvailability(courts: Court[]): Court[] {
+		return courts.sort((a, b) => {
+			const aInfo = this.getCourtAvailabilityInfo(a.id)
+			const bInfo = this.getCourtAvailabilityInfo(b.id)
+
+			// First sort by availability status
+			if (aInfo.status !== bInfo.status) {
+				// Full > Partial > None
+				const statusOrder = { full: 0, partial: 1, none: 2 }
+				return statusOrder[aInfo.status] - statusOrder[bInfo.status]
+			}
+
+			// Then sort by name
+			return a.name.localeCompare(b.name)
+		})
 	}
 
-	// Update the handleCourtSelect method:
+	//#endregion
+
+	//#region Court Selection Methods
+
+	/**
+	 * Handle selection of a court
+	 * Shows confirmation dialog for partially available courts
+	 */
 	private handleCourtSelect(court: Court): void {
 		// Don't allow selecting unavailable courts
 		if (!this.canSelectCourt(court.id)) {
 			return
 		}
 
-		// Check if court is partially available
-		const availabilityStatus = this.getCourtAvailabilityStatus(court.id)
+		// Handle filter conflicts
+		this.handleFilterConflicts(court)
 
-		// Only show the confirmation dialog for partially available courts
-		// when both time and duration are selected
-		if (availabilityStatus === 'partial' && this.booking.startTime && this.booking.endTime) {
+		// Check if court is partially available when both time and duration selected
+		const availabilityStatus = this.getCourtAvailabilityStatus(court.id)
+		if (availabilityStatus === 'partial' && this.isDurationSelected()) {
 			// Show confirmation dialog for partially available courts
 			this.pendingCourtSelection = court
 			this.showConfirmationDialog = true
@@ -501,145 +665,597 @@ export class CourtSelectStep extends $LitElement(css`
 		// For fully available courts, proceed directly
 		this.confirmCourtSelection(court)
 	}
+
 	/**
-	 * Handle dialog events
+	 * Handle conflicts between court selection and active filters
+	 */
+	private handleFilterConflicts(court: Court): void {
+		// Check if filters are active and court doesn't match filters
+		const hasActiveFilters = this.getActiveFilterCount() > 0
+		const matchesFilters = this.courtMatchesFilters(court)
+		const isAlreadySelected = this.booking?.courtId === court.id
+
+		if (hasActiveFilters && !matchesFilters) {
+			// If a filtered court was previously selected, clear filters
+			if (isAlreadySelected) {
+				// Keep the selection but clear filters
+				this.courtPreferences = {}
+				this.loadCourtsWithAvailability()
+				return
+			}
+
+			// If selecting a court that doesn't match filters, clear conflicting filters
+			this.adjustFiltersForCourtSelection(court)
+		}
+	}
+
+	/**
+	 * Adjust filters to allow selection of a specific court
+	 */
+	private adjustFiltersForCourtSelection(court: Court): void {
+		// Adjust court type filter if needed
+		if (this.courtPreferences.courtTypes?.length && court.courtType) {
+			this.courtPreferences = {
+				...this.courtPreferences,
+				courtTypes: [court.courtType as CourtTypeEnum],
+			}
+		}
+
+		// Adjust player count filter if needed
+		if (this.courtPreferences.playerCount && !this.isSuitableForPlayerCount(court, this.courtPreferences.playerCount)) {
+			this.courtPreferences = {
+				...this.courtPreferences,
+				playerCount: undefined,
+			}
+		}
+
+		// Refresh with updated filters
+		this.loadCourtsWithAvailability()
+	}
+
+	/**
+	 * Confirm court selection with optional time slot
+	 */
+	private confirmCourtSelection(court: Court, timeSlot?: TimeSlot): void {
+		this.processCourtSelection(court, timeSlot)
+	}
+
+	/**
+	 * Process court selection and update booking context
+	 * This method is responsible for updating the booking with the selected court
+	 * and transitioning to the next step in the flow
+	 */
+	private processCourtSelection(court: Court, timeSlot?: TimeSlot): void {
+		// Update booking context with selected court
+		const bookingUpdate: Partial<Booking> = {
+			courtId: court.id,
+		}
+
+		// If time slot is provided (for partial availability), update time and duration
+		if (timeSlot) {
+			bookingUpdate.startTime = timeSlot.start
+			bookingUpdate.endTime = timeSlot.end
+		}
+
+		// Update booking context
+		bookingContext.set(bookingUpdate, true)
+
+		// Reset dialog state if applicable
+		this.pendingCourtSelection = null
+		this.showConfirmationDialog = false
+
+		// Transition to the next step - this will handle expanded steps automatically
+		transitionToNextStep('Court')
+	}
+
+	/**
+	 * Handle confirmation from the court availability dialog
 	 */
 	private handleDialogConfirm(e: CustomEvent): void {
-		const { court, option, timeSlot } = e.detail
-		console.log('Confirm selection:', option, timeSlot)
+		const { court, timeSlot } = e.detail
 
-		if (!court || !option) {
+		if (!court) {
 			console.error('Missing required confirmation details')
 			return
 		}
 
-		// Create booking update object
-		const bookingUpdate = {
-			...this.booking,
-			courtId: court.id,
+		this.processCourtSelection(court, timeSlot)
+	}
+
+	/**
+	 * Handle cancellation from the court availability dialog
+	 */
+	private handleDialogCancel(): void {
+		this.pendingCourtSelection = null
+		this.showConfirmationDialog = false
+	}
+
+	//#endregion
+
+	//#region Filter Methods
+
+	/**
+	 * Apply court preference filters to the list of courts
+	 * Filters courts based on court type, player count, and other preferences
+	 */
+	private applyCourtPreferenceFilters(courts: Court[]): Court[] {
+		// If no filters are active, return all courts sorted by name
+		if (!this.getActiveFilterCount()) {
+			return [...courts].sort((a, b) => a.name.localeCompare(b.name))
 		}
 
-		// If using a time slot option, adjust booking times
-		if (timeSlot && (option === 'partial' || option === 'alternative' || option === 'extended')) {
-			// Create Date objects for the start and end times
-			const bookingDate = dayjs(this.booking.date).format('YYYY-MM-DD')
-			const startTime = dayjs(`${bookingDate}T${timeSlot.start}:00`)
-			const endTime = dayjs(`${bookingDate}T${timeSlot.end}:00`)
+		// For active filters, prioritize matching courts first, then availability,
+		// but keep all courts visible in the display
+		return [...courts].sort((a, b) => {
+			const aMatchesFilters = this.courtMatchesFilters(a)
+			const bMatchesFilters = this.courtMatchesFilters(b)
 
-			// Update booking with adjusted times
-			bookingUpdate.startTime = startTime.toISOString()
-			bookingUpdate.endTime = endTime.toISOString()
-
-			// Calculate new price based on duration ratio if using partial option
-			if (option === 'partial') {
-				const originalDuration = this.calculateDuration()
-				const newDuration = endTime.diff(startTime, 'minute')
-				const priceRatio = newDuration / originalDuration
-
-				if (this.booking.price) {
-					bookingUpdate.price = Math.round((this.booking.price * priceRatio + Number.EPSILON) * 100) / 100
-				}
+			// First sort by matching filters
+			if (aMatchesFilters !== bMatchesFilters) {
+				return aMatchesFilters ? -1 : 1
 			}
 
-			// Log the time adjustment
-			console.log(`Adjusted booking time to ${option} slot: ${timeSlot.start} - ${timeSlot.end}`)
-		}
+			// If both have same filter status, then sort by availability
+			const aInfo = this.getCourtAvailabilityInfo(a.id)
+			const bInfo = this.getCourtAvailabilityInfo(b.id)
 
-		// Update booking context with selected court and adjusted times
-		bookingContext.set(bookingUpdate)
+			if (aInfo.status !== bInfo.status) {
+				// Full > Partial > None
+				const statusOrder = { full: 0, partial: 1, none: 2 }
+				return statusOrder[aInfo.status] - statusOrder[bInfo.status]
+			}
 
-		// Reset dialog state
-		this.pendingCourtSelection = null
-		this.showConfirmationDialog = false
-
-		// Only advance to the next step if we're in the initial flow and haven't selected time yet
-		// Otherwise, we want to stay on the current step to enable changing selections freely
-		if (this.isCourtBeforeTimeFlow && !this.booking.startTime) {
-			// Advance to the next step in the flow (only for initial selection)
-			BookingProgressContext.set({
-				currentStep: getNextStep('Court'),
-			})
-		}
-
-		// Animate the selected court if in list view
-		if (this.viewMode === ViewMode.LIST) {
-			setTimeout(() => {
-				const selectedCourtElement = this.shadowRoot?.querySelector(`[data-court-id="${court.id}"]`)
-				if (selectedCourtElement) {
-					selectedCourtElement.classList.add('pulse-animation')
-				}
-			}, 50)
-		}
-
-		// Fire change event for parent components
-		this.dispatchEvent(
-			new CustomEvent('next', {
-				detail: {
-					court,
-					timeOption: option,
-					adjustedTimes: option !== 'original',
-					timeSlot,
-				},
-				bubbles: true,
-				composed: true,
-			}),
-		)
-	}
-
-	private handleDialogCancel(): void {
-		this.cancelCourtSelection()
+			// If both have same filter status and availability, sort by name
+			return a.name.localeCompare(b.name)
+		})
 	}
 
 	/**
-	 * Cancel court selection from dialog
+	 * Check if a court matches all active filters
 	 */
-	private cancelCourtSelection(): void {
-		this.pendingCourtSelection = null
-		this.showConfirmationDialog = false
+	private courtMatchesFilters(court: Court): boolean {
+		// Check court type filter
+		if (
+			this.courtPreferences.courtTypes?.length &&
+			!this.courtPreferences.courtTypes.includes(court.courtType as CourtTypeEnum)
+		) {
+			return false
+		}
+
+		// Check sport type filter
+		if (
+			this.courtPreferences.sportTypes?.length &&
+			!court.sportTypes.some(type => this.courtPreferences.sportTypes?.includes(type as SportTypeEnum))
+		) {
+			return false
+		}
+
+		// Check player count filter
+		if (this.courtPreferences.playerCount && !this.isSuitableForPlayerCount(court, this.courtPreferences.playerCount)) {
+			return false
+		}
+
+		// Check amenities filter
+		if (
+			this.courtPreferences.amenities?.length &&
+			!this.courtPreferences.amenities.every(amenity => court.amenities?.includes(amenity))
+		) {
+			return false
+		}
+
+		// Court matches all active filters
+		return true
 	}
 
 	/**
-	 * Render the map or list view based on current view mode
+	 * Get the number of active filters
+	 */
+	private getActiveFilterCount(): number {
+		let count = 0
+		if (this.courtPreferences.courtTypes?.length) count++
+		if (this.courtPreferences.playerCount) count++
+		if (this.courtPreferences.amenities?.length) count++
+		return count
+	}
+
+	/**
+	 * Toggle a court type filter
+	 */
+	private toggleCourtTypeFilter(type: CourtTypeEnum): void {
+		const currentTypes = this.courtPreferences.courtTypes || []
+
+		if (currentTypes.includes(type)) {
+			this.courtPreferences = {
+				...this.courtPreferences,
+				courtTypes: currentTypes.filter(t => t !== type),
+			}
+		} else {
+			this.courtPreferences = {
+				...this.courtPreferences,
+				courtTypes: [...currentTypes, type],
+			}
+		}
+
+		this.loadCourtsWithAvailability()
+	}
+
+	/**
+	 * Handle click on player count filter chip
+	 */
+	private handlePlayerCountChipClick(playerCount: PlayerCountOption): void {
+		if (this.courtPreferences.playerCount === playerCount) {
+			this.courtPreferences = {
+				...this.courtPreferences,
+				playerCount: undefined,
+			}
+		} else {
+			this.courtPreferences = {
+				...this.courtPreferences,
+				playerCount: playerCount,
+			}
+		}
+
+		this.loadCourtsWithAvailability()
+	}
+
+	/**
+	 * Check if a court type is selected in filters
+	 */
+	private isCourtTypeSelected(type: CourtTypeEnum): boolean {
+		return (this.courtPreferences.courtTypes || []).includes(type)
+	}
+
+	/**
+	 * Check if a court is suitable for the given player count
+	 */
+	private isSuitableForPlayerCount(court: Court, playerCount: number): boolean {
+		// If no dimensions data available, default to true (we can't tell)
+		if (!court.dimensions) {
+			return true
+		}
+
+		// Calculate court area in square meters
+		const area = court.dimensions.length * court.dimensions.width
+		const areaInSquareMeters =
+			court.dimensions.unit === 'feet'
+				? area * 0.092903 // Convert sq feet to sq meters
+				: area
+
+		// Check sport types of the court
+		const sports = court.sportTypes || ['pickleball']
+
+		// For specific sports, we can make better recommendations
+		if (sports.includes('pickleball')) {
+			if (playerCount <= 2) return true
+			if (playerCount === 4) return areaInSquareMeters >= 75
+			return false // 6+ players not recommended
+		}
+
+		if (sports.includes('padel')) {
+			if (playerCount <= 2) return true
+			if (playerCount === 4) return areaInSquareMeters >= 180
+			return false // 6+ players not recommended
+		}
+
+		if (sports.includes('volleyball')) {
+			if (playerCount >= 6) return areaInSquareMeters >= 150
+			if (playerCount === 4) return true
+			if (playerCount === 2) return court.courtType === 'outdoor'
+		}
+
+		// Default logic based on court size and player count
+		switch (playerCount) {
+			case 2:
+				return true // Small courts are fine for 2 players
+			case 4:
+				return areaInSquareMeters >= 100 // Medium courts for 4 players
+			default:
+				return areaInSquareMeters >= 150 // 6+ players need larger courts
+		}
+	}
+
+	/**
+	 * Format court type for display (convert camelCase to Title Case)
+	 */
+	private formatCourtType(type: string): string {
+		if (!type) return ''
+
+		// Handle camelCase or snake_case by inserting spaces
+		return type
+			.replace(/([A-Z])/g, ' $1') // Insert space before capital letters
+			.replace(/_/g, ' ') // Replace underscores with spaces
+			.replace(/^./, str => str.toUpperCase()) // Capitalize first letter
+			.trim()
+	}
+
+	/**
+	 * Toggle between list and map view modes
+	 */
+	private toggleViewMode(mode: ViewMode): void {
+		this.viewMode = mode
+		this.requestUpdate()
+	}
+
+	//#endregion
+
+	//#region UI Helper Methods
+
+	/**
+	 * Get CSS classes for a court based on its status and selection
+	 */
+	private getCourtMatchClass(court: Court): string {
+		const matchesFilters = this.courtMatchesFilters(court)
+		const isSelected = this.booking?.courtId === court.id
+		const isAvailable = this.canSelectCourt(court.id)
+		const hasActiveFilters = this.getActiveFilterCount() > 0
+
+		const classes = []
+
+		if (isSelected) {
+			classes.push('pulse-animation')
+		}
+
+		if (!isAvailable) {
+			classes.push('opacity-50')
+		} else if (hasActiveFilters && !matchesFilters) {
+			// Only apply opacity to non-matching courts when filters are active
+			classes.push('opacity-60')
+		}
+
+		return classes.join(' ')
+	}
+
+	/**
+	 * Get CSS classes for the container
+	 */
+	private getContainerClasses(): Record<string, boolean> {
+		return {
+			'gap-2': true,
+			'py-2': true,
+			'transition-all': true,
+			'duration-300': true,
+		}
+	}
+
+	//#endregion
+
+	//#region Render Methods
+
+	/**
+	 * Render the filters section
+	 */
+	private renderFilters() {
+		const courtTypeOptions = Object.values(CourtTypeEnum).filter(Boolean)
+		const playerCountOptions = [PlayerCountOption.TWO, PlayerCountOption.FOUR, PlayerCountOption.SIX_PLUS]
+
+		// Don't render filters if there are no courts or only one court
+		if (this.selectedVenueCourts.length <= 1) return html``
+
+		// Check if we have any court types to filter by
+		const hasCourtTypeOptions = courtTypeOptions.some(type =>
+			this.selectedVenueCourts.some(court => court.courtType === type),
+		)
+
+		return html`
+			<div class="filter-section py-2 px-1">
+				<!-- Combined filter chips in one line -->
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<div class="flex flex-wrap gap-1.5">
+						<!-- Court Type Filters -->
+						${hasCourtTypeOptions
+							? courtTypeOptions.map(type => {
+									// Only show options that exist in the available courts
+									const hasCourtsOfType = this.selectedVenueCourts.some(court => court.courtType === type)
+									if (!hasCourtsOfType) return html``
+
+									const isSelected = this.isCourtTypeSelected(type)
+									const typeIcon = type === 'indoor' ? 'home' : type === 'outdoor' ? 'wb_sunny' : 'sports_tennis'
+
+									return html`
+										<schmancy-chip .selected="${isSelected}" @click=${() => this.toggleCourtTypeFilter(type)}>
+											<schmancy-icon slot="leading" size="16px">${typeIcon}</schmancy-icon>
+											${this.formatCourtType(type)}
+										</schmancy-chip>
+									`
+							  })
+							: ''}
+
+						<!-- Player Count Filters -->
+						${playerCountOptions.map(count => {
+							// Label for the player count chip
+							const label = count === PlayerCountOption.SIX_PLUS ? '6+' : count.toString()
+							const isSelected = this.courtPreferences.playerCount === count
+
+							return html`
+								<schmancy-chip .selected="${isSelected}" @click=${() => this.handlePlayerCountChipClick(count)}>
+									<schmancy-icon slot="leading" size="16px">group</schmancy-icon>
+									${label}
+								</schmancy-chip>
+							`
+						})}
+					</div>
+
+					<!-- View mode toggles - only show when active state -->
+					<div class="flex gap-1 shrink-0 ml-auto">
+						<schmancy-icon-button
+							size="sm"
+							variant="${this.viewMode === ViewMode.LIST ? 'filled tonal' : 'text'}"
+							@click=${() => this.toggleViewMode(ViewMode.LIST)}
+							aria-pressed=${this.viewMode === ViewMode.LIST}
+							aria-label="List view"
+							>view_list</schmancy-icon-button
+						>
+						<schmancy-icon-button
+							size="sm"
+							variant="${this.viewMode === ViewMode.MAP ? 'filled tonal' : 'text'}"
+							@click=${() => this.toggleViewMode(ViewMode.MAP)}
+							aria-pressed=${this.viewMode === ViewMode.MAP}
+							aria-label="Map view"
+							>map</schmancy-icon-button
+						>
+					</div>
+				</div>
+			</div>
+		`
+	}
+
+	/**
+	 * Render the courts in list view - with support for compact mode
+	 */
+	private renderCourtsList() {
+		if (!this.isActive) {
+			// Compact horizontal scrolling view for inactive state
+			return html`
+				<div
+					class="flex overflow-x-auto scrollbar-hide snap-x gap-2 py-2 first:pl-1 last:pr-1"
+					role="listbox"
+					aria-label="Available Courts"
+					aria-multiselectable="false"
+				>
+					${repeat(
+						this.selectedVenueCourts,
+						court => court.id,
+						court => html`
+							<div
+								data-court-id="${court.id}"
+								role="option"
+								aria-selected="${this.booking?.courtId === court.id ? 'true' : 'false'}"
+								aria-disabled="${!this.canSelectCourt(court.id) ? 'true' : 'false'}"
+								class="snap-center flex-shrink-0 transition-opacity duration-300 ${this.getCourtMatchClass(court)}"
+								style="min-width: 140px;"
+							>
+								<sport-court-card
+									id="${court.id}"
+									name="${court.name}"
+									type="${(court.sportTypes?.[0]?.toLowerCase() as SportTypeEnum) || 'volleyball'}"
+									courtType="${court.courtType}"
+									.selected="${this.booking?.courtId === court.id}"
+									.disabled="${!this.canSelectCourt(court.id)}"
+									.compact="${true}"
+									data-availability="${this.getCourtAvailabilityStatus(court.id)}"
+									@court-click="${() => this.handleCourtSelect(court)}"
+								></sport-court-card>
+							</div>
+						`,
+					)}
+				</div>
+			`
+		} else {
+			// Regular grid view for active state
+			return html`
+				<schmancy-scroll>
+					<div
+						class="grid grid-cols-2 md:grid-cols-3 justify-between gap-2 ${classMap(this.getContainerClasses())}"
+						role="listbox"
+						aria-label="Available Courts"
+						aria-multiselectable="false"
+					>
+						${repeat(
+							this.selectedVenueCourts,
+							court => court.id,
+							court => html`
+								<div
+									data-court-id="${court.id}"
+									role="option"
+									aria-selected="${this.booking?.courtId === court.id ? 'true' : 'false'}"
+									aria-disabled="${!this.canSelectCourt(court.id) ? 'true' : 'false'}"
+									class="relative transition-opacity duration-300 ${this.getCourtMatchClass(court)}"
+								>
+									<sport-court-card
+										id="${court.id}"
+										name="${court.name}"
+										type="${(court.sportTypes?.[0]?.toLowerCase() as SportTypeEnum) || 'volleyball'}"
+										courtType="${court.courtType}"
+										.selected="${this.booking?.courtId === court.id}"
+										.disabled="${!this.canSelectCourt(court.id)}"
+										.compact="${!this.isActive}"
+										data-availability="${this.getCourtAvailabilityStatus(court.id)}"
+										@court-click="${() => this.handleCourtSelect(court)}"
+									></sport-court-card>
+								</div>
+							`,
+						)}
+					</div>
+				</schmancy-scroll>
+			`
+		}
+	}
+
+	/**
+	 * Render the courts in map view
+	 */
+	private renderMapView() {
+		return html`
+			<court-map-view
+				.courts=${this.selectedVenueCourts}
+				.selectedCourtId=${this.booking?.courtId}
+				.courtAvailability=${this.courtAvailability}
+				@court-select=${(e: CustomEvent) => this.handleCourtSelect(e.detail.court)}
+			></court-map-view>
+		`
+	}
+
+	/**
+	 * Render the loading state
+	 */
+	private renderLoadingState() {
+		return html`
+			<div class="text-center py-6">
+				<div
+					class="inline-block w-8 h-8 border-4 border-t-primary-default border-r-outlineVariant border-b-outlineVariant border-l-outlineVariant rounded-full animate-spin"
+				></div>
+				<schmancy-typography type="body" token="md" class="mt-2">Loading courts...</schmancy-typography>
+			</div>
+		`
+	}
+
+	/**
+	 * Render the error state
+	 */
+	private renderErrorState() {
+		return html`
+			<div class="p-6 bg-error-container rounded-lg text-center">
+				<schmancy-icon size="32px" class="text-error-default mb-2">error_outline</schmancy-icon>
+				<p class="text-error-on-container mb-2">${this.error}</p>
+				<button @click=${() => this.retryLoading()} class="px-4 py-2 bg-error-default text-error-on rounded-md mt-2">
+					Try Again
+				</button>
+			</div>
+		`
+	}
+
+	/**
+	 * Render the empty state when no courts are available
+	 */
+	private renderEmptyState() {
+		return html`
+			<div class="text-center py-6">
+				<schmancy-icon size="48px" class="text-surface-on-variant opacity-50">sports_tennis</schmancy-icon>
+				<schmancy-typography type="body" token="md" class="mt-2">
+					No courts available at this venue.
+				</schmancy-typography>
+			</div>
+		`
+	}
+
+	/**
+	 * Main render method
 	 */
 	render() {
-		// Show loading state
+		// Handle loading, error, and empty states
 		if (this.loading && !this.lastSuccessfulData) {
-			return html`
-				<div class="text-center py-6">
-					<div
-						class="inline-block w-8 h-8 border-4 border-t-primary-default border-r-outlineVariant border-b-outlineVariant border-l-outlineVariant rounded-full animate-spin"
-					></div>
-					<schmancy-typography type="body" token="md" class="mt-2"> Loading courts... </schmancy-typography>
-				</div>
-			`
+			return this.renderLoadingState()
 		}
 
-		// Show error message if present
 		if (this.error && !this.lastSuccessfulData) {
-			return html`
-				<div class="p-6 bg-error-container rounded-lg text-center">
-					<schmancy-icon size="32px" class="text-error-default mb-2">error_outline</schmancy-icon>
-					<p class="text-error-on-container mb-2">${this.error}</p>
-					<button @click=${() => this.retryLoading()} class="px-4 py-2 bg-error-default text-error-on rounded-md mt-2">
-						Try Again
-					</button>
-				</div>
-			`
+			return this.renderErrorState()
 		}
 
-		// Show empty state if no courts
 		if (this.selectedVenueCourts.length === 0) {
-			return html`
-				<div class="text-center py-6">
-					<schmancy-icon size="48px" class="text-surface-on-variant opacity-50"> sports_tennis </schmancy-icon>
-					<schmancy-typography type="body" token="md" class="mt-2">
-						No courts available at this venue.
-					</schmancy-typography>
-				</div>
-			`
+			return this.renderEmptyState()
 		}
 
-		// Render main content
+		// Render main content with conditional filter display
 		return html`
 			${this.showConfirmationDialog && this.pendingCourtSelection
 				? html`
@@ -652,7 +1268,7 @@ export class CourtSelectStep extends $LitElement(css`
 						></court-availability-dialog>
 				  `
 				: ''}
-			<div class="mt-3 bg-surface-container-low rounded-lg px-2">
+			<div class="mt-3 bg-surface-container-low rounded-lg px-2 transition-container">
 				${this.error
 					? html`
 							<div class="bg-error-container p-2 rounded-t-lg text-error-on-container text-sm text-center">
@@ -661,111 +1277,17 @@ export class CourtSelectStep extends $LitElement(css`
 							</div>
 					  `
 					: ''}
-				${when(
-					!this.isCompactView,
-					() => html`
-						<div class="flex items-center justify-between">
-							<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
-								Select Court
-							</schmancy-typography>
 
-							<!-- View toggle buttons -->
-							<div class="view-toggle-container">
-								<button
-									class="view-toggle-btn ${this.viewMode === ViewMode.LIST ? 'active' : ''}"
-									@click=${() => this.toggleViewMode(ViewMode.LIST)}
-									aria-label="List view"
-									title="List view"
-								>
-									<schmancy-icon size="18px">view_list</schmancy-icon>
-								</button>
-								<button
-									class="view-toggle-btn ${this.viewMode === ViewMode.MAP ? 'active' : ''}"
-									@click=${() => this.toggleViewMode(ViewMode.MAP)}
-									aria-label="Map view"
-									title="Map view"
-								>
-									<schmancy-icon size="18px">map</schmancy-icon>
-								</button>
-							</div>
-						</div>
-					`,
-				)}
+				<!-- Court Filters - Only show when active -->
+				${this.isActive ? this.renderFilters() : ''}
 
-				<!-- Content based on view mode -->
+				<!-- If active, show based on view mode, otherwise always show list view -->
 				${cache(
-					this.viewMode === ViewMode.MAP
-						? html`
-								<court-map-view
-									.courts=${this.selectedVenueCourts}
-									.selectedCourtId=${this.booking?.courtId}
-									.courtAvailability=${this.courtAvailability}
-									@court-select=${(e: CustomEvent) => this.handleCourtSelect(e.detail.court)}
-								></court-map-view>
-						  `
-						: html`
-								<!-- Original grid layout with sport court cards -->
-								<div
-									class="grid grid-cols-3 md:grid-cols-3 justify-between gap-3 ${classMap(this.getContainerClasses())}"
-									role="listbox"
-									aria-label="Available Courts"
-									aria-multiselectable="false"
-								>
-									${repeat(
-										this.selectedVenueCourts,
-										court => court.id,
-										court => html`
-											<div
-												data-court-id="${court.id}"
-												role="option"
-												aria-selected="${this.booking?.courtId === court.id ? 'true' : 'false'}"
-												aria-disabled="${!this.canSelectCourt(court.id) ? 'true' : 'false'}"
-												class="relative"
-											>
-												<sport-court-card
-													id="${court.id}"
-													name="${court.name}"
-													type="${(court.sportTypes?.[0]?.toLowerCase() as SportTypeEnum) || 'volleyball'}"
-													.selected="${this.booking?.courtId === court.id}"
-													.disabled="${!this.canSelectCourt(court.id)}"
-													.compact="${this.isCompactView}"
-													@court-click="${() => this.handleCourtSelect(court)}"
-												></sport-court-card>
-
-												<!-- Availability badge -->
-												${this.getCourtAvailabilityStatus(court.id) === 'full'
-													? html`
-															<div
-																class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-sm text-xs border border-emerald-200"
-															>
-																Available
-															</div>
-													  `
-													: this.getCourtAvailabilityStatus(court.id) === 'partial'
-													? html`
-															<div class="absolute top-0 left-0 z-10">
-																<div
-																	class="bg-amber-50 text-amber-800 text-xs px-2 py-0.5 m-1 rounded-sm border border-amber-200"
-																>
-																	Limited availability
-																</div>
-															</div>
-													  `
-													: html`
-															<div
-																class="absolute top-0 right-0 m-1 px-2 py-0.5 bg-slate-100 text-slate-500 rounded-sm text-xs border border-slate-200 flex items-center"
-															>
-																<schmancy-icon size="12px" class="mr-1">block</schmancy-icon>
-																<span>Unavailable</span>
-															</div>
-													  `}
-											</div>
-										`,
-									)}
-								</div>
-						  `,
+					this.isActive && this.viewMode === ViewMode.MAP ? this.renderMapView() : this.renderCourtsList(),
 				)}
 			</div>
 		`
 	}
+
+	//#endregion
 }

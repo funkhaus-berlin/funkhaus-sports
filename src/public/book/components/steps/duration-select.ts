@@ -30,6 +30,7 @@ import {
 	getAvailableDurations,
 	getNextStep,
 } from 'src/availability-context'
+import { transitionToNextStep } from '../../booking-steps-utils'
 import { Court } from 'src/db/courts.collection'
 import { toUserTimezone } from 'src/utils/timezone'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
@@ -598,10 +599,9 @@ export class DurationSelectionStep extends $LitElement(css`
 			// Ensure the selected duration is properly centered after selection
 			setTimeout(() => this.scrollToSelectedDuration(), 150)
 
-			// Advance to next step in the flow
-			BookingProgressContext.set({
-				currentStep: getNextStep('Duration'),
-			})
+			// Advance to next step in the flow using the transition utility
+			// This handles both updating currentStep and expandedSteps
+			transitionToNextStep('Duration')
 
 			// Announce to screen readers
 			this.announceForScreenReader(`Selected ${this.getFullLabel(duration)} for €${duration.price.toFixed(2)}`)

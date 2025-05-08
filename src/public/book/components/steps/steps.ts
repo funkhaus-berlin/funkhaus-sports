@@ -258,54 +258,52 @@ export class FunkhausBookingSteps extends $LitElement() {
 
 	/**
 	 * Handle step click events when clickable is true
-	 * Updated to work with numeric step values
+	 * Updated to work with expanded steps and sequential flow
 	 */
 	private handleStepClick(stepNumber: number) {
 		// Only allow clicking on completed steps (and current step)
 		const isActive = this.isStepActive(stepNumber)
-
+		
 		if (this.clickable && !this.animating && isActive) {
-			// Going backward in the flow
-			if (stepNumber !== this.currentStep) {
+			// Get the ordered steps
+			const steps = this.currentSteps.map(s => s.step)
+			
+			// Find the indices of current and target steps
+			const currentIndex = steps.indexOf(this.currentStep)
+			const targetIndex = steps.indexOf(stepNumber)
+			
+			// Only if we're going backward in the flow
+			if (stepNumber !== this.currentStep && targetIndex < currentIndex) {
 				// Reset booking data based on which step we're navigating to
 				const resetData: Partial<any> = {}
-
-				// Get the ordered steps
-				const steps = this.currentSteps.map(s => s.step)
-
-				// Find the indices of current and target steps
-				const currentIndex = steps.indexOf(this.currentStep)
-				const targetIndex = steps.indexOf(stepNumber)
-
-				// If we're moving backward
-				if (targetIndex < currentIndex) {
-					// Clear data for steps between target and current
-					// Implementation depends on specific step values
-					if (stepNumber < 2) {
-						// Clear everything if going back to date
-						resetData.courtId = ''
-						resetData.startTime = ''
-						resetData.endTime = ''
-					} else if (stepNumber < 3) {
-						// Clear time and duration
-						resetData.startTime = ''
-						resetData.endTime = ''
-					} else if (stepNumber < 4) {
-						// Clear duration only
-						resetData.endTime = ''
-					}
-
-					// Update the booking context with reset data
-					if (Object.keys(resetData).length > 0) {
-						bookingContext.set(resetData, true)
-					}
+				
+				// Clear data for steps between target and current
+				// Implementation depends on specific step values
+				if (stepNumber < 2) {
+					// Clear everything if going back to date
+					resetData.courtId = ''
+					resetData.startTime = ''
+					resetData.endTime = ''
+				} else if (stepNumber < 3) {
+					// Clear time and duration
+					resetData.startTime = ''
+					resetData.endTime = ''
+				} else if (stepNumber < 4) {
+					// Clear duration only
+					resetData.endTime = ''
 				}
-			}
 
-			// Update the current step in the progress context
-			BookingProgressContext.set({
-				currentStep: stepNumber,
-			})
+				// Update the booking context with reset data
+				if (Object.keys(resetData).length > 0) {
+					bookingContext.set(resetData, true)
+				}
+				
+				// Update the current step in the progress context
+				// Don't update expanded steps - we keep all expanded steps visible
+				BookingProgressContext.set({
+					currentStep: stepNumber,
+				})
+			}
 		}
 	}
 

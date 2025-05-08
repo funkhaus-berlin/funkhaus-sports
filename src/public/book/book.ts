@@ -342,6 +342,7 @@ export class CourtBookingSystem extends $LitElement() {
 
 	/**
 	 * Determine if a step should be shown based on current booking flow and progress
+	 * Modified to implement sequential step display with expanded steps tracking
 	 */
 	private shouldShowStep(step: BookingFlowStep): boolean {
 		if (!this.availability?.bookingFlowType) return true
@@ -351,12 +352,20 @@ export class CourtBookingSystem extends $LitElement() {
 
 		// Get the indices in the flow
 		const stepIndex = flowSteps.indexOf(step)
+		
+		// Check if this step's number is in the expandedSteps array
+		const isExpanded = this.bookingProgress.expandedSteps.includes(step.step)
+		
+		// Update maxStepReached if needed
 		const currentStepIndex = flowSteps.findIndex(s => s.step === this.bookingProgress.currentStep)
-
-		// A step should be shown if:
-		// 1. It's in the flow
-		// 2. Its index is less than or equal to the current step's index
-		return stepIndex !== -1 && stepIndex <= currentStepIndex
+		if (currentStepIndex > this.bookingProgress.maxStepReached) {
+			BookingProgressContext.set({
+				maxStepReached: currentStepIndex,
+			})
+		}
+		
+		// A step should be shown if it's in the expandedSteps array
+		return stepIndex !== -1 && isExpanded
 	}
 
 	/**
@@ -366,7 +375,7 @@ export class CourtBookingSystem extends $LitElement() {
 		const stepLabel = step.label
 		switch (stepLabel) {
 			case 'Date': // Date (was BookingStep.Date)
-				return html` <date-selection-step class="max-w-full sticky top-0 block my-2 z-0"></date-selection-step> `
+				return html` <date-selection-step class="max-w-full sticky top-0 block my-2 z-10"></date-selection-step> `
 			case 'Court': // Court (was BookingStep.Court)
 				return html` <court-select-step class="max-w-full block mt-2 z-10"></court-select-step> `
 			case 'Time': // Time (was BookingStep.Time)

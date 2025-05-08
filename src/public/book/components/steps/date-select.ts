@@ -7,7 +7,8 @@ import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { styleMap } from 'lit/directives/style-map.js'
 import { debounceTime, distinctUntilChanged, filter, fromEvent, map, merge, startWith, takeUntil, tap } from 'rxjs'
-import { availabilityContext, getNextStep } from 'src/availability-context'
+import { availabilityContext } from 'src/availability-context'
+import { transitionToNextStep } from '../../booking-steps-utils'
 import { bookingContext, BookingProgressContext, BookingStep } from '../../context'
 
 // Define golden ratio constant
@@ -523,15 +524,16 @@ export class DateSelectionStep extends $LitElement(css`
 		}, 50)
 
 		// Only update the date, preserving other user selections
-		bookingContext.set({
-			date: newValue
-		}, true)
+		bookingContext.set(
+			{
+				date: newValue,
+			},
+			true,
+		)
 
-		// Get the next step from the current flow (respecting the dynamic order)
-		// Navigate to the next step
-		BookingProgressContext.set({
-			currentStep: getNextStep('Date'),
-		})
+		// Use the utility function to transition to the next step
+		// This handles both updating currentStep and expandedSteps
+		transitionToNextStep('Date')
 	}
 
 	/**

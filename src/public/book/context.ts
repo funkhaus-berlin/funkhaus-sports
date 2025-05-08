@@ -98,6 +98,8 @@ export enum BookingStep {
 
 export class BookingProgress {
 	currentStep: number = 1 // Default to the first step
+	maxStepReached: number = 1 // Track the furthest step reached in the flow
+	expandedSteps: number[] = [1] // Track which steps are expanded/visible, initially just the first step
 
 	steps = [
 		{ step: BookingStep.Date, label: 'Date', icon: 'event' },

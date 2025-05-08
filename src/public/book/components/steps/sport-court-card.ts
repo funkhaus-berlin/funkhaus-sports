@@ -1,192 +1,329 @@
+import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { css, html } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
+import { CourtTypeEnum } from 'src/db/courts.collection'
 
 // Import SVGs as raw strings (assumes proper webpack/vite configuration)
-import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import padelSVG from '/public/svg/padel-court.svg?raw'
 import pickleballSVG from '/public/svg/pickleball-court.svg?raw'
 import volleyballSVG from '/public/svg/volleyball-court.svg?raw'
 
-// Define court types as a const to ensure type safety
+/**
+ * Define court types with type safety
+ */
 const COURT_TYPES = ['padel', 'pickleball', 'volleyball'] as const
 type CourtType = (typeof COURT_TYPES)[number]
 
-interface CourtClickDetail {
-	id: string
-	type: CourtType
-	name: string
+/**
+ * Recommended player counts for different court types
+ */
+const PLAYER_COUNTS: Record<CourtType, number[]> = {
+  padel: [2, 4],
+  pickleball: [2, 4],
+  volleyball: [4, 6, 8, 12],
 }
 
+/**
+ * Detail for court click events
+ */
+interface CourtClickDetail {
+  id: string
+  type: CourtType
+  name: string
+}
+
+/**
+ * Court Card Component
+ *
+ * Visual representation of a court with SVG visualization, badges for court type
+ * and player count, and selection/disabled states.
+ */
 @customElement('sport-court-card')
 export class SportCourtCard extends $LitElement(css`
-	:host {
-		display: block;
-		cursor: pointer;
-		transition: scale 0.2s ease-in-out;
-	}
-	:host(:hover) {
-		scale: 1.05;
-	}
-	.svg-wrapper {
-		width: 100%;
-		height: 100%;
-		min-height: fit-content;
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		overflow: visible;
-	}
-	.svg-wrapper svg {
-		width: 100%;
-		height: 100%;
-		max-width: 100%;
-		max-height: 100%;
-		object-fit: contain;
-	}
+  :host {
+    display: block;
+    transition: transform 0.2s ease-in-out;
+  }
+
+  :host(:not([disabled]):hover) {
+    transform: scale(1.02);
+  }
+
+  .svg-wrapper {
+    width: 100%;
+    height: 100%;
+    min-height: fit-content;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: visible;
+  }
+
+  .svg-wrapper svg {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
 `) {
-	// Static styles using Lit's static css method
+  // Required properties
+  @property({ type: String }) id = ''
+  @property({ type: String }) name = ''
+  @property({ type: String }) type: CourtType = 'volleyball'
+  @property({ type: String }) courtType: CourtTypeEnum | string = ''
 
-	// Court ID
-	@property({ type: String })
-	id = ''
+  // Optional properties
+  @property({ type: Boolean }) showPlayerCount = true
+  @property({ type: Boolean, reflect: true }) selected = false
+  @property({ type: Boolean, reflect: true }) disabled = false
+  @property({ type: Boolean }) compact = false
 
-	// Court name
-	@property({ type: String })
-	name = ''
+  // SVG cache for better performance
+  private static svgCache: Record<CourtType, string> = {
+    padel: padelSVG,
+    pickleball: pickleballSVG,
+    volleyball: volleyballSVG,
+  }
 
-	// Court type with type safety
-	@property({ type: String })
-	type: CourtType = 'volleyball'
+  /**
+   * Get the SVG content for the court type
+   */
+  private getCourtSVG(type: CourtType): string {
+    // Use the cached SVG or fall back to pickleball if type not found
+    const svgContent = SportCourtCard.svgCache[type] || SportCourtCard.svgCache.pickleball
 
-	// Whether this court is selected
-	@property({ type: Boolean, reflect: true })
-	selected = false
+    // Add accessibility attributes
+    return svgContent.replace('<svg', '<svg aria-hidden="true" focusable="false"')
+  }
 
-	// Whether the court is disabled (unavailable)
-	@property({ type: Boolean, reflect: true })
-	disabled = false
+  /**
+   * Handle user interactions (mouse or keyboard)
+   */
+  private handleInteraction(e: MouseEvent | KeyboardEvent) {
+    // Prevent interaction when disabled
+    if (this.disabled) {
+      e.preventDefault()
+      return
+    }
 
-	// Whether to display in compact mode
-	@property({ type: Boolean })
-	compact = false
+    // Handle keyboard events
+    if (e instanceof KeyboardEvent) {
+      const isActivationKey = e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar'
+      if (isActivationKey) {
+        e.preventDefault() // Prevent scrolling on space
+      } else {
+        return // Skip if not an activation key
+      }
+    }
 
-	// Cached SVG content to prevent re-parsing
-	private svgCache: Record<CourtType, string> = {
-		padel: padelSVG,
-		pickleball: pickleballSVG,
-		volleyball: volleyballSVG,
-	}
+    // Dispatch the court click event
+    this.dispatchEvent(
+      new CustomEvent<CourtClickDetail>('court-click', {
+        detail: {
+          id: this.id,
+          type: this.type,
+          name: this.name,
+        },
+        bubbles: true,
+        composed: true,
+      }),
+    )
+  }
 
-	// Get SVG content for the specified court type
-	private getCourtSVG(type: CourtType): string {
-		// Ensure the SVG has appropriate ARIA attributes
-		const svgContent = this.svgCache[type] || this.svgCache.pickleball
+  /**
+   * Get the availability status indicator
+   */
+  private getAvailabilityIndicator() {
+    // Get the availability from a parent attribute
+    const status = this.getAttribute('data-availability') || 'unknown'
 
-		// This is a basic approach to add aria-hidden to the SVG
-		// For production, you might want a more robust parser
-		return svgContent.replace('<svg', '<svg aria-hidden="true" focusable="false"')
-	}
+    // Define colors and icons based on availability status
+    const indicators = {
+      full: {
+        color: 'text-emerald-600',
+        bgColor: 'bg-emerald-100',
+        icon: 'check_circle',
+        label: 'Available',
+      },
+      partial: {
+        color: 'text-amber-600',
+        bgColor: 'bg-amber-100',
+        icon: 'access_time',
+        label: 'Limited',
+      },
+      none: {
+        color: 'text-rose-600',
+        bgColor: 'bg-rose-100',
+        icon: 'block',
+        label: 'Unavailable',
+      },
+      unknown: {
+        color: 'text-slate-500',
+        bgColor: 'bg-slate-100',
+        icon: 'help_outline',
+        label: 'Unknown',
+      },
+    }
 
-	// Handle court click and keyboard interactions
-	private handleInteraction(e: MouseEvent | KeyboardEvent) {
-		// Prevent interaction if disabled
-		if (this.disabled) {
-			e.preventDefault()
-			return
-		}
+    const indicator = indicators[status as keyof typeof indicators] || indicators.unknown
 
-		// Ensure keyboard events only trigger on Enter or Space
-		if (e instanceof KeyboardEvent) {
-			if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-				e.preventDefault() // Prevent page scroll on space
-			} else {
-				return
-			}
-		}
+    // Return availability indicator with responsive sizing based on compact mode
+    return html`
+      <div class="flex items-center ${indicator.bgColor} px-1.5 py-0.5 rounded-full">
+        <schmancy-icon 
+          size="${this.compact ? '8px' : '10px'}" 
+          class="${indicator.color} mr-0.5"
+        >
+          ${indicator.icon}
+        </schmancy-icon>
+        <span class="text-xs font-medium ${indicator.color} text-[${this.compact ? '9px' : '10px'}]">
+          ${indicator.label}
+        </span>
+      </div>
+    `
+  }
 
-		const detail: CourtClickDetail = {
-			id: this.id,
-			type: this.type,
-			name: this.name,
-		}
+  /**
+   * Format court type for display (indoor, outdoor, etc.)
+   */
+  private formatCourtType(type: string): string {
+    if (!type) return ''
 
-		this.dispatchEvent(
-			new CustomEvent<CourtClickDetail>('court-click', {
-				detail,
-				bubbles: true,
-				composed: true,
-			}),
-		)
-	}
+    return type
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, str => str.toUpperCase())
+      .trim()
+  }
 
-	render() {
-		// Get court display name (fallback to capitalized type if no name provided)
-		const courtName = this.name || `${this.type.charAt(0).toUpperCase() + this.type.slice(1)} Court`
+  /**
+   * Get maximum player count text
+   */
+  private getPlayerCountText(): string {
+    const counts = PLAYER_COUNTS[this.type] || []
+    if (counts.length === 0) return ''
 
-		// Create unique IDs for ARIA associations
-		const courtId = `court-${this.id}`
-		const statusId = `court-status-${this.id}`
-		const nameId = `court-name-${this.id}`
+    // Get the maximum player count
+    const maxPlayers = Math.max(...counts)
+    return `${maxPlayers} players`
+  }
 
-		// Create descriptive label for screen readers
-		const ariaLabel = `${courtName}${this.selected ? ', selected' : ''}${this.disabled ? ', unavailable' : ''}`
+  /**
+   * Get the appropriate icon for the court type
+   */
+  private getCourtTypeIcon(): string {
+    return this.type === 'padel' || this.type === 'pickleball' 
+      ? 'sports_tennis' 
+      : 'sports_volleyball'
+  }
 
-		return html`
-			<div
-				id="${courtId}"
-				role="button"
-				tabindex="${this.disabled ? '-1' : '0'}"
-				aria-pressed="${this.selected}"
-				aria-disabled="${this.disabled}"
-				aria-label="${ariaLabel}"
-				aria-describedby="${this.disabled ? statusId : nameId}"
-				class="cursor-pointer court-card flex flex-col w-full border-2 rounded-lg overflow-hidden 
-          transition-all duration-200  
-          ${!this.disabled ? 'hover:shadow-md hover:scale-[1.05] ' : ''}
-          ${this.disabled ? 'opacity-60' : ''}
-          ${this.selected ? 'border-primary-default' : 'border-gray-200'}"
-				@click=${this.handleInteraction}
-				@keydown=${this.handleInteraction}
-			>
-				<!-- Court Header -->
-				<div
-					class="${this.compact ? 'pl-2 py-1' : 'p-2'} ${this.selected
-						? 'bg-primary-default text-white'
-						: 'bg-gray-50'} flex justify-between items-center transition-colors duration-200"
-				>
-					<div
-						class="font-bold overflow-hidden text-ellipsis whitespace-nowrap ${this.compact ? 'text-sm' : ''}"
-						id="${nameId}"
-					>
-						${courtName}
-					</div>
-				</div>
+  render() {
+    // Get display name (fall back to capitalized type if no name provided)
+    const courtName = this.name || `${this.type.charAt(0).toUpperCase() + this.type.slice(1)} Court`
 
-				<!-- Court Visualization -->
-				<div class="flex items-center justify-center overflow-hidden relative ">
-					<div class="svg-wrapper">${unsafeSVG(this.getCourtSVG(this.type))}</div>
-				</div>
+    // Create unique IDs for ARIA relationships
+    const courtId = `court-${this.id}`
+    const statusId = `court-status-${this.id}`
+    const nameId = `court-name-${this.id}`
 
-				<!-- Status Badge (if disabled) -->
+    // Accessibility description
+    const ariaLabel = `${courtName}${this.selected ? ', selected' : ''}${this.disabled ? ', unavailable' : ''}`
 
-				<!-- Selected Indicator (with screen reader support) -->
-				${this.selected && !this.compact
-					? html`<div
-							class="absolute top-2 right-2 w-6 h-6 rounded-full bg-primary-default text-white flex items-center justify-center"
-							aria-hidden="true"
-					  >
-							<schmancy-icon>check</schmancy-icon>
-					  </div>`
-					: null}
-			</div>
-		`
-	}
+    // Class values that change based on compact mode
+    const cardClasses = this.compact 
+      ? 'h-24' // Smaller height for compact mode
+      : 'h-full'
+
+    const headerPadding = this.compact 
+      ? 'px-1.5 py-1' // Less padding for compact mode
+      : 'px-2 py-1.5'
+    
+    const svgContainerHeight = this.compact 
+      ? 'height: 50px' // Smaller SVG for compact mode
+      : 'height: 80px'
+    
+    const infoSectionPadding = this.compact
+      ? 'px-1.5 py-0.5' // Less padding for compact mode
+      : 'px-2 py-1'
+    
+    const textSize = this.compact
+      ? 'text-[10px]' // Smaller text for compact mode
+      : 'text-xs'
+
+    // Standard vertical card layout for both compact and non-compact
+    return html`
+      <div
+        id="${courtId}"
+        role="button"
+        tabindex="${this.disabled ? '-1' : '0'}"
+        aria-pressed="${this.selected}"
+        aria-disabled="${this.disabled}"
+        aria-label="${ariaLabel}"
+        aria-describedby="${this.disabled ? statusId : nameId}"
+        class="cursor-pointer court-card flex flex-col w-full overflow-hidden rounded-xl
+          transition-all duration-200 ${cardClasses} relative
+          ${!this.disabled ? 'hover:shadow-md hover:bg-gray-50' : ''}
+          ${this.disabled ? 'opacity-70 cursor-not-allowed' : ''}
+          ${this.selected ? 'ring-2 ring-primary-500 shadow-md' : 'border border-gray-200'}"
+        @click=${this.handleInteraction}
+        @keydown=${this.handleInteraction}
+      >
+        <!-- Header with Court Name and Status -->
+        <div
+          class="${headerPadding} flex justify-between items-center transition-colors duration-200
+            ${this.selected ? 'bg-gradient-to-r from-primary-default to-primary-default/80 text-primary-on' : ''}"
+        >
+          <div class="font-medium ${this.compact ? 'text-xs' : 'text-sm'} overflow-hidden text-ellipsis whitespace-nowrap" id="${nameId}">
+            ${courtName}
+          </div>
+
+          <!-- Badge for status in header -->
+          <div class="flex items-center ml-1">
+            ${this.getAttribute('data-availability')
+              ? html`<div class="ml-auto">${this.getAvailabilityIndicator()}</div>`
+              : ''}
+          </div>
+        </div>
+
+        <!-- Court Visualization -->
+        <div class="flex items-center justify-center overflow-hidden relative p-1 bg-white" style="${svgContainerHeight}">
+          <div class="svg-wrapper w-full h-full">${unsafeSVG(this.getCourtSVG(this.type))}</div>
+        </div>
+
+        <!-- Info Section -->
+        <div
+          class="flex items-center justify-between ${infoSectionPadding} ${this.selected
+            ? 'bg-primary-50'
+            : 'bg-gray-50'} border-t border-gray-200"
+        >
+          <div class="flex items-center gap-1 flex-wrap">
+            <!-- Court Type & Player Count combined -->
+            <div class="${textSize} ${this.selected ? 'text-primary-700' : 'text-gray-600'}">
+              ${this.courtType ? `${this.formatCourtType(this.courtType)}` : ''}
+              ${this.courtType && this.showPlayerCount ? ' • ' : ''}
+              ${this.showPlayerCount ? `${this.getPlayerCountText()}` : ''}
+            </div>
+          </div>
+
+          <!-- Sport Type indicator -->
+          <div
+            class="w-${this.compact ? '4' : '5'} h-${this.compact ? '4' : '5'} rounded-full flex items-center justify-center
+              ${this.selected ? 'bg-primary-100 text-primary-700' : 'bg-white text-gray-500 border border-gray-300'}"
+          >
+            <schmancy-icon size="${this.compact ? '12px' : '14px'}">
+              ${this.getCourtTypeIcon()}
+            </schmancy-icon>
+          </div>
+        </div>
+      </div>
+    `
+  }
 }
 
-// Augment global interface for TypeScript
+// Add the element to TypeScript's HTML element map
 declare global {
-	interface HTMLElementTagNameMap {
-		'sport-court-card': SportCourtCard
-	}
+  interface HTMLElementTagNameMap {
+    'sport-court-card': SportCourtCard
+  }
 }

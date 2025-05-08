@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://das-schmoeckwitz.de/sitemap.xml
+Sitemap: https://funkhaus-sports.net/sitemap.xml

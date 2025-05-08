@@ -30,6 +30,7 @@ import {
 	getAvailableTimeSlots,
 	getNextStep,
 } from 'src/availability-context'
+import { transitionToNextStep } from '../../booking-steps-utils'
 import { toUTC } from 'src/utils/timezone'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { TimeSlot } from '../../types'
@@ -585,12 +586,9 @@ export class TimeSelectionStep extends $LitElement(css`
 				selectedEl.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
 			}
 
-			// Get the next step in the flow
-
-			// Advance to the next step
-			BookingProgressContext.set({
-				currentStep: getNextStep('Time'),
-			})
+			// Advance to the next step using the transition utility
+			// This handles both updating currentStep and expandedSteps
+			transitionToNextStep('Time')
 
 			// Dispatch event for parent components
 			this.dispatchEvent(

@@ -15,6 +15,7 @@ import { FunkhausSportsTermsAndConditions } from '../../../shared/components/ter
 import { Booking, bookingContext } from '../../context'
 import { FormValidator } from '../../form-validator'
 import { PaymentService } from '../../payment-service'
+import { transitionToNextStep } from '../../booking-steps-utils'
 
 /**
  * Checkout form component with Stripe integration
@@ -141,7 +142,10 @@ export class CheckoutForm extends $LitElement() {
 		// Process payment
 		this.paymentService.processPayment(this.booking, this.stripe, this.elements).subscribe((result: any) => {
 			if (result.success) {
-				// Notify parent of success
+				// Transition to the next step (from Payment to completion)
+				transitionToNextStep('Payment')
+				
+				// Also dispatch the booking-complete event for backward compatibility
 				this.dispatchEvent(
 					new CustomEvent('booking-complete', {
 						detail: { booking: result.booking },

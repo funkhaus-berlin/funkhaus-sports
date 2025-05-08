@@ -1,0 +1,18 @@
+@@ -592,8 +592,15 @@
+ 			const nextStep = getNextStep('Court');
+ 			
+-			// Update the booking progress
++			// Update the booking progress by adding next step to expanded steps and making it current
++			const currentExpandedSteps = [...(this.bookingProgress.expandedSteps || [])];
++			if (\!currentExpandedSteps.includes(nextStep)) {
++				currentExpandedSteps.push(nextStep);
++			}
++			
++			// Update the booking progress context
+ 			BookingProgressContext.set({
+-				currentStep: nextStep
++				currentStep: nextStep,
++				expandedSteps: currentExpandedSteps
+ 			})
+ 
+ 

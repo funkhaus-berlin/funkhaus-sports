@@ -8,10 +8,22 @@ import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
 import { BookingsDB } from 'src/db/bookings.collection'
+import { CourtTypeEnum, SportTypeEnum } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { getUserTimezone, isTimeSlotInPast } from 'src/utils/timezone'
 import { Booking, bookingContext } from './public/book/context'
 import { Duration, TimeSlot } from './public/book/types'
+
+/**
+ * Interface for court selection preferences
+ * Used to filter courts in the court selection step
+ */
+export interface CourtPreferences {
+	courtTypes?: CourtTypeEnum[] // Indoor/outdoor preferences
+	sportTypes?: SportTypeEnum[] // Sport preferences
+	playerCount?: number // Number of players (2, 4, 6+)
+	amenities?: string[] // Required amenities
+}
 
 // src/availability-context.ts - Key updates only
 
@@ -423,7 +435,7 @@ export function isCourtAvailableForDuration(courtId: string, startTime: string, 
 export function getAvailableTimeSlots(courtId?: string): TimeSlot[] {
 	const availability = availabilityContext.value
 	const booking = bookingContext.value
-	
+
 	// Use courtId parameter or fall back to selected court in booking
 	const effectiveCourtId = courtId || booking.courtId
 
@@ -483,7 +495,7 @@ export function getAvailableCourtsForTime(startTime: string): string[] {
 export function getAvailableDurations(startTime: string, courtId?: string): Duration[] {
 	const availability = availabilityContext.value
 	const booking = bookingContext.value
-	
+
 	if (!startTime) return []
 
 	// Use courtId parameter or fall back to selected court in booking
@@ -537,7 +549,7 @@ export function getAvailableDurations(startTime: string, courtId?: string): Dura
 					courtId: effectiveCourtId, // Add the courtId for reference
 				}
 			})
-			.filter((duration): duration is Duration => duration !== null)
+			.filter((duration) => duration !== null)
 	}
 
 	// Logic for Date -> Time -> Duration -> Court flow
@@ -597,7 +609,9 @@ export function getAllCourtsAvailability(startTime?: string, durationMinutes?: n
 	const effectiveStartTime = startTime || booking.startTime
 
 	if (DEBUG) {
-		console.log(`Checking availability for startTime=${effectiveStartTime}, duration=${durationMinutes || 'not provided'}min`)
+		console.log(
+			`Checking availability for startTime=${effectiveStartTime}, duration=${durationMinutes || 'not provided'}min`,
+		)
 	}
 
 	// If missing start time, return empty array
@@ -609,7 +623,7 @@ export function getAllCourtsAvailability(startTime?: string, durationMinutes?: n
 	// Convert start time to minutes since midnight for easier comparison
 	const timeObj = dayjs(effectiveStartTime)
 	const startMinutes = timeObj.hour() * 60 + timeObj.minute()
-	
+
 	// If duration is provided, use it; otherwise check only the start time slot
 	const effectiveDuration = durationMinutes || calculateDuration(booking.startTime, booking.endTime) || 30
 	const endMinutes = startMinutes + effectiveDuration
