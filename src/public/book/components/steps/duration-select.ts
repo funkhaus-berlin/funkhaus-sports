@@ -198,7 +198,7 @@ export class DurationSelectionStep extends $LitElement(css`
 				// Find the position of Duration step in the steps array
 				const durationStepIndex = progress.steps.findIndex(s => s.step === BookingStep.Duration)
 				// Check if this position matches the current step
-				return progress.currentStep === durationStepIndex
+				return progress.currentStep === (durationStepIndex + 1)
 			}),
 			startWith(this.active),
 			distinctUntilChanged(),
@@ -368,7 +368,7 @@ export class DurationSelectionStep extends $LitElement(css`
 				prev.startTime === curr.startTime && 
 				prev.courtId === curr.courtId
 			),
-			tap(booking => {
+			tap(() => {
 				this.updateState({
 					loading: true,
 					autoScrollAttempted: false,
@@ -912,7 +912,7 @@ export class DurationSelectionStep extends $LitElement(css`
 			<selection-tile
 				${ref(durationRef)}
 				?selected=${isSelected}
-				?compact=${this.isCompact}
+				?compact=${!this.isActive}
 				icon="timer"
 				label=${this.getCompactLabel(duration)}
 				dataValue=${duration.value}

@@ -220,7 +220,7 @@ export class TimeSelectionStep extends $LitElement(css`
 				// Find the position of Time step in the steps array
 				const timeStepIndex = progress.steps.findIndex(s => s.step === BookingStep.Time)
 				// Check if this position matches the current step
-				return progress.currentStep === timeStepIndex
+				return progress.currentStep === timeStepIndex +1
 			}),
 			startWith(this.active),
 			distinctUntilChanged(),

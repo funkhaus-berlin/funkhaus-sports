@@ -129,7 +129,7 @@ export class DateSelectionStep extends $LitElement(css`
 					// Find the position of Date step in the steps array
 					const dateStepIndex = progress.steps.findIndex(s => s.step === BookingStep.Date)
 					// Check if this position matches the current step
-					return progress.currentStep === dateStepIndex
+					return progress.currentStep === dateStepIndex +1
 				}),
 				distinctUntilChanged(),
 				filter(() => !this._transitionActive), // Only process if not already transitioning
