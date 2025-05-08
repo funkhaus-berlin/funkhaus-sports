@@ -19,12 +19,13 @@ export const formatEnum = (value: string): string =>
 
 @customElement('court-form')
 export class CourtForm extends $LitElement() {
-	@state() court: Partial<Court> = {
+	@state() court: Partial<Court & { recommendedPlayers?: number }> = {
 		name: '',
 		courtType: 'indoor',
 		pricing: { baseHourlyRate: 0 },
 		status: 'active',
-		sportTypes: ['pickleball']
+		sportTypes: ['pickleball'],
+		recommendedPlayers: 4,
 	}
 
 	@select(venuesContext) venues!: Map<string, any>
@@ -34,7 +35,7 @@ export class CourtForm extends $LitElement() {
 	@state() isCloning = false
 	@property({ type: String }) venueId: string = ''
 
-	constructor(private editingCourt?: Court) {
+	constructor(private editingCourt?: Court & { recommendedPlayers?: number }) {
 		super()
 		if (editingCourt) {
 			this.court = { ...editingCourt }
@@ -44,12 +45,12 @@ export class CourtForm extends $LitElement() {
 
 	connectedCallback() {
 		super.connectedCallback()
-		
+
 		// Set venueId with simple priority logic
 		if (this.venueData?.id) {
 			this.venueId = this.venueData.id
 		}
-		
+
 		// Set the venueId on the court object
 		if (this.venueId) {
 			this.court = {
@@ -64,10 +65,19 @@ export class CourtForm extends $LitElement() {
 		}
 	}
 
-	// Toggle sport type selection (add or remove from array)
+	// Handle sport type change for single selection
+	handleSportTypeChange(sportType: keyof typeof SportTypeEnum) {
+		// Always set to a single-item array with the selected sport type
+		const updatedSportTypes: (keyof typeof SportTypeEnum)[] = [sportType]
+		
+		// Update the court object
+		this.updateProps('sportTypes', updatedSportTypes)
+	}
+	
+	// Legacy method kept for reference, not used with single selection
 	toggleSportType(sportType: keyof typeof SportTypeEnum) {
 		let updatedSportTypes: (keyof typeof SportTypeEnum)[] = []
-		
+
 		// Ensure sportTypes is an array
 		if (!this.court.sportTypes || !Array.isArray(this.court.sportTypes)) {
 			updatedSportTypes = [sportType]
@@ -96,12 +106,12 @@ export class CourtForm extends $LitElement() {
 				<schmancy-form @submit=${this.onSave} class="py-3 px-5 grid gap-6">
 					<!-- Basic Information -->
 					<div class="grid gap-3 mb-4">
-						<sch-grid>
+						<schmancy-grid>
 							<schmancy-typography type="title"
 								>${this.isCloning ? 'Clone Court' : this.editingCourt ? 'Edit Court' : 'Add Court'}</schmancy-typography
 							>
 							<schmancy-divider></schmancy-divider>
-						</sch-grid>
+						</schmancy-grid>
 
 						<sch-input
 							label="Court Name"
@@ -123,45 +133,56 @@ export class CourtForm extends $LitElement() {
 									>`,
 							)}
 						</schmancy-select>
-						
-						<!-- Sport Types Selection (Multi-select) -->
+
+						<!-- Sport Type Selection (Single-select) -->
 						<div>
-							<p class="text-sm font-medium mb-2">Sport Types</p>
+							<p class="text-sm font-medium mb-2">Sport Type</p>
 							<div class="flex flex-wrap gap-2">
 								${Object.values(SportTypeEnum).map(
 									sportType => html`
 										<schmancy-chip
-											.selected=${Array.isArray(this.court.sportTypes) && this.court.sportTypes.includes(sportType as keyof typeof SportTypeEnum)}
-											@click=${() => this.toggleSportType(sportType as keyof typeof SportTypeEnum)}
-											label=${formatEnum(sportType)}
+											.selected=${Array.isArray(this.court.sportTypes) &&
+											this.court.sportTypes[0] === sportType}
+											@click=${() => this.handleSportTypeChange(sportType as keyof typeof SportTypeEnum)}
 										>
 											${formatEnum(sportType)}
 										</schmancy-chip>
-									`
+									`,
 								)}
 							</div>
-							<p class="text-xs text-gray-500 mt-1">Select one or more sport types for this court</p>
+							<p class="text-xs text-gray-500 mt-1">Select a sport type for this court</p>
 						</div>
 						
-						<!-- Court Previews -->
+						<!-- Recommended Number of Players -->
+						<sch-input
+							label="Recommended Number of Players"
+							type="number"
+							min="1"
+							step="0.1"
+							.value="${this.court.recommendedPlayers?.toString() || ''}"
+							@change=${(e: SchmancyInputChangeEvent) => 
+								this.updateProps('recommendedPlayers', parseFloat(e.detail.value))}
+						></sch-input>
+
+						<!-- Court Preview -->
 						<div class="mt-2 border rounded p-2 bg-gray-50">
-							<div class="text-sm font-medium mb-2">Court Previews</div>
+							<div class="text-sm font-medium mb-2">Court Preview</div>
 							<div class="flex flex-wrap gap-6 justify-center">
-								${Array.isArray(this.court.sportTypes) && this.court.sportTypes.length > 0 
-									? this.court.sportTypes.map(sportType => 
-										this.renderCourtPreview(sportType as keyof typeof SportTypeEnum)) 
-									: this.renderCourtPreview('pickleball' as keyof typeof SportTypeEnum)
-								}
+								${this.renderCourtPreview(
+									Array.isArray(this.court.sportTypes) && this.court.sportTypes.length > 0
+										? this.court.sportTypes[0]
+										: 'pickleball'
+								)}
 							</div>
 						</div>
 					</div>
 
 					<!-- Pricing -->
 					<div class="grid gap-3 mb-4">
-						<sch-grid>
+						<schmancy-grid>
 							<schmancy-typography type="title">Pricing</schmancy-typography>
 							<schmancy-divider></schmancy-divider>
-						</sch-grid>
+						</schmancy-grid>
 						<sch-input
 							label="Base Hourly Rate (€)"
 							type="number"
@@ -194,10 +215,10 @@ export class CourtForm extends $LitElement() {
 
 					<!-- Status -->
 					<div class="grid gap-3 mb-4">
-						<sch-grid>
+						<schmancy-grid>
 							<schmancy-typography type="title">Status</schmancy-typography>
 							<schmancy-divider></schmancy-divider>
-						</sch-grid>
+						</schmancy-grid>
 						<schmancy-select
 							label="Court Status"
 							required
@@ -246,7 +267,7 @@ export class CourtForm extends $LitElement() {
 		`
 	}
 
-	updateProps(prop: keyof Court, val: string | number | string[]) {
+	updateProps(prop: keyof (Court & { recommendedPlayers?: number }), val: string | number | string[]) {
 		this.court = { ...this.court, [prop]: val }
 	}
 
@@ -269,7 +290,7 @@ export class CourtForm extends $LitElement() {
 
 	onSave = () => {
 		this.busy = true
-		
+
 		// Basic validation
 		if (!this.court.name?.trim()) {
 			$notify.error('Court name is required')
@@ -305,6 +326,11 @@ export class CourtForm extends $LitElement() {
 			...this.court,
 			updatedAt: new Date().toISOString(),
 			...(this.isCloning || !this.editingCourt ? { createdAt: new Date().toISOString() } : {}),
+		}
+		
+		// Ensure we have a valid recommended players value (if provided)
+		if (court.recommendedPlayers !== undefined && isNaN(court.recommendedPlayers)) {
+			delete court.recommendedPlayers;
 		}
 
 		// Determine if we're creating a new court (either adding or cloning)
@@ -342,43 +368,37 @@ export class CourtForm extends $LitElement() {
 			case 'padel':
 				return html`
 					<div class="flex flex-col items-center">
-						<img 
-							src="/svg/padel-court.svg" 
-							alt="Padel Court" 
-							width="180" 
-							height="100"
-							class="object-contain"
-						/>
+						<img src="/svg/padel-court.svg" alt="Padel Court" width="180" height="100" class="object-contain" />
 						<span class="text-xs mt-1">Padel</span>
 					</div>
-				`;
+				`
 			case 'volleyball':
 				return html`
 					<div class="flex flex-col items-center">
-						<img 
-							src="/svg/volleyball-court.svg" 
-							alt="Volleyball Court" 
-							width="180" 
+						<img
+							src="/svg/volleyball-court.svg"
+							alt="Volleyball Court"
+							width="180"
 							height="100"
 							class="object-contain"
 						/>
 						<span class="text-xs mt-1">Volleyball</span>
 					</div>
-				`;
+				`
 			case 'pickleball':
 			default:
 				return html`
 					<div class="flex flex-col items-center">
-						<img 
-							src="/svg/pickleball-court.svg" 
-							alt="Pickleball Court" 
-							width="180" 
+						<img
+							src="/svg/pickleball-court.svg"
+							alt="Pickleball Court"
+							width="180"
 							height="100"
 							class="object-contain"
 						/>
 						<span class="text-xs mt-1">Pickleball</span>
 					</div>
-				`;
+				`
 		}
 	}
 
