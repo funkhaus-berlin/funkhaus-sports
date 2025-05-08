@@ -144,7 +144,8 @@ export class TimeSelectionStep extends $LitElement(css`
 
 	// State properties derived from observables
 	@state() isActive = false
-	@state() private isCompact = false
+  @state() isExpanded = false
+	@state() isCompact = false
 	@state() isDesktopOrTablet = window.innerWidth >= 384
 	@state() shouldUseGridView = false
 
@@ -226,6 +227,19 @@ export class TimeSelectionStep extends $LitElement(css`
 			filter(() => !this.isTransitioning),
 			shareReplay(1),
 		)
+
+    // Add new expanded state stream
+    const isExpanded$ = BookingProgressContext.$.pipe(
+      map(progress => progress.expandedSteps.includes(BookingStep.Time)),
+      distinctUntilChanged(),
+      shareReplay(1)
+    )
+
+    // Subscribe to isExpanded changes
+    isExpanded$.pipe(takeUntil(this.disconnecting)).subscribe(isExpanded => {
+      this.isExpanded = isExpanded
+      this.requestUpdate()
+    })
 
 		// Subscribe to isActive changes with animation handling
 		this.isActive$.pipe(takeUntil(this.disconnecting)).subscribe(isActive => {
@@ -832,22 +846,25 @@ export class TimeSelectionStep extends $LitElement(css`
 	}
 
 	render() {
-		if (this.hidden) return nothing
+		// Early exit if explicitly hidden
+		if (this.hidden) return nothing;
 
 		// Get current state values
-		const { timeSlots, loading, error, viewMode } = this.state$.value
+		const { timeSlots, loading, error, viewMode } = this.state$.value;
 
 		// Show empty state if no time slots
 		if (!loading && timeSlots.length === 0) {
-			return this.renderEmptyState()
+			return this.renderEmptyState();
 		}
 
+		// KEY CHANGE: Use isExpanded to determine if component should be visible
 		return html`
 			<div
 				class="
-          w-full bg-surface-low rounded-lg transition-all duration-300 p-2
-          ${this.active ? 'scale-100' : !this.isCompact ? 'scale-95' : ''}
-        "
+					w-full bg-surface-low rounded-lg transition-all duration-300 p-2
+					${this.isExpanded ? 'block' : 'hidden'}
+					${this.isActive ? 'opacity-100' : 'opacity-90'}
+				"
 			>
 				<!-- Error message if present while still showing content -->
 				${error
@@ -885,6 +902,6 @@ export class TimeSelectionStep extends $LitElement(css`
 					<div class="list-view ${viewMode === 'list' ? 'active' : ''}">${this.renderListLayout(timeSlots)}</div>
 				</div>
 			</div>
-		`
+		`;
 	}
 }

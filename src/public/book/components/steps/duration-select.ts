@@ -1,37 +1,35 @@
-// src/public/book/components/steps/duration-select.ts
 import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { css, html, nothing } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
-import { classMap } from 'lit/directives/class-map.js'
 import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import {
-	BehaviorSubject,
-	combineLatest,
-	distinctUntilChanged,
-	filter,
-	fromEvent,
-	map,
-	Observable,
-	shareReplay,
-	startWith,
-	take,
-	takeUntil,
-	tap,
+  BehaviorSubject,
+  combineLatest,
+  distinctUntilChanged,
+  filter,
+  fromEvent,
+  map,
+  Observable,
+  shareReplay,
+  startWith,
+  take,
+  takeUntil,
+  tap,
 } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import {
-	availabilityContext,
-	availabilityLoading$,
-	BookingFlowType,
-	getAvailableDurations,
+  availabilityContext,
+  availabilityLoading$,
+  BookingFlowType,
+  getAvailableDurations,
 } from 'src/availability-context'
-import { transitionToNextStep } from '../../booking-steps-utils'
 import { Court } from 'src/db/courts.collection'
 import { toUserTimezone } from 'src/utils/timezone'
+import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { Duration } from '../../types'
 
@@ -128,6 +126,7 @@ export class DurationSelectionStep extends $LitElement(css`
 
 	// State properties derived from observables
 	@state() isActive = false
+	@state() isExpanded = false
 	@state() isCompact = false
 	@state() isDesktopOrTablet = window.innerWidth >= 384
 	@state() shouldUseGridView = false
@@ -206,6 +205,19 @@ export class DurationSelectionStep extends $LitElement(css`
 			filter(() => !this.isTransitioning),
 			shareReplay(1),
 		)
+
+		// Add new expanded state stream
+		const isExpanded$ = BookingProgressContext.$.pipe(
+			map(progress => progress.expandedSteps.includes(BookingStep.Duration)),
+			distinctUntilChanged(),
+			shareReplay(1)
+		)
+
+		// Subscribe to isExpanded changes
+		isExpanded$.pipe(takeUntil(this.disconnecting)).subscribe(isExpanded => {
+			this.isExpanded = isExpanded
+			this.requestUpdate()
+		})
 
 		// Subscribe to isActive changes with animation handling
 		this.isActive$.pipe(takeUntil(this.disconnecting)).subscribe(isActive => {
@@ -824,38 +836,6 @@ export class DurationSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Render list layout for durations with scroll container ref
-	 */
-	private renderListLayout(durations: Duration[]): unknown {
-		const displayItems = this.ensureMinimumDurations(durations);
-		
-		return html`
-			<div
-				${ref(this.scrollContainerRef)}
-				class="options-scroll-container flex py-2 overflow-x-auto scrollbar-hide transition-all duration-300 
-					${this.isCompact ? 'gap-2' : 'gap-3'}"
-				role="listbox"
-				aria-label="Available Duration Options"
-				aria-multiselectable="false"
-			>
-				${repeat(
-					displayItems,
-					(item, index) => 'placeholder' in item ? `placeholder-${index}` : (item as Duration).value,
-					(item) => {
-						if ('placeholder' in item) {
-							// Create an empty placeholder tile with same dimensions but invisible
-							return html`
-								<div class="w-20 h-20 invisible"></div>
-							`;
-						}
-						return this.renderDurationOption(item as Duration);
-					}
-				)}
-			</div>
-		`
-	}
-
-	/**
 	 * Check if a duration would exceed venue closing time
 	 */
 	private wouldExceedClosingTime(duration: Duration): boolean {
@@ -966,6 +946,38 @@ export class DurationSelectionStep extends $LitElement(css`
 	}
 
 	/**
+	 * Render list layout for durations with scroll container ref
+	 */
+	private renderListLayout(durations: Duration[]): unknown {
+		const displayItems = this.ensureMinimumDurations(durations);
+		
+		return html`
+			<div
+				${ref(this.scrollContainerRef)}
+				class="options-scroll-container flex py-2 overflow-x-auto scrollbar-hide transition-all duration-300 
+					${this.isCompact ? 'gap-2' : 'gap-3'}"
+				role="listbox"
+				aria-label="Available Duration Options"
+				aria-multiselectable="false"
+			>
+				${repeat(
+					displayItems,
+					(item, index) => 'placeholder' in item ? `placeholder-${index}` : (item as Duration).value,
+					(item) => {
+						if ('placeholder' in item) {
+							// Create an empty placeholder tile with same dimensions but invisible
+							return html`
+								<div class="w-20 h-20 invisible"></div>
+							`;
+						}
+						return this.renderDurationOption(item as Duration);
+					}
+				)}
+			</div>
+		`
+	}
+
+	/**
 	 * Main render method with view container pattern
 	 */
 	render() {
@@ -983,21 +995,15 @@ export class DurationSelectionStep extends $LitElement(css`
 			return this.renderEmptyState()
 		}
 
-		// Define class objects for animated transitions
-		const containerClasses = {
-			'w-full': true,
-			'bg-surface-low': true,
-			'rounded-lg': true,
-			'transition-all': true,
-			'duration-300': true,
-			'p-2': true,
-			'scale-100': this.isActive,
-			'scale-95': !this.isActive && !this.isCompact,
-		}
-
-		// Render main content
+		// KEY CHANGE: Use isExpanded to determine if component should be visible
 		return html`
-			<div class=${classMap(containerClasses)}>
+			<div 
+				class="
+					w-full bg-surface-low rounded-lg transition-all duration-300 p-2
+					${this.isExpanded ? 'block' : 'hidden'} 
+					${this.isActive ? 'opacity-100' : 'opacity-90'}
+				"
+			>
 				<!-- Error message if present while still showing content -->
 				${error
 					? html`
