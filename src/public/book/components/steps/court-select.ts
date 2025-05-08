@@ -6,6 +6,7 @@ import { css, html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { cache } from 'lit/directives/cache.js'
 import { classMap } from 'lit/directives/class-map.js'
+import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
@@ -32,15 +33,6 @@ enum ViewMode {
 }
 
 /**
- * Player count options for filtering
- */
-enum PlayerCountOption {
-	TWO = 2,
-	FOUR = 4,
-	SIX_PLUS = 6,
-}
-
-/**
  * Availability status types for courts
  */
 type AvailabilityStatus = 'full' | 'partial' | 'none'
@@ -59,6 +51,15 @@ interface TimeSlot {
 interface CourtAvailabilityInfo {
 	canSelect: boolean
 	status: AvailabilityStatus
+}
+
+// Simple animation preset for selected court
+const PULSE_ANIMATION = {
+	keyframes: [{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }],
+	options: {
+		duration: 400,
+		easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+	},
 }
 
 /**
@@ -207,6 +208,7 @@ export class CourtSelectStep extends $LitElement(css`
 	@state() courtPreferences: CourtPreferences = {}
 	@state() isActive: boolean = false
 	@state() isTransitioning: boolean = false
+	@state() autoScrollAttempted: boolean = false
 
 	// Performance optimization caches
 	private courtAvailabilityInfoCache = new Map<string, CourtAvailabilityInfo>()
@@ -216,6 +218,10 @@ export class CourtSelectStep extends $LitElement(css`
 	private _lastCheckedDate: string = ''
 	private _lastCheckedVenueId: string = ''
 	private _forceAvailabilityCheck: boolean = false
+	
+	// Refs for scroll functionality
+	private scrollContainerRef: Ref<HTMLElement> = createRef<HTMLElement>()
+	private courtRefs = new Map<string, HTMLElement>()
 
 	//#endregion
 
@@ -283,6 +289,28 @@ export class CourtSelectStep extends $LitElement(css`
 			// Just load courts without forcing availability check
 			this.loadCourtsWithAvailability()
 		}
+		
+		// Scroll to selected court after update
+		if (this.booking?.courtId && (changedProperties.has('booking') || changedProperties.has('selectedVenueCourts'))) {
+			this.updateComplete.then(() => {
+				setTimeout(() => this.scrollToSelectedCourt(), 150)
+			})
+		}
+	}
+	
+	/**
+	 * Clear court references when component is disconnected
+	 */
+	disconnectedCallback(): void {
+		super.disconnectedCallback()
+		this.clearCourtRefs()
+	}
+	
+	/**
+	 * Clear court element references
+	 */
+	private clearCourtRefs(): void {
+		this.courtRefs.clear()
 	}
 
 	//#endregion
@@ -468,6 +496,7 @@ export class CourtSelectStep extends $LitElement(css`
 		this.loading = true
 		this.error = null
 		this.resetAvailabilityCache()
+		this.autoScrollAttempted = false
 
 		try {
 			// Get court availabilities based on current booking time and duration
@@ -499,6 +528,19 @@ export class CourtSelectStep extends $LitElement(css`
 
 			// Check if we need to reset time/duration selections due to unavailability
 			this.checkAvailabilityAndResetIfNeeded()
+			
+			// Clear existing court refs before updating
+			this.clearCourtRefs()
+			
+			// Scroll to selected court after data is loaded
+			this.updateComplete.then(() => {
+				if (this.booking.courtId && !this.autoScrollAttempted) {
+					setTimeout(() => {
+						this.scrollToSelectedCourt()
+						this.autoScrollAttempted = true
+					}, 150)
+				}
+			})
 		} catch (error) {
 			this.handleLoadingError(error)
 		}
@@ -743,6 +785,12 @@ export class CourtSelectStep extends $LitElement(css`
 		// Reset dialog state if applicable
 		this.pendingCourtSelection = null
 		this.showConfirmationDialog = false
+		
+		// Highlight the selected court
+		const courtEl = this.courtRefs.get(court.id)
+		if (courtEl) {
+			courtEl.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
+		}
 
 		// Transition to the next step - this will handle expanded steps automatically
 		transitionToNextStep('Court')
@@ -773,6 +821,97 @@ export class CourtSelectStep extends $LitElement(css`
 	//#endregion
 
 	//#region Filter Methods
+	
+	/**
+	 * Get unique court type options from all venue courts
+	 * Only returns options if there's more than one unique value
+	 */
+	private getCourtTypeOptions(): CourtTypeEnum[] {
+		// Get all courts for the current venue
+		const venueCourts = this.selectedVenueCourts || [];
+		
+		// Skip calculation if no courts available
+		if (venueCourts.length === 0) {
+			return [];
+		}
+		
+		// Calculate unique court types from available courts
+		const courtTypes = new Set<CourtTypeEnum>();
+		
+		venueCourts.forEach(court => {
+			if (court.courtType) {
+				courtTypes.add(court.courtType as CourtTypeEnum);
+			}
+		});
+		
+		// Convert to array and return
+		const uniqueTypes = Array.from(courtTypes);
+		
+		// Only return the array if there's more than one option
+		return uniqueTypes.length > 1 ? uniqueTypes : [];
+	}
+	
+	/**
+	 * Get unique player count options from all venue courts
+	 * Only returns options if there's more than one unique value
+	 */
+	private getPlayerCountOptions(): number[] {
+		// Get all courts for the current venue
+		const venueCourts = this.selectedVenueCourts || [];
+		
+		// Skip calculation if no courts available
+		if (venueCourts.length === 0) {
+			return [];
+		}
+		
+		// Calculate max players for each court and collect unique values
+		const playerCounts = new Set<number>();
+		
+		venueCourts.forEach(court => {
+			// Get max player count for each court
+			const maxPlayers = this.getMaxPlayerCount(court);
+			playerCounts.add(maxPlayers);
+		});
+		
+		// Convert to array, sort, and return
+		const uniqueCounts = Array.from(playerCounts).sort((a, b) => a - b);
+		
+		// Only return the array if there's more than one option
+		return uniqueCounts.length > 1 ? uniqueCounts : [];
+	}
+
+	/**
+	 * Calculate the maximum player count for a court
+	 * Based on sport type and court dimensions
+	 */
+	private getMaxPlayerCount(court: Court): number {
+		// Check sport types of the court
+		const sports = court.sportTypes || ['pickleball'];
+		
+		// Determine max player count based on sport type
+		if (sports.includes('volleyball')) {
+			return 12; // Volleyball courts can support up to 12 players
+		} else if (sports.includes('pickleball') || sports.includes('padel')) {
+			return 4; // Pickleball and Padel typically allow up to 4 players
+		}
+		
+		// For other sports or if no specific type, use court dimensions
+		if (court.dimensions) {
+			const area = court.dimensions.length * court.dimensions.width;
+			const areaInSquareMeters = court.dimensions.unit === 'feet'
+				? area * 0.092903 // Convert sq feet to sq meters
+				: area;
+			
+			if (areaInSquareMeters >= 150) {
+				return 6; // Large courts support 6+ players
+			} else if (areaInSquareMeters >= 100) {
+				return 4; // Medium courts support 4 players
+			}
+		}
+		
+		// Default for small courts or unknown dimensions
+		return 2;
+	}
 
 	/**
 	 * Apply court preference filters to the list of courts
@@ -882,7 +1021,7 @@ export class CourtSelectStep extends $LitElement(css`
 	/**
 	 * Handle click on player count filter chip
 	 */
-	private handlePlayerCountChipClick(playerCount: PlayerCountOption): void {
+	private handlePlayerCountChipClick(playerCount: number): void {
 		if (this.courtPreferences.playerCount === playerCount) {
 			this.courtPreferences = {
 				...this.courtPreferences,
@@ -978,6 +1117,61 @@ export class CourtSelectStep extends $LitElement(css`
 
 	//#endregion
 
+	//#region Scroll Methods
+	
+	/**
+	 * Scroll to selected court with smooth animation
+	 */
+	private scrollToSelectedCourt(): void {
+		if (!this.booking?.courtId || this.viewMode !== ViewMode.LIST) return
+		
+		try {
+			const scrollContainer = this.scrollContainerRef.value
+			const courtEl = this.courtRefs.get(this.booking.courtId)
+			
+			if (!scrollContainer || !courtEl) return
+			
+			// Check if element is already in view
+			const containerRect = scrollContainer.getBoundingClientRect()
+			const elementRect = courtEl.getBoundingClientRect()
+			
+			// Calculate if element is fully visible
+			const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
+			
+			// If the element is already fully visible, just highlight it
+			if (isFullyVisible) {
+				this.highlightCourtElement(courtEl)
+				return
+			}
+			
+			// Calculate scroll position to center the element
+			const containerWidth = scrollContainer.clientWidth
+			const elementOffset = courtEl.offsetLeft
+			const elementWidth = courtEl.offsetWidth
+			const scrollPosition = elementOffset - containerWidth / 2 + elementWidth / 2
+			
+			// Smooth scroll to the calculated position
+			scrollContainer.scrollTo({
+				left: scrollPosition,
+				behavior: 'smooth',
+			})
+			
+			// Highlight the element
+			this.highlightCourtElement(courtEl)
+		} catch (error) {
+			console.error('Error scrolling to selected court:', error)
+		}
+	}
+	
+	/**
+	 * Highlight court element with animation
+	 */
+	private highlightCourtElement(element: HTMLElement): void {
+		element.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
+	}
+	
+	//#endregion
+
 	//#region UI Helper Methods
 
 	/**
@@ -1025,57 +1219,60 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Render the filters section
 	 */
 	private renderFilters() {
-		const courtTypeOptions = Object.values(CourtTypeEnum).filter(Boolean)
-		const playerCountOptions = [PlayerCountOption.TWO, PlayerCountOption.FOUR, PlayerCountOption.SIX_PLUS]
-
+		// Get dynamic court type options instead of using the enum directly
+		const courtTypeOptions = this.getCourtTypeOptions();
+		
+		// Get dynamic player count options
+		const playerCountOptions = this.getPlayerCountOptions();
+		
 		// Don't render filters if there are no courts or only one court
-		if (this.selectedVenueCourts.length <= 1) return html``
-
-		// Check if we have any court types to filter by
-		const hasCourtTypeOptions = courtTypeOptions.some(type =>
-			this.selectedVenueCourts.some(court => court.courtType === type),
-		)
-
+		if (this.selectedVenueCourts.length <= 1) return html``;
+		
+		// Only show filters section if we have filter options
+		const hasFilters = courtTypeOptions.length > 0 || playerCountOptions.length > 0;
+		
+		if (!hasFilters && !this.isActive) {
+			return html``; // Return empty if no filters and not active
+		}
+		
 		return html`
 			<div class="filter-section py-2 px-1">
 				<!-- Combined filter chips in one line -->
 				<div class="flex flex-wrap items-center justify-between gap-2">
 					<div class="flex flex-wrap gap-1.5">
-						<!-- Court Type Filters -->
-						${hasCourtTypeOptions
+						<!-- Court Type Filters - Only shown if multiple options -->
+						${courtTypeOptions.length > 0
 							? courtTypeOptions.map(type => {
-									// Only show options that exist in the available courts
-									const hasCourtsOfType = this.selectedVenueCourts.some(court => court.courtType === type)
-									if (!hasCourtsOfType) return html``
-
-									const isSelected = this.isCourtTypeSelected(type)
-									const typeIcon = type === 'indoor' ? 'home' : type === 'outdoor' ? 'wb_sunny' : 'sports_tennis'
+									const isSelected = this.isCourtTypeSelected(type);
+									const typeIcon = type === 'indoor' ? 'home' : type === 'outdoor' ? 'wb_sunny' : 'sports_tennis';
 
 									return html`
 										<schmancy-chip .selected="${isSelected}" @click=${() => this.toggleCourtTypeFilter(type)}>
 											<schmancy-icon slot="leading" size="16px">${typeIcon}</schmancy-icon>
 											${this.formatCourtType(type)}
 										</schmancy-chip>
-									`
-							  })
+									`;
+								})
 							: ''}
 
-						<!-- Player Count Filters -->
-						${playerCountOptions.map(count => {
-							// Label for the player count chip
-							const label = count === PlayerCountOption.SIX_PLUS ? '6+' : count.toString()
-							const isSelected = this.courtPreferences.playerCount === count
+						<!-- Player Count Filters - Only shown if multiple options -->
+						${playerCountOptions.length > 0
+							? playerCountOptions.map(count => {
+									// Label for the player count chip
+									const label = count >= 6 ? '6+' : count.toString();
+									const isSelected = this.courtPreferences.playerCount === count;
 
-							return html`
-								<schmancy-chip .selected="${isSelected}" @click=${() => this.handlePlayerCountChipClick(count)}>
-									<schmancy-icon slot="leading" size="16px">group</schmancy-icon>
-									${label}
-								</schmancy-chip>
-							`
-						})}
+									return html`
+										<schmancy-chip .selected="${isSelected}" @click=${() => this.handlePlayerCountChipClick(count)}>
+											<schmancy-icon slot="leading" size="16px">group</schmancy-icon>
+											${label}
+										</schmancy-chip>
+									`;
+								})
+							: ''}
 					</div>
 
-					<!-- View mode toggles - only show when active state -->
+					<!-- View mode toggles - only show when active -->
 					<div class="flex gap-1 shrink-0 ml-auto">
 						<schmancy-icon-button
 							size="sm"
@@ -1100,13 +1297,14 @@ export class CourtSelectStep extends $LitElement(css`
 	}
 
 	/**
-	 * Render the courts in list view - with support for compact mode
+	 * Render the courts in list view - with support for compact mode and horizontal scrolling
 	 */
 	private renderCourtsList() {
 		if (!this.isActive) {
 			// Compact horizontal scrolling view for inactive state
 			return html`
 				<div
+					${ref(this.scrollContainerRef)}
 					class="flex overflow-x-auto scrollbar-hide snap-x gap-2 py-2 first:pl-1 last:pr-1"
 					role="listbox"
 					aria-label="Available Courts"
@@ -1115,51 +1313,23 @@ export class CourtSelectStep extends $LitElement(css`
 					${repeat(
 						this.selectedVenueCourts,
 						court => court.id,
-						court => html`
-							<div
-								data-court-id="${court.id}"
-								role="option"
-								aria-selected="${this.booking?.courtId === court.id ? 'true' : 'false'}"
-								aria-disabled="${!this.canSelectCourt(court.id) ? 'true' : 'false'}"
-								class="snap-center flex-shrink-0 transition-opacity duration-300 ${this.getCourtMatchClass(court)}"
-								style="min-width: 140px;"
-							>
-								<sport-court-card
-									id="${court.id}"
-									name="${court.name}"
-									type="${(court.sportTypes?.[0]?.toLowerCase() as SportTypeEnum) || 'volleyball'}"
-									courtType="${court.courtType}"
-									.selected="${this.booking?.courtId === court.id}"
-									.disabled="${!this.canSelectCourt(court.id)}"
-									.compact="${true}"
-									data-availability="${this.getCourtAvailabilityStatus(court.id)}"
-									@court-click="${() => this.handleCourtSelect(court)}"
-								></sport-court-card>
-							</div>
-						`,
-					)}
-				</div>
-			`
-		} else {
-			// Regular grid view for active state
-			return html`
-				<schmancy-scroll>
-					<div
-						class="grid grid-cols-2 md:grid-cols-3 justify-between gap-2 first:pl-1 last:pr-1 ${classMap(this.getContainerClasses())}"
-						role="listbox"
-						aria-label="Available Courts"
-						aria-multiselectable="false"
-					>
-						${repeat(
-							this.selectedVenueCourts,
-							court => court.id,
-							court => html`
+						court => {
+							// Create a reference callback for the court element
+							const courtRef = (element: Element | undefined) => {
+								if (element) {
+									this.courtRefs.set(court.id, element as HTMLElement)
+								}
+							}
+							
+							return html`
 								<div
+									${ref(courtRef)}
 									data-court-id="${court.id}"
 									role="option"
 									aria-selected="${this.booking?.courtId === court.id ? 'true' : 'false'}"
 									aria-disabled="${!this.canSelectCourt(court.id) ? 'true' : 'false'}"
-									class="relative transition-opacity duration-300 ${this.getCourtMatchClass(court)}"
+									class="snap-center flex-shrink-0 transition-opacity duration-300 ${this.getCourtMatchClass(court)}"
+									style="min-width: 140px;"
 								>
 									<sport-court-card
 										id="${court.id}"
@@ -1168,12 +1338,60 @@ export class CourtSelectStep extends $LitElement(css`
 										courtType="${court.courtType}"
 										.selected="${this.booking?.courtId === court.id}"
 										.disabled="${!this.canSelectCourt(court.id)}"
-										.compact="${!this.isActive}"
+										.compact="${true}"
 										data-availability="${this.getCourtAvailabilityStatus(court.id)}"
 										@court-click="${() => this.handleCourtSelect(court)}"
 									></sport-court-card>
 								</div>
-							`,
+							`
+						},
+					)}
+				</div>
+			`
+		} else {
+			// Regular grid view for active state
+			return html`
+				<schmancy-scroll>
+					<div
+						class="grid grid-cols-2 md:grid-cols-3 justify-between gap-2 ${classMap(this.getContainerClasses())}"
+						role="listbox"
+						aria-label="Available Courts"
+						aria-multiselectable="false"
+					>
+						${repeat(
+							this.selectedVenueCourts,
+							court => court.id,
+							court => {
+								// Create a reference callback for the court element
+								const courtRef = (element: Element | undefined) => {
+									if (element) {
+										this.courtRefs.set(court.id, element as HTMLElement)
+									}
+								}
+								
+								return html`
+									<div
+										${ref(courtRef)}
+										data-court-id="${court.id}"
+										role="option"
+										aria-selected="${this.booking?.courtId === court.id ? 'true' : 'false'}"
+										aria-disabled="${!this.canSelectCourt(court.id) ? 'true' : 'false'}"
+										class="relative transition-opacity duration-300 ${this.getCourtMatchClass(court)}"
+									>
+										<sport-court-card
+											id="${court.id}"
+											name="${court.name}"
+											type="${(court.sportTypes?.[0]?.toLowerCase() as SportTypeEnum) || 'volleyball'}"
+											courtType="${court.courtType}"
+											.selected="${this.booking?.courtId === court.id}"
+											.disabled="${!this.canSelectCourt(court.id)}"
+											.compact="${!this.isActive}"
+											data-availability="${this.getCourtAvailabilityStatus(court.id)}"
+											@court-click="${() => this.handleCourtSelect(court)}"
+										></sport-court-card>
+									</div>
+								`
+							},
 						)}
 					</div>
 				</schmancy-scroll>

@@ -261,7 +261,7 @@ export class SportCourtCard extends $LitElement(css`
         aria-disabled="${this.disabled}"
         aria-label="${ariaLabel}"
         aria-describedby="${this.disabled ? statusId : nameId}"
-        class="cursor-pointer court-card flex flex-col w-full overflow-hidden rounded-xl
+        class="cursor-pointer bg-white court-card flex flex-col w-full overflow-hidden rounded-xl
           transition-all duration-200 ${cardClasses} relative
           ${!this.disabled ? 'hover:shadow-md hover:bg-gray-50' : ''}
           ${this.disabled ? 'opacity-70 cursor-not-allowed' : ''}
@@ -271,7 +271,7 @@ export class SportCourtCard extends $LitElement(css`
       >
         <!-- Header with Court Name and Status -->
         <div
-          class="${headerPadding} flex justify-between items-center transition-colors duration-200
+          class="${headerPadding}  flex justify-between items-center transition-colors duration-200
             ${this.selected ? 'bg-gradient-to-r from-primary-default to-primary-default/80 text-primary-on' : ''}"
         >
           <div class="font-medium ${this.compact ? 'text-xs' : 'text-sm'} overflow-hidden text-ellipsis whitespace-nowrap" id="${nameId}">
@@ -287,8 +287,8 @@ export class SportCourtCard extends $LitElement(css`
         </div>
 
         <!-- Court Visualization -->
-        <div class="flex items-center justify-center overflow-hidden relative p-1 bg-white" style="${svgContainerHeight}">
-          <div class="svg-wrapper w-full h-full">${unsafeSVG(this.getCourtSVG(this.type))}</div>
+        <div class="flex mx-auto max-w-[160px] items-center justify-center overflow-hidden relative p-1 bg-white" style="${svgContainerHeight}">
+          <div class="svg-wrapper w-min h-full ">${unsafeSVG(this.getCourtSVG(this.type))}</div>
         </div>
 
         <!-- Info Section -->
