@@ -28,7 +28,6 @@ import {
 	availabilityLoading$,
 	BookingFlowType,
 	getAvailableDurations,
-	getNextStep,
 } from 'src/availability-context'
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { Court } from 'src/db/courts.collection'
@@ -128,8 +127,8 @@ export class DurationSelectionStep extends $LitElement(css`
 	})
 
 	// State properties derived from observables
-	@state() private isActive = false
-	@state() private isCompact = false
+	@state() isActive = false
+	@state() isCompact = false
 	@state() isDesktopOrTablet = window.innerWidth >= 384
 	@state() shouldUseGridView = false
 	@state() isTransitioning = false
@@ -194,13 +193,38 @@ export class DurationSelectionStep extends $LitElement(css`
 			shareReplay(1),
 		)
 
-		// Active state from properties and context
+		// Active state from BookingProgressContext
 		this.isActive$ = BookingProgressContext.$.pipe(
-			map(progress => progress.currentStep === BookingStep.Duration),
+			map(progress => {
+				// Find the position of Duration step in the steps array
+				const durationStepIndex = progress.steps.findIndex(s => s.step === BookingStep.Duration)
+				// Check if this position matches the current step
+				return progress.currentStep === durationStepIndex
+			}),
 			startWith(this.active),
 			distinctUntilChanged(),
+			filter(() => !this.isTransitioning),
 			shareReplay(1),
 		)
+
+		// Subscribe to isActive changes with animation handling
+		this.isActive$.pipe(takeUntil(this.disconnecting)).subscribe(isActive => {
+			if (this.isActive !== isActive) {
+				// Set transitioning flag to enable smooth animations
+				this.isTransitioning = true
+				
+				// Update active state
+				this.isActive = isActive
+				
+				// Reset transitioning flag after animation time
+				setTimeout(() => {
+					this.isTransitioning = false
+					this.requestUpdate()
+				}, 350)
+				
+				this.requestUpdate()
+			}
+		})
 
 		// Compact mode stream
 		this.isCompact$ = BookingProgressContext.$.pipe(
@@ -269,11 +293,6 @@ export class DurationSelectionStep extends $LitElement(css`
 		)
 
 		// Subscribe to all observables and update component properties
-		this.isActive$.pipe(takeUntil(this.disconnecting)).subscribe(isActive => {
-			this.isActive = isActive
-			this.requestUpdate()
-		})
-
 		this.isCompact$.pipe(takeUntil(this.disconnecting)).subscribe(isCompact => {
 			this.isCompact = isCompact
 			this.requestUpdate()
@@ -338,7 +357,6 @@ export class DurationSelectionStep extends $LitElement(css`
 				prev.courtId === curr.courtId
 			),
 			tap(booking => {
-				console.log('Booking context changed, reloading durations:', booking)
 				this.updateState({
 					loading: true,
 					autoScrollAttempted: false,
@@ -444,8 +462,6 @@ export class DurationSelectionStep extends $LitElement(css`
 
 		// Only proceed if we have start time
 		if (this.booking?.startTime) {
-			console.log('Loading durations for', this.booking.startTime)
-
 			try {
 				// Get durations based on current flow
 				let durations;
@@ -549,16 +565,6 @@ export class DurationSelectionStep extends $LitElement(css`
 
 		this.lastSuccessfulData = { durations: estimatedDurations }
 		this.announceForScreenReader('Showing estimated duration options')
-	}
-
-	/**
-	 * Don't filter out durations that exceed closing time - just let them be displayed
-	 * They'll be marked as disabled in the UI through the renderDurationOption method
-	 */
-	private filterEstimatedDurations(durations: Duration[]): Duration[] {
-		// We're no longer filtering durations here.
-		// Instead, we'll mark them as unavailable in the UI.
-		return durations;
 	}
 
 	/**

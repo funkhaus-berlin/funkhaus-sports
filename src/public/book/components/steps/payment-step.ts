@@ -7,15 +7,15 @@ import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import { Subscription } from 'rxjs'
+import { distinctUntilChanged, filter, map, Subscription, takeUntil } from 'rxjs'
 import countries from 'src/assets/countries'
 import { Court } from 'src/db/courts.collection'
 import stripePromise, { $stripeElements } from 'src/public/stripe'
 import { FunkhausSportsTermsAndConditions } from '../../../shared/components/terms-and-conditions'
-import { Booking, bookingContext } from '../../context'
+import { transitionToNextStep } from '../../booking-steps-utils'
+import { Booking, bookingContext, BookingProgressContext, BookingStep } from '../../context'
 import { FormValidator } from '../../form-validator'
 import { PaymentService } from '../../payment-service'
-import { transitionToNextStep } from '../../booking-steps-utils'
 
 /**
  * Checkout form component with Stripe integration
@@ -30,6 +30,8 @@ export class CheckoutForm extends $LitElement() {
 	@state() processing = false
 	@state() error: string | null = null
 	@state() formValidity: Record<string, boolean> = {}
+	@state() isActive = false
+	@state() isTransitioning = false
 
 	// Services
 	private formValidator = new FormValidator()
@@ -42,6 +44,39 @@ export class CheckoutForm extends $LitElement() {
 	private _processingSubscription?: Subscription
 
 	// Lifecycle methods
+
+	connectedCallback() {
+		super.connectedCallback()
+		
+		// Add subscription to BookingProgressContext to track active state
+		BookingProgressContext.$.pipe(
+			takeUntil(this.disconnecting),
+			map(progress => progress.currentStep),
+			distinctUntilChanged(),
+			map(x => {
+				// Find the position of Payment step in the steps array
+      const paymentStepIndex = BookingProgressContext.value.steps.findIndex(s => s.step === BookingStep.Payment)
+				
+				// Check if this position matches the current step
+				return x === paymentStepIndex
+			}),
+			filter(() => !this.isTransitioning),
+		).subscribe(isActive => {
+			// Set transitioning flag to enable smooth animations
+			this.isTransitioning = true
+			
+			// Update active state
+			this.isActive = isActive
+			
+			// Reset transitioning flag after animation time
+			setTimeout(() => {
+				this.isTransitioning = false
+				this.requestUpdate()
+			}, 350)
+			
+			this.requestUpdate()
+		})
+	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
 		// Set default country if not set
@@ -104,7 +139,6 @@ export class CheckoutForm extends $LitElement() {
 			})
 		} catch (error) {
 			console.error('Error initializing Stripe:', error)
-			// this.error = 'Payment system initialization failed'
 		}
 	}
 
@@ -241,129 +275,139 @@ export class CheckoutForm extends $LitElement() {
 					</div>
 				`,
 			)}
-			<schmancy-form @submit=${this.processPayment} .inert=${this.processing}>
-				<schmancy-grid class="w-full py-2 md:py-4 px-2" gap="sm">
-					<!-- Personal Information -->
-					<sch-input
-						size="sm"
-						autocomplete="name"
-						.value=${this.booking.userName || ''}
-						required
-						.error=${!this.formValidator.isFieldValid('userName')}
-						type="text"
-						class="w-full"
-						placeholder="Full Name"
-						@change=${(e: any) => this.updateBookingField('userName', e.detail.value)}
-					></sch-input>
+			<div
+				class="
+					w-full bg-surface-low rounded-lg transition-all duration-300 p-2
+					${this.isActive ? 'scale-100' : 'scale-95'}
+				"
+			>
+				<!-- Title section when active -->
+				${when(
+					this.isActive,
+					() => html`
+						<div class="mb-3">
+							<schmancy-typography align="left" type="label" token="lg" class="font-medium text-primary-default">
+								Complete Payment
+							</schmancy-typography>
+							<div class="text-xs text-surface-on-variant mt-1">
+								<span>Enter your details to complete the booking</span>
+							</div>
+						</div>
+					`,
+				)}
 
-					<schmancy-grid gap="sm" cols="1fr 1fr">
+				<schmancy-form @submit=${this.processPayment} .inert=${this.processing}>
+					<schmancy-grid class="w-full py-2 md:py-4 px-2" gap="sm">
+						<!-- Personal Information -->
 						<sch-input
 							size="sm"
-							autocomplete="email"
-							.value=${this.booking.customerEmail || ''}
+							autocomplete="name"
+							.value=${this.booking.userName || ''}
 							required
-							.error=${!this.formValidator.isFieldValid('customerEmail') ||
-							!this.formValidator.isFieldValid('emailFormat')}
-							type="email"
-							placeholder="Email Address"
-							@change=${(e: any) => this.updateBookingField('customerEmail', e.detail.value)}
-						></sch-input>
-						<sch-input
-							size="sm"
-							autocomplete="tel"
-							.value=${this.booking.customerPhone || ''}
-							required
-							.error=${!this.formValidator.isFieldValid('customerPhone')}
-							type="tel"
-							class="w-full"
-							placeholder="Phone Number"
-							@change=${(e: any) => this.updateBookingField('customerPhone', e.detail.value)}
-						></sch-input>
-					</schmancy-grid>
-
-					<!-- Billing Information -->
-					<schmancy-grid gap="sm">
-						<!-- <sch-input
-						size="sm"	
-						autocomplete="street-address"
-							.value=${this.booking.customerAddress?.street || ''}
-							required
-							.error=${!this.formValidator.isFieldValid('customerAddress.street')}
+							.error=${!this.formValidator.isFieldValid('userName')}
 							type="text"
 							class="w-full"
-							placeholder="Street Address"
-							@change=${(e: any) => this.updateBookingField('customerAddress.street', e.detail.value)}
-						></sch-input> -->
+							placeholder="Full Name"
+							@change=${(e: any) => this.updateBookingField('userName', e.detail.value)}
+						></sch-input>
 
-						<div class="grid grid-cols-3 gap-2">
+						<schmancy-grid gap="sm" cols="1fr 1fr">
 							<sch-input
 								size="sm"
-								autocomplete="postal-code"
-								.value=${this.booking.customerAddress?.postalCode || ''}
+								autocomplete="email"
+								.value=${this.booking.customerEmail || ''}
 								required
-								.error=${!this.formValidator.isFieldValid('customerAddress.postalCode')}
-								type="text"
-								placeholder="Postal Code"
-								@change=${(e: any) => this.updateBookingField('customerAddress.postalCode', e.detail.value)}
+								.error=${!this.formValidator.isFieldValid('customerEmail') ||
+								!this.formValidator.isFieldValid('emailFormat')}
+								type="email"
+								placeholder="Email Address"
+								@change=${(e: any) => this.updateBookingField('customerEmail', e.detail.value)}
 							></sch-input>
-
 							<sch-input
 								size="sm"
-								autocomplete="address-level2"
-								.value=${this.booking.customerAddress?.city || ''}
+								autocomplete="tel"
+								.value=${this.booking.customerPhone || ''}
 								required
-								.error=${!this.formValidator.isFieldValid('customerAddress.city')}
-								type="text"
-								placeholder="City"
-								@change=${(e: any) => this.updateBookingField('customerAddress.city', e.detail.value)}
+								.error=${!this.formValidator.isFieldValid('customerPhone')}
+								type="tel"
+								class="w-full"
+								placeholder="Phone Number"
+								@change=${(e: any) => this.updateBookingField('customerPhone', e.detail.value)}
 							></sch-input>
-							<schmancy-autocomplete
-								size="sm"
-								.autocomplete=${'country-name'}
-								required
-								@change=${(e: SchmancyAutocompleteChangeEvent) => {
-									this.updateBookingField('customerAddress.country', e.detail.value as string)
-								}}
-								placeholder="Country"
-								.value=${this.booking.customerAddress?.country || ''}
-							>
-								${repeat(
-									countries,
-									c => c.code,
-									c =>
-										html` <schmancy-option .label=${c.name ?? ''} .value=${c.code ?? 0}> ${c.name} </schmancy-option>`,
-								)}
-							</schmancy-autocomplete>
-						</div>
-					</schmancy-grid>
-
-					<!-- Payment Details -->
-					<section>
-						<slot name="stripe-element"></slot>
-					</section>
-
-					<!-- Terms & Submit Button -->
-					<schmancy-grid class="pr-4" gap="sm" justify="end">
-						<schmancy-grid cols="1fr" justify="end">
-							<schmancy-typography type="label" class="col-span-1" align="left">
-								<span>
-									By clicking Pay you agree to
-
-									<a class="text-sky-700 underline" href="javascript:void(0)" @click=${this.showTerms}
-										>our terms and conditions</a
-									>
-								</span>
-							</schmancy-typography>
-							<schmancy-typography class="mb-0" type="label"> Includes: 7% VAT </schmancy-typography>
 						</schmancy-grid>
-						<schmancy-button class="h-[3rem] pb-2" type="submit" variant="filled" ?disabled=${this.processing}>
-							<schmancy-typography class="px-4" type="title" token="lg">
-								Pay &euro;${this.booking.price.toFixed(2)}
-							</schmancy-typography>
-						</schmancy-button>
+
+						<!-- Billing Information -->
+						<schmancy-grid gap="sm">
+							<div class="grid grid-cols-3 gap-2">
+								<sch-input
+									size="sm"
+									autocomplete="postal-code"
+									.value=${this.booking.customerAddress?.postalCode || ''}
+									required
+									.error=${!this.formValidator.isFieldValid('customerAddress.postalCode')}
+									type="text"
+									placeholder="Postal Code"
+									@change=${(e: any) => this.updateBookingField('customerAddress.postalCode', e.detail.value)}
+								></sch-input>
+
+								<sch-input
+									size="sm"
+									autocomplete="address-level2"
+									.value=${this.booking.customerAddress?.city || ''}
+									required
+									.error=${!this.formValidator.isFieldValid('customerAddress.city')}
+									type="text"
+									placeholder="City"
+									@change=${(e: any) => this.updateBookingField('customerAddress.city', e.detail.value)}
+								></sch-input>
+								<schmancy-autocomplete
+									size="sm"
+									.autocomplete=${'country-name'}
+									required
+									@change=${(e: SchmancyAutocompleteChangeEvent) => {
+										this.updateBookingField('customerAddress.country', e.detail.value as string)
+									}}
+									placeholder="Country"
+									.value=${this.booking.customerAddress?.country || ''}
+								>
+									${repeat(
+										countries,
+										c => c.code,
+										c =>
+											html` <schmancy-option .label=${c.name ?? ''} .value=${c.code ?? 0}> ${c.name} </schmancy-option>`,
+									)}
+								</schmancy-autocomplete>
+							</div>
+						</schmancy-grid>
+
+						<!-- Payment Details -->
+						<section>
+							<slot name="stripe-element"></slot>
+						</section>
+
+						<!-- Terms & Submit Button -->
+						<schmancy-grid class="pr-4" gap="sm" justify="end">
+							<schmancy-grid cols="1fr" justify="end">
+								<schmancy-typography type="label" class="col-span-1" align="left">
+									<span>
+										By clicking Pay you agree to
+
+										<a class="text-sky-700 underline" href="javascript:void(0)" @click=${this.showTerms}
+											>our terms and conditions</a
+										>
+									</span>
+								</schmancy-typography>
+								<schmancy-typography class="mb-0" type="label"> Includes: 7% VAT </schmancy-typography>
+							</schmancy-grid>
+							<schmancy-button class="h-[3rem] pb-2" type="submit" variant="filled" ?disabled=${this.processing}>
+								<schmancy-typography class="px-4" type="title" token="lg">
+									Pay &euro;${this.booking.price.toFixed(2)}
+								</schmancy-typography>
+							</schmancy-button>
+						</schmancy-grid>
 					</schmancy-grid>
-				</schmancy-grid>
-			</schmancy-form>
+				</schmancy-form>
+			</div>
 		`
 	}
 }

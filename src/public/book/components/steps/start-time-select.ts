@@ -9,29 +9,28 @@ import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import {
-	BehaviorSubject,
-	combineLatest,
-	distinctUntilChanged,
-	filter,
-	fromEvent,
-	map,
-	Observable,
-	shareReplay,
-	startWith,
-	take,
-	takeUntil,
-	tap,
+  BehaviorSubject,
+  combineLatest,
+  distinctUntilChanged,
+  filter,
+  fromEvent,
+  map,
+  Observable,
+  shareReplay,
+  startWith,
+  take,
+  takeUntil,
+  tap,
 } from 'rxjs'
 import {
-	availabilityContext,
-	AvailabilityData,
-	availabilityLoading$,
-	BookingFlowType,
-	getAvailableTimeSlots,
-	getNextStep,
+  availabilityContext,
+  AvailabilityData,
+  availabilityLoading$,
+  BookingFlowType,
+  getAvailableTimeSlots,
 } from 'src/availability-context'
-import { transitionToNextStep } from '../../booking-steps-utils'
 import { toUTC } from 'src/utils/timezone'
+import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { TimeSlot } from '../../types'
 
@@ -214,13 +213,38 @@ export class TimeSelectionStep extends $LitElement(css`
 			shareReplay(1),
 		)
 
-		// Active state from properties and context
+		// Active state from BookingProgressContext
 		this.isActive$ = BookingProgressContext.$.pipe(
-			map(progress => progress.currentStep === BookingStep.Time),
+			map(progress => {
+				// Find the position of Time step in the steps array
+				const timeStepIndex = progress.steps.findIndex(s => s.step === BookingStep.Time)
+				// Check if this position matches the current step
+				return progress.currentStep === timeStepIndex
+			}),
 			startWith(this.active),
 			distinctUntilChanged(),
+			filter(() => !this.isTransitioning),
 			shareReplay(1),
 		)
+
+		// Subscribe to isActive changes with animation handling
+		this.isActive$.pipe(takeUntil(this.disconnecting)).subscribe(isActive => {
+			if (this.isActive !== isActive) {
+				// Set transitioning flag to enable smooth animations
+				this.isTransitioning = true
+				
+				// Update active state
+				this.isActive = isActive
+				
+				// Reset transitioning flag after animation time
+				setTimeout(() => {
+					this.isTransitioning = false
+					this.requestUpdate()
+				}, 350)
+				
+				this.requestUpdate()
+			}
+		})
 
 		// Compact mode stream
 		this.isCompact$ = BookingProgressContext.$.pipe(
@@ -230,17 +254,20 @@ export class TimeSelectionStep extends $LitElement(css`
 		)
 
 		// Calculate view mode based on screen size and active state
-		combineLatest([this.isDesktopOrTablet$, this.isActive$])
+		combineLatest([this.isDesktopOrTablet$, this.isActive$, bookingContext.$.pipe(map(booking => !!booking?.startTime))])
 			.pipe(
-				map(([isDesktop, isActive]) => {
+				map(([isDesktop, isActive, hasSelection]) => {
 					// If not active, always use list view
 					if (!isActive) return 'list'
 
+					// If selection is made, switch to list view
+					if (hasSelection) return 'list'
+
+					// If switching to mobile, always use list
+					if (!isDesktop) return 'list'
+
 					// If switching from inactive to active on desktop, use grid
 					if (isActive && isDesktop) return 'grid'
-
-					// If on mobile, always use list
-					if (!isDesktop) return 'list'
 
 					// Default to current mode
 					return this.state$.value.viewMode
@@ -258,7 +285,7 @@ export class TimeSelectionStep extends $LitElement(css`
 				// Reset transition flag after animation
 				this.isTransitioning = false
 
-				// /* Handle */ auto-scrolling for list view
+				// Handle auto-scrolling for list view
 				if (viewMode === 'list') {
 					setTimeout(() => {
 						// If booking start time is set, scroll to it
@@ -286,11 +313,6 @@ export class TimeSelectionStep extends $LitElement(css`
 		)
 
 		// Subscribe to all observables and update component properties
-		this.isActive$.pipe(takeUntil(this.disconnecting)).subscribe(isActive => {
-			this.isActive = isActive
-			this.requestUpdate()
-		})
-
 		this.isCompact$.pipe(takeUntil(this.disconnecting)).subscribe(isCompact => {
 			this.isCompact = isCompact
 			this.requestUpdate()
@@ -366,7 +388,6 @@ export class TimeSelectionStep extends $LitElement(css`
 	private subscribeToAvailabilityContext(): void {
 		// Subscribe to availability context updates
 		availabilityContext.$.pipe(
-			tap(console.log),
 			takeUntil(this.disconnecting),
 			filter(availability => !!availability && !!availability.date && !!availability.venueId),
 			filter(availability => availability.date === bookingContext.value.date),
@@ -374,9 +395,6 @@ export class TimeSelectionStep extends $LitElement(css`
 		).subscribe({
 			next: () => {
 				this.loadTimeSlots()
-			},
-			complete: () => {
-				// alert('Availability context completed')
 			},
 		})
 
@@ -435,7 +453,6 @@ export class TimeSelectionStep extends $LitElement(css`
 					error: this.availability.error,
 				})
 
-				// this.lastSuccessfulData = { timeSlots }
 				this.announceForScreenReader(`${timeSlots.filter(s => s.available).length} time slots available`)
 			} else {
 				// No valid times available - use estimated times as fallback
@@ -531,18 +548,6 @@ export class TimeSelectionStep extends $LitElement(css`
 			timeSlots: slots,
 			loading: false,
 			error: 'Using estimated availability - actual availability may vary',
-		})
-
-		// After update, try to scroll to appropriate position
-		this.updateComplete.then(() => {
-			if (this.state$.value.viewMode === 'list') {
-				if (this.booking.startTime) {
-					this.scrollToTime(this.booking.startTime)
-				} else if (!this.state$.value.autoScrollAttempted) {
-					this.updateState({ autoScrollAttempted: true })
-					this.scrollToFirstAvailableTime()
-				}
-			}
 		})
 
 		this.announceForScreenReader(`${slots.length} estimated time slots loaded`)
@@ -729,18 +734,6 @@ export class TimeSelectionStep extends $LitElement(css`
 			</div>
 		`
 	}
-
-	// private renderViewToggle(): unknown {
-	// 	if (!this.isDesktopOrTablet || !this.isActive) return nothing
-
-	// 	return html`
-	// 		<div class="flex items-center p-1 rounded-lg bg-surface-variant">
-	// 			<schmancy-icon-button @click=${() => this.toggleView('grid')} size="sm">flex_wrap</schmancy-icon-button>
-
-	// 			<schmancy-icon-button size="sm" @click=${() => this.toggleView('list')}>flex_no_wrap</schmancy-icon-button>
-	// 		</div>
-	// 	`
-	// }
 
 	// UPDATED: Store refs to time slot elements
 	private renderTimeSlot(slot: TimeSlot): unknown {

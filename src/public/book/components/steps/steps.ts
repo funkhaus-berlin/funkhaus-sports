@@ -159,7 +159,7 @@ export class FunkhausBookingSteps extends $LitElement() {
 	 * Helper method to render a single step
 	 * Updated to use the new step structure
 	 */
-	private renderStep(step: Step, index: number) {
+	private renderStep(step: Step) {
 		const stepNumber = step.step
 		const isActive = this.isStepActive(stepNumber)
 		const isCurrent = this.currentStep === stepNumber
@@ -322,13 +322,13 @@ export class FunkhausBookingSteps extends $LitElement() {
 					// For all but the last step, create a combined step+connector group
 					if (index < steps.length - 1) {
 						return html`
-							<div class="flex items-center flex-shrink-0 min-w-max">${this.renderStep(step, index)}</div>
+							<div class="flex items-center flex-shrink-0 min-w-max">${this.renderStep(step)}</div>
 							<div class="flex-grow min-w-2 max-w-24">${this.renderConnector(index + 1)}</div>
 						`
 					}
 
 					// For the last step, just return the step by itself
-					return html` <div class="flex items-center flex-shrink-0 min-w-max">${this.renderStep(step, index)}</div> `
+					return html` <div class="flex items-center flex-shrink-0 min-w-max">${this.renderStep(step)}</div> `
 				})}
 			</schmancy-flex>
 		`

@@ -122,11 +122,33 @@ export class DateSelectionStep extends $LitElement(css`
 				tap(() => this._handleResize()),
 			),
 
-			// Handle booking progress changes
+			// Enhanced BookingProgressContext subscription with animation handling
 			BookingProgressContext.$.pipe(
 				startWith(BookingProgressContext.value),
-				tap(b => {
-					this.active = b.currentStep === BookingStep.Date
+				map(progress => {
+					// Find the position of Date step in the steps array
+					const dateStepIndex = progress.steps.findIndex(s => s.step === BookingStep.Date)
+					// Check if this position matches the current step
+					return progress.currentStep === dateStepIndex
+				}),
+				distinctUntilChanged(),
+				filter(() => !this._transitionActive), // Only process if not already transitioning
+				tap(isActive => {
+					if (this.active !== isActive) {
+						// Set transition flag to enable smooth animations
+						this._transitionActive = true
+						
+						// Update active state
+						this.active = isActive
+						
+						// Reset transition flag after animation
+						setTimeout(() => {
+							this._transitionActive = false
+							this.requestUpdate()
+						}, 350)
+						
+						this.requestUpdate()
+					}
 				}),
 			),
 
@@ -733,11 +755,5 @@ export class DateSelectionStep extends $LitElement(css`
 				</div>
 			</div>
 		`
-	}
-}
-
-declare global {
-	interface HTMLElementTagNameMap {
-		'date-selection-step': DateSelectionStep
 	}
 }
