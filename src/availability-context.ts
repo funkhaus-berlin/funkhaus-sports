@@ -496,7 +496,11 @@ export function getAvailableDurations(startTime: string, courtId?: string): Dura
 	const availability = availabilityContext.value
 	const booking = bookingContext.value
 
-	if (!startTime) return []
+	// Return empty array if startTime is empty, undefined, or invalid
+	if (!startTime || !dayjs(startTime).isValid()) {
+		console.warn('Invalid or missing start time provided to getAvailableDurations:', startTime)
+		return []
+	}
 
 	// Use courtId parameter or fall back to selected court in booking
 	const effectiveCourtId = courtId || booking.courtId
@@ -533,15 +537,30 @@ export function getAvailableDurations(startTime: string, courtId?: string): Dura
 				if (!court) return null
 
 				// Calculate price for this court and duration
-				const startDateTime = dayjs(startTime)
-				const endDateTime = startDateTime.add(duration.value, 'minute')
+				let price = 0
+				try {
+					const startDateTime = dayjs(startTime)
+					if (!startDateTime.isValid()) {
+						console.warn('Invalid start time when calculating price:', startTime)
+						return null
+					}
+					
+					const endDateTime = startDateTime.add(duration.value, 'minute')
+					if (!endDateTime.isValid()) {
+						console.warn('Invalid end time when calculating price for duration:', duration.value)
+						return null
+					}
 
-				const price = pricingService.calculatePrice(
-					court,
-					startDateTime.toISOString(),
-					endDateTime.toISOString(),
-					bookingContext.value.userId,
-				)
+					price = pricingService.calculatePrice(
+						court,
+						startDateTime.toISOString(),
+						endDateTime.toISOString(),
+						bookingContext.value.userId,
+					)
+				} catch (error) {
+					console.error('Error calculating price for court:', courtId, error)
+					return null
+				}
 
 				return {
 					...duration,
@@ -569,17 +588,32 @@ export function getAvailableDurations(startTime: string, courtId?: string): Dura
 				const court = courtsContext.value.get(courtId)
 				if (court) {
 					// Calculate price for this court and duration
-					const startDateTime = dayjs(startTime)
-					const endDateTime = startDateTime.add(duration.value, 'minute')
+					let price = 0
+					try {
+						const startDateTime = dayjs(startTime)
+						if (!startDateTime.isValid()) {
+							console.warn('Invalid date when calculating price:', startTime)
+							return // Skip this court
+						}
+						
+						const endDateTime = startDateTime.add(duration.value, 'minute')
+						if (!endDateTime.isValid()) {
+							console.warn('Invalid end date when calculating price')
+							return // Skip this court
+						}
 
-					const price = pricingService.calculatePrice(
-						court,
-						startDateTime.toISOString(),
-						endDateTime.toISOString(),
-						bookingContext.value.userId,
-					)
-
-					totalPrice += price
+						price = pricingService.calculatePrice(
+							court,
+							startDateTime.toISOString(),
+							endDateTime.toISOString(),
+							bookingContext.value.userId,
+						)
+						
+						totalPrice += price
+					} catch (error) {
+						console.error('Error calculating price:', error)
+						return // Skip this court
+					}
 				}
 			})
 

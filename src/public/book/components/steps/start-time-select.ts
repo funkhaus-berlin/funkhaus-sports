@@ -1,4 +1,4 @@
-import { select } from '@mhmo91/schmancy'
+import { $notify, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
@@ -115,14 +115,14 @@ export class TimeSelectionStep extends $LitElement(css`
 	@property({ type: Boolean }) hidden = false
 
 	// Basic dependencies
-	@select(bookingContext, undefined, { required: true })
+	@select(bookingContext)
 	booking!: Booking
 
-	@select(BookingProgressContext, undefined, { required: true })
+	@select(BookingProgressContext)
 	bookingProgress!: BookingProgress
 
 	// Add availability context
-	@select(availabilityContext, undefined, { required: true })
+	@select(availabilityContext)
 	availability!: AvailabilityData
 
 	// Core state streams
@@ -384,6 +384,45 @@ export class TimeSelectionStep extends $LitElement(css`
 		})
 	}
 
+	/**
+	 * Check if the selected time is now unavailable due to other selections
+	 * and unselect it if necessary
+	 */
+	private checkSelectedTimeAvailability(): void {
+		const booking = this.booking
+		
+		// If no time is selected, nothing to check
+		if (!booking || !booking.startTime) return
+
+		// Get the selected time in local timezone
+		const localStartTime = toUserTimezone(booking.startTime)
+		const timeValue = localStartTime.hour() * 60 + localStartTime.minute()
+		
+		// Find this time in our current time slots
+		const selectedSlot = this.state$.value.timeSlots.find(slot => slot.value === timeValue)
+		
+		// If the selected time is now unavailable, clear the selection
+		if (selectedSlot && !selectedSlot.available) {
+			console.log('Selected time is no longer available due to changed selections, clearing time selection')
+			
+			// Update booking context to clear times
+			// This will trigger the subscription in court-select that watches for time changes
+			bookingContext.set({
+				startTime: '',
+				endTime: '',
+			}, true)
+
+			// Notify the user
+			$notify.error('Your previously selected time is no longer available. Please select another time slot.',{
+				duration: 1000,
+				playSound: true
+			})
+      
+			// Request update to refresh UI
+			this.requestUpdate()
+		}
+	}
+
 	private subscribeToProgressContext(): void {
 		BookingProgressContext.$.pipe(takeUntil(this.disconnecting)).subscribe(progress => {
 			if (progress.currentStep === BookingStep.Time) {
@@ -489,6 +528,7 @@ export class TimeSelectionStep extends $LitElement(css`
 
 		// After data is loaded, try to scroll to appropriate position
 		this.updateComplete.then(() => {
+			this.checkSelectedTimeAvailability()
 			if (this.state$.value.viewMode === 'list') {
 				if (this.booking.startTime) {
 					setTimeout(() => this.scrollToTime(this.booking.startTime), 150)
@@ -584,6 +624,7 @@ export class TimeSelectionStep extends $LitElement(css`
 
 			// Update booking context with time selection
 			let newEndTime = undefined
+      alert(this.booking.endTime)
 			if (!!this.booking.endTime) {
 				const oldDuration = dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute')
 				newEndTime = dayjs(newStartTime).add(oldDuration, 'minute').toISOString()

@@ -132,7 +132,9 @@ export class AppIndex extends $LitElement() {
 						</schmancy-area>
 					</schmancy-scroll>
 				</schmancy-surface>
+        <sch-notification-container .playSound=${true}></sch-notification-container>
 			</schmancy-theme>
+
 		`
 	}
 }
