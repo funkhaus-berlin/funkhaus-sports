@@ -414,7 +414,7 @@ export class TimeSelectionStep extends $LitElement(css`
 
 			// Notify the user
 			$notify.error('Your previously selected time is no longer available. Please select another time slot.',{
-				duration: 1000,
+				duration: 2000,
 				playSound: true
 			})
       
@@ -624,10 +624,27 @@ export class TimeSelectionStep extends $LitElement(css`
 
 			// Update booking context with time selection
 			let newEndTime = undefined
-      alert(this.booking.endTime)
-			if (!!this.booking.endTime) {
-				const oldDuration = dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute')
-				newEndTime = dayjs(newStartTime).add(oldDuration, 'minute').toISOString()
+			
+			if (!!this.booking.endTime && !!this.booking.startTime) {
+				try {
+					const bookingStartDT = dayjs(this.booking.startTime)
+					const bookingEndDT = dayjs(this.booking.endTime)
+					
+					if (bookingStartDT.isValid() && bookingEndDT.isValid()) {
+						const oldDuration = bookingEndDT.diff(bookingStartDT, 'minute')
+						const newEndDT = dayjs(newStartTime).add(oldDuration, 'minute')
+						
+						if (newEndDT.isValid()) {
+							newEndTime = newEndDT.toISOString()
+						} else {
+							console.warn('Invalid end date calculated')
+						}
+					} else {
+						console.warn('Invalid existing booking dates')
+					}
+				} catch (err) {
+					console.error('Error calculating end time:', err)
+				}
 			}
 
 			const bookingUpdate: Partial<Booking> = {
