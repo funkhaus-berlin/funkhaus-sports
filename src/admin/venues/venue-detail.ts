@@ -10,7 +10,6 @@ import './components'
 import { VenueAnalytics, VenueCourtsPreview } from './components'
 import { selectMyCourts } from './courts/context'
 import { VenueCourts } from './courts/courts'
-import './courts/court-routes'
 import { venueContext, venuesContext } from './venue-context'
 import { VenueManagement } from './venues'
 

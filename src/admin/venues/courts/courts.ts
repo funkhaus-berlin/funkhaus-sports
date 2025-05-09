@@ -9,8 +9,7 @@ import { Venue } from 'src/db/venue-collection'
 import { formatEnum } from '../components/venue-form'
 import { venueContext, venuesContext } from '../venue-context'
 import { courtsContext, selectMyCourts } from './context'
-import './court-detail'
-import { CourtDetail } from './court-detail'
+import { CourtForm } from './court-form'
 
 // --- Court Management Component ---
 @customElement('funkhaus-venue-courts')
@@ -62,19 +61,15 @@ export class VenueCourts extends $LitElement() {
 			name: 'Status',
 			align: 'left',
 			render: (court: Court) => {
-				const status = (court.status as keyof typeof this.statusConfig) || 'inactive'
-				const config = this.statusConfig[status]
 				return html`
-					<schmancy-chip
+					<sch-badge
 						@click=${(e: Event) => {
 							e.preventDefault()
 						}}
-						.selected=${status === 'active'}
-						.label=${config.label}
-						readOnly
+					
 					>
-						${config.icon}
-					</schmancy-chip>
+					${court.status}
+					</sch-badge>
 				`
 			},
 		},
@@ -121,37 +116,18 @@ export class VenueCourts extends $LitElement() {
 
 	// Method to navigate to the court detail page for a new court
 	addNewCourt() {
-		if (this.venueId) {
-			// First clear any existing court in context
-			import('./context').then(({ selectedCourtContext }) => {
-				// Clear selected court to avoid data from previous court contaminating the new court
-				selectedCourtContext.set({});
-				
-				// Update URL for bookmarking/sharing without full page navigation
-				const url = new URL(window.location.href);
-				url.pathname = `/admin/venues/${this.venueId}/courts/new`;
-				const state = { venueId: this.venueId, isNew: true };
-				window.history.pushState(state, '', url.toString());
-				
-				// Use setTimeout to ensure context is cleared before navigation
-				setTimeout(() => {
-					// Use Schmancy area to navigate
-					area.push({
-						component: 'court-detail',
-						area: 'venue',
-						state: state
-					});
-				}, 100);
-			});
-		}
+		area.push({
+      component: new CourtForm(new Court(this.venueId)),
+      
+      area: 'venue'
+    });
 	}
 
 	// Method to navigate to the court detail page for an existing court
 	navigateToCourtDetail(courtId: string) {
 		area.push({
-      component: new CourtDetail(courtsContext.value.get(courtId)),
+      component: new CourtForm(courtsContext.value.get(courtId)),
       area: 'venue',
-      
     });
 	}
 
@@ -179,7 +155,7 @@ export class VenueCourts extends $LitElement() {
 				</schmancy-nav-drawer-appbar>
 
 				<!-- Content Area with Loading, Error, and Data States -->
-				<div class="flex flex-col flex-1 overflow-hidden">
+				<div>
 					${when(
 						this.loading,
 						() => html`

@@ -7,7 +7,7 @@ import { repeat } from 'lit/directives/repeat.js'
 import { takeUntil } from 'rxjs'
 import { Venue, VenuesDB } from 'src/db/venue-collection'
 import { confirm } from 'src/schmancy'
-import './admin-venue-card' // Import admin venue card
+import './admin-venue-card'; // Import admin venue card
 import { VenueForm } from './components/venue-form'
 import { venueContext, venuesContext } from './venue-context'
 import { VenueDetailView } from './venue-detail'
@@ -140,9 +140,7 @@ export class VenueManagement extends $LitElement() {
 				>
 					<schmancy-button
 						variant="filled tonal"
-						@click=${(e) => {
-							e.stopPropagation(); // Prevent opening venue details
-							// Set venue context first and ensure it's fully updated before navigating
+						@click=${() => {
 							venueContext.set(venue)
 
 							// Use setTimeout to ensure context is updated before navigation
@@ -163,8 +161,7 @@ export class VenueManagement extends $LitElement() {
 					
 					<schmancy-button
 						variant="filled tonal"
-						@click=${(e) => {
-							e.stopPropagation(); // Prevent opening venue details when clicking delete
+						@click=${() => {
 							this.confirmDeleteVenue(venue);
 						}}
 						title="Delete Venue"
@@ -206,9 +203,6 @@ export class VenueManagement extends $LitElement() {
 
 			if (confirmed) {
 				// Show loading state
-				const loadingDialog = document.createElement('schmancy-busy')
-				loadingDialog.classList.add('fixed', 'inset-0');
-				document.body.appendChild(loadingDialog);
 				
 				// Double-check that we have a valid document ID
 				// The ID should be a string like "12345-abcde-67890" (UUID format),
@@ -218,7 +212,6 @@ export class VenueManagement extends $LitElement() {
 				// Verify this venue exists in our cache before attempting to delete
 				if (!this.venues.has(venueId)) {
 					console.error('Venue not found in cache:', venueId);
-					document.body.removeChild(loadingDialog);
 					$notify.error('Cannot delete venue: Venue not found in system');
 					return;
 				}
@@ -229,13 +222,11 @@ export class VenueManagement extends $LitElement() {
 					.subscribe({
 						next: () => {
 							// Remove loading state
-							document.body.removeChild(loadingDialog);
 							// Notify success
 							$notify.success(`Venue "${venue.name}" deleted successfully`)
 						},
 						error: (err) => {
 							// Remove loading state
-							document.body.removeChild(loadingDialog);
 							// Notify error
 							console.error('Error deleting venue:', err)
 							$notify.error(`Failed to delete venue: ${err.message || 'Unknown error'}`)

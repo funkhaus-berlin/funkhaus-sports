@@ -74,31 +74,35 @@ export interface CourtMapCoordinates {
 	},
 	rotation?: number  // Rotation in degrees (clockwise from north)
 }
+export class Court {
+  id!: string
+  venueId: string
+  name!: string
+  number?: string
+  description?: string
+  courtType!: keyof typeof CourtTypeEnum
+  sportTypes!: (keyof typeof SportTypeEnum)[]
+  surfaceType?: keyof typeof SurfaceTypeEnum
+  dimensions?: Dimensions
+  pricing!: Pricing
+  maintenance?: Maintenance
+  status!: 'active' | 'maintenance' | 'inactive'
+  amenities?: string[]
+  images?: string[]
+  createdAt!: string
+  updatedAt!: string
+  layout?: {
+	type: 'rectangle' | 'circle' | 'custom'
+	dimensions: Dimensions
+	orientation?: 'landscape' | 'portrait'
+	customShape?: string
+  }
+  mapCoordinates?: CourtMapCoordinates
 
-export interface Court {
-	id: string
-	venueId: string
-	name: string
-	number?: string // Court number (e.g., "Court 1")
-	description?: string
-	courtType: keyof typeof CourtTypeEnum
-	sportTypes: (keyof typeof SportTypeEnum)[]
-	surfaceType?: keyof typeof SurfaceTypeEnum
-	dimensions?: Dimensions
-	pricing: Pricing
-	maintenance?: Maintenance
-	status: 'active' | 'maintenance' | 'inactive'
-	amenities?: string[] // e.g., ["lighting", "scoreboard", "seating"]
-	images?: string[]
-	createdAt: string
-	updatedAt: string
-	layout?: {
-		type: 'rectangle' | 'circle' | 'custom'
-		dimensions: Dimensions // in meters
-		orientation?: 'landscape' | 'portrait'
-		customShape?: string // SVG path data or similar
-	}
-	mapCoordinates?: CourtMapCoordinates
+  constructor(venueId: string) {
+	this.venueId = venueId
+	// Other properties should be set after instantiation
+  }
 }
 
 // CourtsDB implementation would remain the same as your current code
