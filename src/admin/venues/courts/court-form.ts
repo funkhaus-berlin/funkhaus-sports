@@ -9,6 +9,8 @@ import { Court, CourtsDB, CourtTypeEnum, Pricing, SportTypeEnum } from 'src/db/c
 import { Venue } from 'src/db/venue-collection'
 import { confirm } from 'src/schmancy'
 import { venueContext, venuesContext } from '../venue-context'
+import { selectedCourtContext } from './context'
+import '../components/court-map-editor'
 
 // Format enum values to display labels
 export const formatEnum = (value: string): string =>
@@ -26,14 +28,17 @@ export class CourtForm extends $LitElement() {
 		status: 'active',
 		sportTypes: ['pickleball'],
 		recommendedPlayers: 4,
+		mapCoordinates: undefined,
 	}
 
 	@select(venuesContext) venues!: Map<string, any>
 	@select(venueContext) venueData!: Partial<Venue>
+	@select(selectedCourtContext) selectedCourtData!: Partial<Court>
 
 	@state() busy = false
 	@state() isCloning = false
 	@property({ type: String }) venueId: string = ''
+	@property({ type: Object }) courtData?: Court
 
 	constructor(private editingCourt?: Court & { recommendedPlayers?: number }) {
 		super()
@@ -45,10 +50,32 @@ export class CourtForm extends $LitElement() {
 
 	connectedCallback() {
 		super.connectedCallback()
+		console.log('CourtForm connected with courtData:', this.courtData, 'selectedCourtData:', this.selectedCourtData);
 
-		// Set venueId with simple priority logic
-		if (this.venueData?.id) {
-			this.venueId = this.venueData.id
+		// Try loading court data from different sources with priority:
+		// 1. Direct courtData property (passed via component props)
+		// 2. editingCourt (passed via constructor)
+		// 3. selectedCourtContext (stored in context)
+		
+		// Check if we have courtData passed directly
+		if (this.courtData) {
+			console.log('Using court data passed directly in props:', this.courtData);
+			this.court = { ...this.courtData };
+			this.venueId = this.courtData.venueId;
+		}
+		// If already using editingCourt from constructor, don't override it
+		else if (!this.editingCourt && this.selectedCourtData && Object.keys(this.selectedCourtData).length > 0) {
+			console.log('Using court data from selectedCourtContext:', this.selectedCourtData);
+			this.court = { ...this.selectedCourtData };
+			
+			if (this.selectedCourtData.venueId) {
+				this.venueId = this.selectedCourtData.venueId;
+			}
+		}
+		
+		// Set venueId with simple priority logic if not already set
+		if (!this.venueId && this.venueData?.id) {
+			this.venueId = this.venueData.id;
 		}
 
 		// Set the venueId on the court object
@@ -62,6 +89,68 @@ export class CourtForm extends $LitElement() {
 		// Ensure sportTypes is initialized properly
 		if (!this.court.sportTypes || !Array.isArray(this.court.sportTypes)) {
 			this.court.sportTypes = ['pickleball']
+		}
+		
+		// If venue doesn't have coordinates but has address, try to set the coordinates
+		this._ensureVenueCoordinates();
+		
+		// Log the initialized court data
+		console.log('Court form initialized with data:', this.court);
+	}
+	
+	/**
+	 * Ensure venue has coordinates, fetch them from address if needed
+	 */
+	private async _ensureVenueCoordinates() {
+		if ((!this.venueData?.latitude || !this.venueData?.longitude) && 
+			this.venueData?.address && !this.venueData?.address?.coordinates) {
+			
+			const { street, city, postalCode, country } = this.venueData.address;
+			
+			if (street && city && country) {
+				try {
+					const addressStr = `${street}, ${city}, ${postalCode || ''}, ${country}`;
+					const encodedAddress = encodeURIComponent(addressStr);
+					const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}`;
+					
+					// Add delay to respect rate limits
+					await new Promise(resolve => setTimeout(resolve, 1000));
+					
+					const response = await fetch(url, {
+						headers: {
+							'User-Agent': 'FunkhausSports/1.0'
+						}
+					});
+					
+					if (response.ok) {
+						const data = await response.json();
+						if (data && data.length > 0) {
+							const { lat, lon } = data[0];
+							
+							// Update venue data with coordinates
+							if (typeof this.venueData === 'object') {
+								this.venueData = {
+									...this.venueData,
+									latitude: parseFloat(lat),
+									longitude: parseFloat(lon),
+									address: {
+										...this.venueData.address,
+										coordinates: {
+											lat: parseFloat(lat),
+											lng: parseFloat(lon)
+										}
+									}
+								};
+								
+								// Force update
+								this.requestUpdate();
+							}
+						}
+					}
+				} catch (error) {
+					console.error('Error geocoding venue address:', error);
+				}
+			}
 		}
 	}
 
@@ -175,6 +264,26 @@ export class CourtForm extends $LitElement() {
 								)}
 							</div>
 						</div>
+						
+						<!-- Court Map Placement -->
+						<div class="mt-4 border rounded p-2 bg-gray-50">
+							<div class="text-sm font-medium mb-2">Court Map Placement</div>
+							<p class="text-xs text-gray-500 mb-2">Draw a rectangle on the map to represent the court's location and size</p>
+							${!this.venueData?.latitude && !this.venueData?.longitude && 
+	  (!this.venueData?.address?.coordinates?.lat || !this.venueData?.address?.coordinates?.lng) ? 
+								html`<div class="text-amber-600 bg-amber-50 p-2 mb-2 text-sm rounded">
+									<schmancy-icon class="mr-1">warning</schmancy-icon>
+									Venue coordinates are not set. The map will use default coordinates.
+									Please update venue address information to set precise coordinates.
+								</div>` : ''}
+							<court-map-editor
+								.mapCoordinates=${this.court.mapCoordinates}
+								.venueLatitude=${this.venueData?.latitude || this.venueData?.address?.coordinates?.lat}
+								.venueLongitude=${this.venueData?.longitude || this.venueData?.address?.coordinates?.lng}
+								@bounds-change=${this.handleBoundsChange}
+								@no-venue-coordinates=${() => $notify.info('Venue coordinates are not set. Using default map location.')}
+							></court-map-editor>
+						</div>
 					</div>
 
 					<!-- Pricing -->
@@ -277,6 +386,42 @@ export class CourtForm extends $LitElement() {
 			pricing: { ...this.court.pricing, [prop]: val } as Pricing,
 		}
 	}
+	
+	/**
+	 * Handle bounds change from court map editor
+	 */
+	handleBoundsChange(e: CustomEvent) {
+		const { bounds } = e.detail
+		
+		// Convert bounds array to a Firestore-compatible object format to avoid nested arrays
+		// Firestore doesn't support nested arrays like [[lat1, lng1], [lat2, lng2]]
+		let mapCoordinates
+		
+		if (bounds) {
+			mapCoordinates = {
+				southWest: {
+					lat: bounds[0][0],
+					lng: bounds[0][1]
+				},
+				northEast: {
+					lat: bounds[1][0],
+					lng: bounds[1][1]
+				}
+			}
+			
+			// Check if rotation data is provided (in bounds[2])
+			if (bounds[2] && bounds[2][0] && bounds[2][0][0] === 'rotation' && bounds[2][1] && bounds[2][1][0] !== undefined) {
+				mapCoordinates.rotation = bounds[2][1][0];
+			}
+		} else {
+			mapCoordinates = undefined
+		}
+		
+		this.court = {
+			...this.court,
+			mapCoordinates
+		}
+	}
 
 	cloneCourt = () => {
 		this.isCloning = true
@@ -332,6 +477,11 @@ export class CourtForm extends $LitElement() {
 		if (court.recommendedPlayers !== undefined && isNaN(court.recommendedPlayers)) {
 			delete court.recommendedPlayers;
 		}
+		
+		// Ensure map coordinates are properly stored
+		if (this.court.mapCoordinates?.bounds) {
+			court.mapCoordinates = this.court.mapCoordinates;
+		}
 
 		// Determine if we're creating a new court (either adding or cloning)
 		const isNewCourt = this.isCloning || !this.editingCourt
@@ -340,12 +490,18 @@ export class CourtForm extends $LitElement() {
 		const saveOperation = isNewCourt ? CourtsDB.upsert(court) : CourtsDB.upsert(court, this.editingCourt!.id)
 
 		saveOperation.pipe(takeUntil(this.disconnecting)).subscribe({
-			next: () => {
+			next: (savedCourt) => {
 				let action = 'added'
 				if (this.isCloning) {
 					action = 'cloned'
 				} else if (this.editingCourt) {
 					action = 'updated'
+				}
+				
+				// Update the selectedCourtContext with the saved court data
+				if (savedCourt) {
+					console.log('Setting selected court in context after save:', savedCourt);
+					selectedCourtContext.set(savedCourt);
 				}
 
 				$notify.success(`Court ${action} successfully`)

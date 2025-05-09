@@ -62,6 +62,19 @@ export interface Dimensions {
 	unit: 'meters' | 'feet'
 }
 
+export interface CourtMapCoordinates {
+	// Rectangle bounds as objects to avoid nested arrays (Firestore limitation)
+	southWest: {
+		lat: number,
+		lng: number
+	},
+	northEast: {
+		lat: number,
+		lng: number
+	},
+	rotation?: number  // Rotation in degrees (clockwise from north)
+}
+
 export interface Court {
 	id: string
 	venueId: string
@@ -85,6 +98,7 @@ export interface Court {
 		orientation?: 'landscape' | 'portrait'
 		customShape?: string // SVG path data or similar
 	}
+	mapCoordinates?: CourtMapCoordinates
 }
 
 // CourtsDB implementation would remain the same as your current code

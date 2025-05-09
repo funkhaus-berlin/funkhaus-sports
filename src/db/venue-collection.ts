@@ -96,6 +96,9 @@ export interface Venue {
 		text: string
 		logo: string
 	}
+	// Convenience properties for mapping (derived from address.coordinates)
+	latitude?: number
+	longitude?: number
 }
 
 // Sample venue settings that can be used as defaults

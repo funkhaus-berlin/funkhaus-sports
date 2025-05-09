@@ -4,6 +4,7 @@ import { Court } from 'src/db/courts.collection'
 import { venueContext } from '../venue-context'
 
 export const courtsContext = createContext<Map<string, Court>>(new Map(), 'indexeddb', 'courts')
+export const selectedCourtContext = createContext<Partial<Court>>({}, 'local', 'selectedCourt')
 
 // Create an Observable for filtering courts by venue
 export const selectMyCourts: Observable<Map<string, Court>> = combineLatest([courtsContext.$, venueContext.$]).pipe(

@@ -1,4 +1,4 @@
-import { fullHeight, select, sheet, TableColumn } from '@mhmo91/schmancy'
+import { $notify, area, fullHeight, select, TableColumn } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
@@ -9,7 +9,7 @@ import { Venue } from 'src/db/venue-collection'
 import { formatEnum } from '../components/venue-form'
 import { venueContext, venuesContext } from '../venue-context'
 import { courtsContext, selectMyCourts } from './context'
-import { CourtForm } from './court-form'
+import './court-detail'
 
 // --- Court Management Component ---
 @customElement('funkhaus-venue-courts')
@@ -82,7 +82,7 @@ export class VenueCourts extends $LitElement() {
 			align: 'right',
 			render: (court: Court) => html`
 				<schmancy-icon-button
-					@click=${() => sheet.open({ component: new CourtForm(court) })}
+					@click=${() => this.navigateToCourtDetail(court.id)}
 					title="Edit"
 					>edit</schmancy-icon-button
 				>
@@ -118,16 +118,53 @@ export class VenueCourts extends $LitElement() {
 		})
 	}
 
-	// Method to create a new court
-	openAddCourtForm() {
-		const courtForm = new CourtForm()
+	// Method to navigate to the court detail page for a new court
+	addNewCourt() {
 		if (this.venueId) {
-			courtForm.venueId = this.venueId
+			// Update URL for bookmarking/sharing without full page navigation
+			const url = new URL(window.location.href);
+			url.pathname = `/admin/venues/${this.venueId}/courts/new`;
+			window.history.pushState({ venueId: this.venueId }, '', url.toString());
+			
+			// Use Schmancy area to navigate
+			area.push({
+				component: 'court-detail',
+				area: 'venue',
+				state: { 
+					venueId: this.venueId,
+					isNew: true 
+				}
+			});
 		}
-		
-		sheet.open({
-			component: courtForm,
-		})
+	}
+
+	// Method to navigate to the court detail page for an existing court
+	navigateToCourtDetail(courtId: string) {
+		if (this.venueId) {
+			// Get the court from courts map
+			const court = this.courts.get(courtId);
+			
+			if (court) {
+				// Update URL for bookmarking/sharing without full page navigation
+				const url = new URL(window.location.href);
+				url.pathname = `/admin/venues/${this.venueId}/courts/${courtId}`;
+				window.history.pushState({ venueId: this.venueId, courtId }, '', url.toString());
+				
+				// Use Schmancy area to navigate - just pass the ENTIRE court object directly
+				area.push({
+					component: 'court-detail',
+					area: 'venue',
+					state: { 
+						venueId: this.venueId, 
+						courtId,
+						courtData: court // Pass the full court object directly
+					}
+				});
+			} else {
+				console.error('Court not found in courts map:', courtId);
+				$notify.error('Court not found');
+			}
+		}
 	}
 
 	render() {
@@ -145,7 +182,7 @@ export class VenueCourts extends $LitElement() {
 						<span></span>
 						<schmancy-button
 							variant="filled"
-							@click=${() => this.openAddCourtForm()}
+							@click=${() => this.addNewCourt()}
 							?disabled=${!this.venueId || this.loading}
 						>
 							<schmancy-icon>add</schmancy-icon>Add Court
@@ -198,7 +235,7 @@ export class VenueCourts extends $LitElement() {
 															>sports_tennis</schmancy-icon
 														>
 														<p class="mb-4">No courts found for this venue.</p>
-														<schmancy-button variant="filled" @click=${() => this.openAddCourtForm()}>
+														<schmancy-button variant="filled" @click=${() => this.addNewCourt()}>
 															<schmancy-icon>add</schmancy-icon>Add Court
 														</schmancy-button>
 													</div>
