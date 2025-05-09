@@ -660,20 +660,20 @@ export class CourtSelectStep extends $LitElement(css`
 
 	/**
 	 * Sort courts by availability status and name
-	 * If there's a previously selected court, prioritize it first
+	 * Doesn't change order when a court is selected to maintain consistency
 	 */
 	private sortCourtsByAvailability(courts: Court[]): Court[] {
+		// If a court is already selected, don't change order
+		if (this.booking?.courtId) {
+			return [...courts];
+		}
+		
+		// Otherwise sort by availability and name
 		return courts.sort((a, b) => {
-			// If there's a previously selected court, prioritize it
-			if (this.booking?.courtId) {
-				if (a.id === this.booking.courtId) return -1
-				if (b.id === this.booking.courtId) return 1
-			}
-			
 			const aInfo = this.getCourtAvailabilityInfo(a.id)
 			const bInfo = this.getCourtAvailabilityInfo(b.id)
 
-			// Then sort by availability status
+			// Sort by availability status
 			if (aInfo.status !== bInfo.status) {
 				// Full > Partial > None
 				const statusOrder = { full: 0, partial: 1, none: 2 }

@@ -192,169 +192,225 @@ export class CourtForm extends $LitElement() {
 	render() {
 		return html`
 			<schmancy-surface type="surface">
-				<schmancy-form @submit=${this.onSave} class="py-3 px-5 grid gap-6">
-					<!-- Basic Information -->
-					<div class="grid gap-3 mb-4">
-						<schmancy-grid>
-							<schmancy-typography type="title"
-								>${this.isCloning ? 'Clone Court' : this.editingCourt ? 'Edit Court' : 'Add Court'}</schmancy-typography
-							>
-							<schmancy-divider></schmancy-divider>
-						</schmancy-grid>
+				<schmancy-form @submit=${this.onSave} class="py-6 px-6 max-w-6xl mx-auto">
+					<!-- Header -->
+					<div class="mb-8">
+						<schmancy-typography type="headline" token="md" class="mb-2">
+							${this.isCloning ? 'Clone Court' : this.editingCourt ? 'Edit Court' : 'Add Court'}
+						</schmancy-typography>
+						<schmancy-typography type="body" token="md" class="text-surface-on-variant">
+							${this.isCloning ? 'Create a copy of this court with customized settings.' : 
+							this.editingCourt ? 'Modify court details and settings.' : 'Create a new court for this venue.'}
+						</schmancy-typography>
+						<schmancy-divider class="mt-4"></schmancy-divider>
+					</div>
 
-						<sch-input
-							label="Court Name"
-							required
-							.value="${this.court.name || ''}"
-							@change=${(e: SchmancyInputChangeEvent) => this.updateProps('name', e.detail.value)}
-						></sch-input>
+					<!-- Two Column Layout -->
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+						<!-- Left Column - Basic Information -->
+						<div class="space-y-6">
+							<schmancy-typography type="title" class="mb-4">Basic Information</schmancy-typography>
+							
+							<sch-input
+								label="Court Name"
+								required
+								class="w-full"
+								.value="${this.court.name || ''}"
+								@change=${(e: SchmancyInputChangeEvent) => this.updateProps('name', e.detail.value)}
+							></sch-input>
 
-						<schmancy-select
-							label="Court Type"
-							required
-							.value=${this.court.courtType || ''}
-							@change=${(e: SchmancySelectChangeEvent) => this.updateProps('courtType', e.detail.value as string)}
-						>
-							${Object.values(CourtTypeEnum).map(
-								type =>
-									html`<schmancy-option .value=${type} .label=${formatEnum(type)}
-										>${formatEnum(type)}</schmancy-option
-									>`,
-							)}
-						</schmancy-select>
+							<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+								<schmancy-select
+									label="Court Type"
+									required
+									class="w-full"
+									.value=${this.court.courtType || ''}
+									@change=${(e: SchmancySelectChangeEvent) => this.updateProps('courtType', e.detail.value as string)}
+								>
+									${Object.values(CourtTypeEnum).map(
+										type =>
+											html`<schmancy-option .value=${type} .label=${formatEnum(type)}
+												>${formatEnum(type)}</schmancy-option
+											>`,
+									)}
+								</schmancy-select>
 
-						<!-- Sport Type Selection (Single-select) -->
-						<div>
-							<p class="text-sm font-medium mb-2">Sport Type</p>
-							<div class="flex flex-wrap gap-2">
-								${Object.values(SportTypeEnum).map(
-									sportType => html`
-										<schmancy-chip
-											.selected=${Array.isArray(this.court.sportTypes) &&
-											this.court.sportTypes[0] === sportType}
-											@click=${() => this.handleSportTypeChange(sportType as keyof typeof SportTypeEnum)}
-										>
-											${formatEnum(sportType)}
-										</schmancy-chip>
-									`,
-								)}
+								<sch-input
+									label="Recommended Players"
+									type="number"
+									min="1"
+									step="1"
+									class="w-full"
+									.value="${this.court.recommendedPlayers?.toString() || ''}"
+									@change=${(e: SchmancyInputChangeEvent) => 
+										this.updateProps('recommendedPlayers', parseFloat(e.detail.value))}
+								></sch-input>
 							</div>
-							<p class="text-xs text-gray-500 mt-1">Select a sport type for this court</p>
-						</div>
-						
-						<!-- Recommended Number of Players -->
-						<sch-input
-							label="Recommended Number of Players"
-							type="number"
-							min="1"
-							step="0.1"
-							.value="${this.court.recommendedPlayers?.toString() || ''}"
-							@change=${(e: SchmancyInputChangeEvent) => 
-								this.updateProps('recommendedPlayers', parseFloat(e.detail.value))}
-						></sch-input>
 
-						<!-- Court Preview -->
-						<div class="mt-2 border rounded p-2 bg-gray-50">
-							<div class="text-sm font-medium mb-2">Court Preview</div>
-							<div class="flex flex-wrap gap-6 justify-center">
-								${this.renderCourtPreview(
-									Array.isArray(this.court.sportTypes) && this.court.sportTypes.length > 0
-										? this.court.sportTypes[0]
-										: 'pickleball'
-								)}
+							<!-- Sport Type Selection (Single-select) -->
+							<div class="space-y-2">
+								<schmancy-typography type="label" class="block">Sport Type</schmancy-typography>
+								<div class="flex flex-wrap gap-2">
+									${Object.values(SportTypeEnum).map(
+										sportType => html`
+											<schmancy-chip
+												.selected=${Array.isArray(this.court.sportTypes) &&
+												this.court.sportTypes[0] === sportType}
+												@click=${() => this.handleSportTypeChange(sportType as keyof typeof SportTypeEnum)}
+											>
+												${formatEnum(sportType)}
+											</schmancy-chip>
+										`,
+									)}
+								</div>
+								<schmancy-typography type="caption" class="text-surface-on-variant">
+									Select a sport type for this court
+								</schmancy-typography>
+							</div>
+
+							<!-- Court Preview -->
+							<div class="bg-surface-container p-4 rounded-lg">
+								<schmancy-typography type="label" class="block mb-3">Court Preview</schmancy-typography>
+								<div class="flex justify-center p-2">
+									${this.renderCourtPreview(
+										Array.isArray(this.court.sportTypes) && this.court.sportTypes.length > 0
+											? this.court.sportTypes[0]
+											: 'pickleball'
+									)}
+								</div>
+							</div>
+
+							<!-- Pricing Section -->
+							<div class="space-y-4 mt-8">
+								<schmancy-typography type="title" class="mb-2">Pricing</schmancy-typography>
+								<schmancy-divider class="mb-4"></schmancy-divider>
+								
+								<sch-input
+									label="Base Hourly Rate (€)"
+									type="number"
+									min="0"
+									step="0.01"
+									required
+									class="w-full"
+									.value="${this.court.pricing?.baseHourlyRate?.toString() || '0'}"
+									@change=${(e: SchmancyInputChangeEvent) =>
+										this.updatePricing('baseHourlyRate', parseFloat(e.detail.value))}
+								></sch-input>
+
+								<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<sch-input
+										label="Peak Hour Rate (€)"
+										type="number"
+										min="0"
+										step="0.01"
+										class="w-full"
+										.value="${this.court.pricing?.peakHourRate?.toString() || ''}"
+										@change=${(e: SchmancyInputChangeEvent) => this.updatePricing('peakHourRate', parseFloat(e.detail.value))}
+									></sch-input>
+
+									<sch-input
+										label="Weekend Rate (€)"
+										type="number"
+										min="0"
+										step="0.01"
+										class="w-full"
+										.value="${this.court.pricing?.weekendRate?.toString() || ''}"
+										@change=${(e: SchmancyInputChangeEvent) => this.updatePricing('weekendRate', parseFloat(e.detail.value))}
+									></sch-input>
+								</div>
 							</div>
 						</div>
-						
-						<!-- Court Map Placement -->
-						<div class="mt-4 border rounded p-2 bg-gray-50">
-							<div class="text-sm font-medium mb-2">Court Map Placement</div>
-							<p class="text-xs text-gray-500 mb-2">Draw a rectangle on the map to represent the court's location and size</p>
-							${!this.venueData?.latitude && !this.venueData?.longitude && 
-	  (!this.venueData?.address?.coordinates?.lat || !this.venueData?.address?.coordinates?.lng) ? 
-								html`<div class="text-amber-600 bg-amber-50 p-2 mb-2 text-sm rounded">
-									<schmancy-icon class="mr-1">warning</schmancy-icon>
-									Venue coordinates are not set. The map will use default coordinates.
-									Please update venue address information to set precise coordinates.
-								</div>` : ''}
-							<court-map-editor
-								.mapCoordinates=${this.court.mapCoordinates}
-								.venueLatitude=${this.venueData?.latitude || this.venueData?.address?.coordinates?.lat}
-								.venueLongitude=${this.venueData?.longitude || this.venueData?.address?.coordinates?.lng}
-								@bounds-change=${this.handleBoundsChange}
-								@no-venue-coordinates=${() => $notify.info('Venue coordinates are not set. Using default map location.')}
-							></court-map-editor>
+
+						<!-- Right Column - Map and Status -->
+						<div class="space-y-6">
+							<!-- Court Map Placement -->
+							<div class="space-y-3">
+								<schmancy-typography type="title" class="mb-2">Court Map Placement</schmancy-typography>
+								
+								<div class="bg-surface-container p-4 rounded-lg">
+									<div class="flex items-center mb-2">
+										<schmancy-icon class="text-surface-on-variant mr-2">map</schmancy-icon>
+										<schmancy-typography type="label">Location on Venue Map</schmancy-typography>
+									</div>
+									
+									<schmancy-typography type="caption" class="block mb-3 text-surface-on-variant">
+										Draw a rectangle on the map to represent the court's location and size
+									</schmancy-typography>
+									
+									${!this.venueData?.latitude && !this.venueData?.longitude && 
+									(!this.venueData?.address?.coordinates?.lat || !this.venueData?.address?.coordinates?.lng) ? 
+										html`<div class="flex items-center p-3 mb-3 bg-amber-50 text-amber-800 rounded-lg border border-amber-200">
+											<schmancy-icon class="mr-2">warning</schmancy-icon>
+											<span class="text-sm">
+												Venue coordinates are not set. The map will use default coordinates.
+												Please update venue address information to set precise coordinates.
+											</span>
+										</div>` : ''}
+									
+									<div class="h-[400px] border border-surface-outline rounded-lg overflow-hidden">
+										<court-map-editor
+											.mapCoordinates=${this.court.mapCoordinates}
+											.venueLatitude=${this.venueData?.latitude || this.venueData?.address?.coordinates?.lat}
+											.venueLongitude=${this.venueData?.longitude || this.venueData?.address?.coordinates?.lng}
+											@bounds-change=${this.handleBoundsChange}
+											@no-venue-coordinates=${() => $notify.info('Venue coordinates are not set. Using default map location.')}
+										></court-map-editor>
+									</div>
+								</div>
+							</div>
+
+							<!-- Status -->
+							<div class="space-y-4 mt-8">
+								<schmancy-typography type="title" class="mb-2">Status</schmancy-typography>
+								<schmancy-divider class="mb-4"></schmancy-divider>
+								
+								<div class="bg-surface-container p-4 rounded-lg">
+									<schmancy-select
+										label="Court Status"
+										required
+										class="w-full"
+										.value=${this.court.status || 'active'}
+										@change=${(e: SchmancySelectChangeEvent) => this.updateProps('status', e.detail.value as string)}
+									>
+										<schmancy-option value="active" label="Active">
+											<div class="flex items-center">
+												<schmancy-icon class="mr-2 text-success-default">check_circle</schmancy-icon>
+												Active
+											</div>
+										</schmancy-option>
+										<schmancy-option value="maintenance" label="Under Maintenance">
+											<div class="flex items-center">
+												<schmancy-icon class="mr-2 text-warning-default">construction</schmancy-icon>
+												Under Maintenance
+											</div>
+										</schmancy-option>
+										<schmancy-option value="inactive" label="Inactive">
+											<div class="flex items-center">
+												<schmancy-icon class="mr-2 text-error-default">cancel</schmancy-icon>
+												Inactive
+											</div>
+										</schmancy-option>
+									</schmancy-select>
+								</div>
+							</div>
 						</div>
 					</div>
 
-					<!-- Pricing -->
-					<div class="grid gap-3 mb-4">
-						<schmancy-grid>
-							<schmancy-typography type="title">Pricing</schmancy-typography>
-							<schmancy-divider></schmancy-divider>
-						</schmancy-grid>
-						<sch-input
-							label="Base Hourly Rate (€)"
-							type="number"
-							min="0"
-							step="0.01"
-							required
-							.value="${this.court.pricing?.baseHourlyRate?.toString() || '0'}"
-							@change=${(e: SchmancyInputChangeEvent) =>
-								this.updatePricing('baseHourlyRate', parseFloat(e.detail.value))}
-						></sch-input>
-
-						<sch-input
-							label="Peak Hour Rate (€)"
-							type="number"
-							min="0"
-							step="0.01"
-							.value="${this.court.pricing?.peakHourRate?.toString() || ''}"
-							@change=${(e: SchmancyInputChangeEvent) => this.updatePricing('peakHourRate', parseFloat(e.detail.value))}
-						></sch-input>
-
-						<sch-input
-							label="Weekend Rate (€)"
-							type="number"
-							min="0"
-							step="0.01"
-							.value="${this.court.pricing?.weekendRate?.toString() || ''}"
-							@change=${(e: SchmancyInputChangeEvent) => this.updatePricing('weekendRate', parseFloat(e.detail.value))}
-						></sch-input>
-					</div>
-
-					<!-- Status -->
-					<div class="grid gap-3 mb-4">
-						<schmancy-grid>
-							<schmancy-typography type="title">Status</schmancy-typography>
-							<schmancy-divider></schmancy-divider>
-						</schmancy-grid>
-						<schmancy-select
-							label="Court Status"
-							required
-							.value=${this.court.status || 'active'}
-							@change=${(e: SchmancySelectChangeEvent) => this.updateProps('status', e.detail.value as string)}
-						>
-							<schmancy-option value="active" label="Active">Active</schmancy-option>
-							<schmancy-option value="maintenance" label="Under Maintenance">Under Maintenance</schmancy-option>
-							<schmancy-option value="inactive" label="Inactive">Inactive</schmancy-option>
-						</schmancy-select>
-					</div>
-
-					<!-- Actions -->
-					<div class="flex gap-4 justify-between">
+					<!-- Actions Footer -->
+					<div class="flex justify-between mt-10 pt-6 border-t border-surface-outline-variant">
 						<div>
 							${this.editingCourt && !this.isCloning
 								? html`
 										<schmancy-button @click=${() => this.confirmDelete(this.editingCourt!.id)}>
-											<span class="text-error-default flex gap-2">
+											<span class="text-error-default flex gap-2 items-center">
 												<schmancy-icon>delete</schmancy-icon>
-												Delete
+												Delete Court
 											</span>
 										</schmancy-button>
 								  `
 								: html``}
 						</div>
-						<div class="flex gap-2">
+						<div class="flex gap-3">
 							<schmancy-button variant="outlined" @click=${() => sheet.dismiss(this.tagName)}>Cancel</schmancy-button>
 							${this.editingCourt && !this.isCloning
 								? html`
@@ -366,7 +422,12 @@ export class CourtForm extends $LitElement() {
 										</schmancy-button>
 								  `
 								: html``}
-							<schmancy-button variant="filled" type="submit">Save</schmancy-button>
+							<schmancy-button variant="filled" type="submit">
+								<span class="flex gap-2 items-center">
+									<schmancy-icon>save</schmancy-icon>
+									Save Court
+								</span>
+							</schmancy-button>
 						</div>
 					</div>
 				</schmancy-form>
