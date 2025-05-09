@@ -8,9 +8,9 @@ import { takeUntil } from 'rxjs'
 import { Court, CourtsDB, CourtTypeEnum, Pricing, SportTypeEnum } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { confirm } from 'src/schmancy'
+import '../components/court-map-editor'
 import { venueContext, venuesContext } from '../venue-context'
 import { selectedCourtContext } from './context'
-import '../components/court-map-editor'
 
 // Format enum values to display labels
 export const formatEnum = (value: string): string =>
@@ -40,23 +40,15 @@ export class CourtForm extends $LitElement() {
 	@property({ type: String }) venueId: string = ''
 	@property({ type: Object }) courtData?: Court
 
-	constructor(private editingCourt?: Court & { recommendedPlayers?: number }) {
+	constructor( private editingCourt: Court) {
 		super()
-		if (editingCourt) {
-			this.court = { ...editingCourt }
-			this.venueId = editingCourt.venueId
-		}
+			this.court = editingCourt
 	}
 
 	connectedCallback() {
 		super.connectedCallback()
-		console.log('CourtForm connected with courtData:', this.courtData, 'selectedCourtData:', this.selectedCourtData);
 
-		// Try loading court data from different sources with priority:
-		// 1. Direct courtData property (passed via component props)
-		// 2. editingCourt (passed via constructor)
-		// 3. selectedCourtContext (stored in context)
-		
+    	
 		// Check if we have courtData passed directly
 		if (this.courtData) {
 			console.log('Using court data passed directly in props:', this.courtData);
@@ -263,7 +255,7 @@ export class CourtForm extends $LitElement() {
 										`,
 									)}
 								</div>
-								<schmancy-typography type="caption" class="text-surface-on-variant">
+								<schmancy-typography type="label" class="text-surface-on-variant">
 									Select a sport type for this court
 								</schmancy-typography>
 							</div>
@@ -333,7 +325,7 @@ export class CourtForm extends $LitElement() {
 										<schmancy-typography type="label">Location on Venue Map</schmancy-typography>
 									</div>
 									
-									<schmancy-typography type="caption" class="block mb-3 text-surface-on-variant">
+									<schmancy-typography type="label" class="block mb-3 text-surface-on-variant">
 										Draw a rectangle on the map to represent the court's location and size
 									</schmancy-typography>
 									

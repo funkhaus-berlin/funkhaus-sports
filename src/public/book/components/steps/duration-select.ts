@@ -368,12 +368,31 @@ export class DurationSelectionStep extends $LitElement(css`
 				prev.startTime === curr.startTime && 
 				prev.courtId === curr.courtId
 			),
-			tap(() => {
-				this.updateState({
-					loading: true,
-					autoScrollAttempted: false,
-					durations: [],
-				})
+			tap((bookingData) => {
+				// Clear selected duration if time or court changed and we need to reload durations
+				if (bookingData.endTime) {
+					// Get the currently selected duration value
+					const currentDuration = this.getCurrentDuration()
+					if (currentDuration > 0) {
+						// Check if this duration would be available with the new selections
+						const selectedDuration = currentDuration
+						
+						// We'll unselect the duration in loadDurations() after checking availability
+						// For now, just mark that we're loading new data
+						this.updateState({
+							loading: true,
+							autoScrollAttempted: false,
+							durations: [],
+						})
+					}
+				} else {
+					// No duration selected, just load new durations
+					this.updateState({
+						loading: true,
+						autoScrollAttempted: false,
+						durations: [],
+					})
+				}
 
 				// Clear existing duration refs before updating
 				this.clearDurationRefs()
@@ -504,6 +523,28 @@ export class DurationSelectionStep extends $LitElement(css`
 				if (durations.length === 0) {
 					console.warn('No durations returned from system, using estimated prices instead')
 					this.setEstimatedPrices()
+				}
+
+				// Check if current duration is still available after changes
+				if (this.booking.endTime) {
+					const currentDuration = this.getCurrentDuration()
+					if (currentDuration > 0) {
+						// Check if this duration exists in the available durations
+						const durationIsAvailable = durations.some(d => d.value === currentDuration)
+						const durationExceedsClosingTime = this.wouldExceedClosingTime({ value: currentDuration } as Duration)
+						
+						// If the duration is not available anymore, clear it
+						if (!durationIsAvailable || durationExceedsClosingTime) {
+							// Unselect the duration by updating the booking without an endTime
+							bookingContext.set({
+								endTime: '',  // Clear the end time
+								price: 0      // Reset the price
+							}, true)
+							
+							console.log(`Unselected duration ${currentDuration} as it's no longer available`)
+							this.announceForScreenReader(`Duration unselected as it's no longer available`)
+						}
+					}
 				}
 			} catch (error) {
 				console.error('Error getting available durations:', error)
@@ -912,10 +953,10 @@ export class DurationSelectionStep extends $LitElement(css`
 			<selection-tile
 				${ref(durationRef)}
 				?selected=${isSelected}
-				?compact=${!this.isActive}
+				?compact=${this.isCompact}
 				icon="timer"
 				label=${this.getCompactLabel(duration)}
-				dataValue=${duration.value}
+				.dataValue=${duration.value}
 				.showPrice=${true}
 				price=${duration.price}
 				@click=${() => this.handleDurationSelect(duration)}

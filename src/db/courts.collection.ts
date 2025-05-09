@@ -100,8 +100,7 @@ export class Court {
   mapCoordinates?: CourtMapCoordinates
 
   constructor(venueId: string) {
-	this.venueId = venueId
-	// Other properties should be set after instantiation
+	  this.venueId = venueId
   }
 }
 

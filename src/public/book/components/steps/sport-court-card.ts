@@ -146,24 +146,28 @@ export class SportCourtCard extends $LitElement(css`
         bgColor: 'bg-emerald-100',
         icon: 'check_circle',
         label: 'Available',
+        dotColor: 'bg-emerald-500 animate-pulse',
       },
       partial: {
         color: 'text-amber-600',
         bgColor: 'bg-amber-100',
         icon: 'access_time',
         label: 'Limited',
+        dotColor: 'bg-amber-500',
       },
       none: {
         color: 'text-rose-600',
         bgColor: 'bg-rose-100',
         icon: 'block',
         label: 'Unavailable',
+        dotColor: 'bg-rose-500',
       },
       unknown: {
         color: 'text-slate-500',
         bgColor: 'bg-slate-100',
         icon: 'help_outline',
         label: 'Unknown',
+        dotColor: 'bg-slate-400',
       },
     }
 
@@ -172,13 +176,12 @@ export class SportCourtCard extends $LitElement(css`
     // Return availability indicator with responsive sizing based on compact mode
     return html`
       <div class="flex items-center ${indicator.bgColor} px-1.5 py-0.5 rounded-full">
-        <schmancy-icon 
-          size="${this.compact ? '8px' : '10px'}" 
-          class="${indicator.color} mr-0.5"
-        >
-          ${indicator.icon}
-        </schmancy-icon>
-        <span class="text-xs font-medium ${indicator.color} text-[${this.compact ? '9px' : '10px'}]">
+        <!-- Standard online/offline status dot -->
+        <div class="relative mr-1 flex items-center">
+          <div class="${indicator.dotColor} h-2 w-2 rounded-full"></div>
+        </div>
+        <!-- Label -->
+        <span class="text-xs font-medium ${indicator.color}" style="font-size: ${this.compact ? '9px' : '10px'}">
           ${indicator.label}
         </span>
       </div>

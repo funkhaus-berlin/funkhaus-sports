@@ -8,7 +8,7 @@ import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { formatEnum } from '../components/venue-form'
 import { venueContext, venuesContext } from '../venue-context'
-import { courtsContext, selectMyCourts } from './context'
+import { courtsContext, selectedCourtContext, selectMyCourts } from './context'
 import { CourtForm } from './court-form'
 
 // --- Court Management Component ---
@@ -66,9 +66,8 @@ export class VenueCourts extends $LitElement() {
 						@click=${(e: Event) => {
 							e.preventDefault()
 						}}
-					
 					>
-					${court.status}
+						${court.status}
 					</sch-badge>
 				`
 			},
@@ -77,9 +76,7 @@ export class VenueCourts extends $LitElement() {
 			name: ' ',
 			align: 'right',
 			render: (court: Court) => html`
-				<schmancy-icon-button
-					@click=${() => this.navigateToCourtDetail(court.id)}
-					title="Edit"
+				<schmancy-icon-button @click=${() => this.navigateToCourtDetail(court.id)} title="Edit"
 					>edit</schmancy-icon-button
 				>
 			`,
@@ -116,19 +113,22 @@ export class VenueCourts extends $LitElement() {
 
 	// Method to navigate to the court detail page for a new court
 	addNewCourt() {
+		selectedCourtContext.set(new Court(this.venueId))
+
 		area.push({
-      component: new CourtForm(new Court(this.venueId)),
-      
-      area: 'venue'
-    });
+			component: new CourtForm(new Court(this.venueId)),
+
+			area: 'venue',
+		})
 	}
 
 	// Method to navigate to the court detail page for an existing court
 	navigateToCourtDetail(courtId: string) {
+		selectedCourtContext.set(courtsContext.value.get(courtId)!)
 		area.push({
-      component: new CourtForm(courtsContext.value.get(courtId)),
-      area: 'venue',
-    });
+			component: new CourtForm(courtsContext.value.get(courtId)!),
+			area: 'venue',
+		})
 	}
 
 	render() {
