@@ -411,7 +411,7 @@ export class CourtForm extends $LitElement() {
 			
 			// Check if rotation data is provided (in bounds[2])
 			if (bounds[2] && bounds[2][0] && bounds[2][0][0] === 'rotation' && bounds[2][1] && bounds[2][1][0] !== undefined) {
-				mapCoordinates.rotation = bounds[2][1][0];
+				// mapCoordinates.rotation = bounds[2][1][0];
 			}
 		} else {
 			mapCoordinates = undefined
@@ -479,7 +479,7 @@ export class CourtForm extends $LitElement() {
 		}
 		
 		// Ensure map coordinates are properly stored
-		if (this.court.mapCoordinates?.bounds) {
+		if (this.court.mapCoordinates) {
 			court.mapCoordinates = this.court.mapCoordinates;
 		}
 

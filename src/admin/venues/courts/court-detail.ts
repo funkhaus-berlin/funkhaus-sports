@@ -7,10 +7,10 @@ import { takeUntil } from 'rxjs'
 import { Court, CourtMapCoordinates, CourtsDB, CourtTypeEnum, Pricing, SportTypeEnum } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { confirm } from 'src/schmancy'
-import { venueContext } from '../venue-context'
-import { formatEnum } from './court-form'
 import '../../admin'
 import '../components/court-map-editor'
+import { venueContext } from '../venue-context'
+import { formatEnum } from './court-form'
 
 /**
  * Court Detail Component
@@ -113,55 +113,82 @@ export class CourtDetail extends $LitElement() {
       this.isNew = !this.courtId
     }
 
-    // First try to use court data directly passed in state (most reliable)
-    if (this.courtData) {
-      console.log('Using court data passed directly in state:', this.courtData);
-      this.court = { ...this.courtData };
+    // Load from selectedCourtContext first (consistent with venue pattern)
+    import('./context').then(({ selectedCourtContext }) => {
+      const selectedCourt = selectedCourtContext.value;
       
-      // If venue ID not set, use the court's venue ID
-      if (!this.venueId && this.courtData.venueId) {
-        this.venueId = this.courtData.venueId;
+      // Check if we have usable data in context
+      if (selectedCourt && Object.keys(selectedCourt).length > 0 && 
+          (this.courtId === undefined || selectedCourt.id === this.courtId)) {
+        console.log('Using court data from selectedCourtContext:', selectedCourt);
+        this.court = { ...selectedCourt };
+        
+        // If venue ID not set, use the court's venue ID
+        if (!this.venueId && selectedCourt.venueId) {
+          this.venueId = selectedCourt.venueId;
+        }
+        
+        // If court ID not set but available in context, set it
+        if (!this.courtId && selectedCourt.id) {
+          this.courtId = selectedCourt.id;
+        }
       }
-    }
-    // If not in state (directly passed), load from database as fallback
-    else if (this.courtId) {
-      console.log('Direct court data not available, loading from database for ID:', this.courtId);
-      this.busy = true;
-      CourtsDB.get(this.courtId)
-        .pipe(takeUntil(this.disconnecting))
-        .subscribe({
-          next: (court) => {
-            if (court) {
-              console.log('Court data loaded from database:', court);
-              this.court = { ...court };
-              
-              // If venue ID not set, use the court's venue ID
-              if (!this.venueId) {
-                this.venueId = court.venueId;
+      // Fall back to direct data if available
+      else if (this.courtData) {
+        console.log('Using court data passed directly in state:', this.courtData);
+        this.court = { ...this.courtData };
+        
+        // If venue ID not set, use the court's venue ID
+        if (!this.venueId && this.courtData.venueId) {
+          this.venueId = this.courtData.venueId;
+        }
+        
+        // Update context with this data for consistency
+        selectedCourtContext.set(this.courtData);
+      }
+      // Last resort: load from database
+      else if (this.courtId) {
+        console.log('No context data or direct data, loading from database for ID:', this.courtId);
+        this.busy = true;
+        CourtsDB.get(this.courtId)
+          .pipe(takeUntil(this.disconnecting))
+          .subscribe({
+            next: (court) => {
+              if (court) {
+                console.log('Court data loaded from database:', court);
+                this.court = { ...court };
+                
+                // If venue ID not set, use the court's venue ID
+                if (!this.venueId) {
+                  this.venueId = court.venueId;
+                }
+                
+                // Update context with this data for consistency
+                selectedCourtContext.set(court);
+              } else {
+                console.error('Court not found in database');
+                $notify.error('Court not found');
+                this._navigateBack();
               }
-            } else {
-              console.error('Court not found in database');
-              $notify.error('Court not found');
+              this.busy = false;
+            },
+            error: (err) => {
+              console.error('Error loading court:', err);
+              $notify.error('Failed to load court data');
+              this.busy = false;
               this._navigateBack();
             }
-            this.busy = false;
-          },
-          error: (err) => {
-            console.error('Error loading court:', err);
-            $notify.error('Failed to load court data');
-            this.busy = false;
-            this._navigateBack();
-          }
-        });
-    }
+          });
+      }
 
-    // Ensure sportTypes is initialized properly
-    if (!this.court.sportTypes || !Array.isArray(this.court.sportTypes)) {
-      this.court.sportTypes = ['pickleball'];
-    }
-    
-    // Log the result for debugging
-    console.log('Court data initialized:', this.court);
+      // Ensure sportTypes is initialized properly
+      if (!this.court.sportTypes || !Array.isArray(this.court.sportTypes)) {
+        this.court.sportTypes = ['pickleball'];
+      }
+      
+      // Log the result for debugging
+      console.log('Court data initialized:', this.court);
+    });
   }
 
   /**
@@ -235,7 +262,7 @@ export class CourtDetail extends $LitElement() {
         if (bounds[2] && Array.isArray(bounds[2]) && 
             bounds[2][0] && bounds[2][0][0] === 'rotation' && 
             bounds[2][1] && bounds[2][1][0] !== undefined) {
-          mapCoordinates.rotation = bounds[2][1][0]
+          // mapCoordinates.rotation = bounds[2][1][0]
         }
       } else {
         console.warn('Invalid bounds format received:', bounds)
@@ -326,6 +353,16 @@ export class CourtDetail extends $LitElement() {
 
     saveOperation.pipe(takeUntil(this.disconnecting)).subscribe({
       next: (savedCourt) => {
+        // IMPORTANT: Update the selectedCourtContext with the saved court data
+        // This ensures data consistency across the application
+        if (savedCourt) {
+          console.log('Setting selected court in context after save:', savedCourt);
+          // Import needed to avoid circular dependency
+          import('./context').then(({ selectedCourtContext }) => {
+            selectedCourtContext.set(savedCourt);
+          });
+        }
+        
         $notify.success(`Court ${this.isNew ? 'added' : 'updated'} successfully`)
         this._navigateBack()
       },
@@ -361,6 +398,12 @@ export class CourtDetail extends $LitElement() {
         .pipe(takeUntil(this.disconnecting))
         .subscribe({
           next: () => {
+            // Clear the selectedCourtContext on delete
+            // Import needed to avoid circular dependency
+            import('./context').then(({ selectedCourtContext }) => {
+              selectedCourtContext.set({});
+            });
+            
             $notify.success('Court deleted successfully')
             this._navigateBack()
           },
@@ -389,14 +432,21 @@ export class CourtDetail extends $LitElement() {
       // Update URL without reloading page
       const url = new URL(window.location.href);
       url.pathname = `/admin/venues/${this.venueId}/courts`;
-      window.history.pushState({ venueId: this.venueId }, '', url.toString());
       
-      // Use Schmancy area to navigate back to courts list
-      area.push({
-        component: 'funkhaus-venue-courts',
-        area: 'venue',
-        state: { venueId: this.venueId }
-      });
+      // Create consistent state object with venueId
+      const state = { venueId: this.venueId };
+      window.history.pushState(state, '', url.toString());
+      
+      // Use setTimeout to ensure context updates are processed
+      // This matches the pattern used in venue-detail.ts
+      setTimeout(() => {
+        // Use Schmancy area to navigate back to courts list
+        area.push({
+          component: 'funkhaus-venue-courts',
+          area: 'venue',
+          state: state
+        });
+      }, 100);
     }
   }
 

@@ -1,4 +1,4 @@
-import { $notify, area, fullHeight, select, TableColumn } from '@mhmo91/schmancy'
+import { area, fullHeight, select, TableColumn } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
@@ -10,6 +10,7 @@ import { formatEnum } from '../components/venue-form'
 import { venueContext, venuesContext } from '../venue-context'
 import { courtsContext, selectMyCourts } from './context'
 import './court-detail'
+import { CourtDetail } from './court-detail'
 
 // --- Court Management Component ---
 @customElement('funkhaus-venue-courts')
@@ -121,50 +122,37 @@ export class VenueCourts extends $LitElement() {
 	// Method to navigate to the court detail page for a new court
 	addNewCourt() {
 		if (this.venueId) {
-			// Update URL for bookmarking/sharing without full page navigation
-			const url = new URL(window.location.href);
-			url.pathname = `/admin/venues/${this.venueId}/courts/new`;
-			window.history.pushState({ venueId: this.venueId }, '', url.toString());
-			
-			// Use Schmancy area to navigate
-			area.push({
-				component: 'court-detail',
-				area: 'venue',
-				state: { 
-					venueId: this.venueId,
-					isNew: true 
-				}
+			// First clear any existing court in context
+			import('./context').then(({ selectedCourtContext }) => {
+				// Clear selected court to avoid data from previous court contaminating the new court
+				selectedCourtContext.set({});
+				
+				// Update URL for bookmarking/sharing without full page navigation
+				const url = new URL(window.location.href);
+				url.pathname = `/admin/venues/${this.venueId}/courts/new`;
+				const state = { venueId: this.venueId, isNew: true };
+				window.history.pushState(state, '', url.toString());
+				
+				// Use setTimeout to ensure context is cleared before navigation
+				setTimeout(() => {
+					// Use Schmancy area to navigate
+					area.push({
+						component: 'court-detail',
+						area: 'venue',
+						state: state
+					});
+				}, 100);
 			});
 		}
 	}
 
 	// Method to navigate to the court detail page for an existing court
 	navigateToCourtDetail(courtId: string) {
-		if (this.venueId) {
-			// Get the court from courts map
-			const court = this.courts.get(courtId);
-			
-			if (court) {
-				// Update URL for bookmarking/sharing without full page navigation
-				const url = new URL(window.location.href);
-				url.pathname = `/admin/venues/${this.venueId}/courts/${courtId}`;
-				window.history.pushState({ venueId: this.venueId, courtId }, '', url.toString());
-				
-				// Use Schmancy area to navigate - just pass the ENTIRE court object directly
-				area.push({
-					component: 'court-detail',
-					area: 'venue',
-					state: { 
-						venueId: this.venueId, 
-						courtId,
-						courtData: court // Pass the full court object directly
-					}
-				});
-			} else {
-				console.error('Court not found in courts map:', courtId);
-				$notify.error('Court not found');
-			}
-		}
+		area.push({
+      component: new CourtDetail(courtsContext.value.get(courtId)),
+      area: 'venue',
+      
+    });
 	}
 
 	render() {

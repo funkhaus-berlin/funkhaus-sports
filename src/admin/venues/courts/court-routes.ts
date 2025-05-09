@@ -53,18 +53,26 @@ export class CourtRoutes extends $LitElement() {
     // Handle different routes
     if (path.includes('/courts/new')) {
       // Creating a new court
-      area.push({
-        component: 'court-detail',
-        area: 'venue',
-        state: { 
-          venueId: this.venueId, 
-          isNew: true 
-        }
-      })
+      // First clear any existing court in context
+      import('./context').then(({ selectedCourtContext }) => {
+        // Clear selected court context to ensure a clean state
+        selectedCourtContext.set({});
+        
+        const state = { venueId: this.venueId, isNew: true };
+        
+        // Use setTimeout to ensure context is cleared before navigation
+        setTimeout(() => {
+          area.push({
+            component: 'court-detail',
+            area: 'venue',
+            state: state
+          });
+        }, 100);
+      });
     } else if (path.includes('/courts/') && this.courtId) {
       // Editing an existing court
       // Load the courts collection to find this court
-      import('./context').then(({ courtsContext }) => {
+      import('./context').then(({ courtsContext, selectedCourtContext }) => {
         // Check if we have the court in the courts map
         const court = Array.from(courtsContext.get().values())
           .find(court => court.id === this.courtId);
@@ -72,26 +80,30 @@ export class CourtRoutes extends $LitElement() {
         if (court) {
           console.log('Found court data in courtsContext:', court);
           
-          // Push the court-detail component with court data directly
-          area.push({
-            component: 'court-detail',
-            area: 'venue',
-            state: { 
-              venueId: this.venueId, 
-              courtId: this.courtId,
-              courtData: court // Pass the court data directly
-            }
-          });
+          // First, update the court context to ensure data is consistent
+          selectedCourtContext.set(court);
+          
+          // Create a consistent state object
+          const state = { venueId: this.venueId, courtId: this.courtId };
+          
+          // Use setTimeout to ensure context is updated before navigation
+          setTimeout(() => {
+            // Push the court-detail component
+            area.push({
+              component: 'court-detail',
+              area: 'venue',
+              state: state
+            });
+          }, 100);
         } else {
           console.log('Court not found in context, loading by ID:', this.courtId);
           // Fallback if court not found in context
+          const state = { venueId: this.venueId, courtId: this.courtId };
+          
           area.push({
             component: 'court-detail',
             area: 'venue',
-            state: { 
-              venueId: this.venueId, 
-              courtId: this.courtId 
-            }
+            state: state
           });
         }
       });
@@ -101,7 +113,7 @@ export class CourtRoutes extends $LitElement() {
         component: 'funkhaus-venue-courts',
         area: 'venue',
         state: { venueId: this.venueId }
-      })
+      });
     }
   }
 
