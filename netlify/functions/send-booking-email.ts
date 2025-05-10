@@ -8,6 +8,7 @@ import QRCode from 'qrcode'
 import { corsHeaders } from './_shared/cors'
 import { emailConfig } from './_shared/email-config'
 import resend, { emailHtml } from './_shared/resend'
+import { createCalendarEvent, generateICSFile } from './_shared/calendar-utils'
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
@@ -122,6 +123,7 @@ const handler: Handler = async (event, context) => {
 	}
 }
 
+
 /**
  * Send email with booking confirmation using Resend
  */
@@ -129,6 +131,28 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 	try {
 		// Convert buffer to base64 for attachment
 		const pdfBase64 = pdfBuffer.toString('base64')
+		
+		// Build the venue address string
+		const venueAddress = data.venueInfo ? 
+			`${data.venueInfo.name}, ${data.venueInfo.address}, ${data.venueInfo.postalCode} ${data.venueInfo.city}, ${data.venueInfo.country}` : 
+			data.bookingDetails.venue
+		
+		// Create calendar event data
+		const calendarEvent = createCalendarEvent(
+			data.bookingId,
+			data.bookingDetails.court,
+			data.bookingDetails.venue,
+			venueAddress,
+			data.bookingDetails.startTime,
+			data.bookingDetails.endTime,
+			data.bookingDetails.date,
+			`Court: ${data.bookingDetails.court}\nPrice: €${data.bookingDetails.price}`
+		)
+		
+		// Generate ICS file for attachment
+		console.log('Generating ICS file for booking:', data.bookingId)
+		const icsContent = generateICSFile(calendarEvent)
+		const icsBase64 = Buffer.from(icsContent).toString('base64')
 		
 		console.log('Generating email HTML content')
 		const html = await emailHtml({
@@ -139,6 +163,8 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 				phone: data.customerPhone,
 			},
 			venue: data.venueInfo,
+			bookingId: data.bookingId,
+			calendarEvent: calendarEvent // Pass calendar event data to template
 		})
 		
 		if (!html) {
@@ -156,6 +182,11 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 				{
 					filename: `Booking-${data.bookingId}.pdf`,
 					content: pdfBase64,
+				},
+				{
+					filename: 'calendar-event.ics',
+					content: icsBase64,
+					contentType: 'text/calendar; charset=UTF-8; method=REQUEST',
 				},
 			],
 		})

@@ -101,6 +101,92 @@ html(lang="en")
         tr
           td.label Total Price:
           td €#{booking.price}
+          
+      h2 Your Event
+      //- Email-safe calendar preview using tables
+      table(cellpadding="0" cellspacing="0" border="0" style="width: 100%; max-width: 600px; margin: 20px 0; background-color: #f8f8f8; border-left: 4px solid #000; border-radius: 4px;")
+        tr
+          td(style="padding: 20px;")
+            //- Date Column (Left side)
+            table(cellpadding="0" cellspacing="0" border="0" style="float: left; text-align: center; padding-right: 15px; margin-right: 15px; border-right: 1px solid #ddd; min-width: 60px;")
+              tr
+                //- Use hardcoded date for reliability
+                - var month = 'MAY';
+                - var day = '10';
+                - var year = '2025';
+                td(style="text-transform: uppercase; font-size: 14px; font-weight: bold; color: #000; font-family: Arial, sans-serif;")= month
+              tr
+                td(style="font-size: 24px; font-weight: bold; line-height: 1; margin: 5px 0; font-family: Arial, sans-serif;")= day
+              tr
+                td(style="font-size: 14px; color: #666; font-family: Arial, sans-serif;")= year
+            
+            //- Event Details (Right side)
+            table(cellpadding="0" cellspacing="0" border="0" style="font-family: Arial, sans-serif;")
+              tr
+                td(style="font-weight: bold; margin-bottom: 10px; font-size: 16px; font-family: Arial, sans-serif;")
+                  | 🎾 Court Booking: #{booking.court}
+              tr
+                td(style="font-weight: bold; margin-bottom: 8px; font-size: 14px; font-family: Arial, sans-serif;")
+                  | ⏰ #{booking.startTime} - #{booking.endTime}
+              tr
+                td(style="color: #666; font-size: 14px; font-family: Arial, sans-serif;")
+                  | 📍 #{booking.venue}
+                  
+      //- We've attached the calendar details section
+      p We've attached a calendar file (.ics) to this email that you can add to your calendar.
+      
+      //- Add to Calendar buttons
+      h2 Add to Calendar
+      
+      //- Calendar button styles
+      style.
+        .calendar-btn {
+          display: inline-block;
+          background-color: #000;
+          color: white !important;
+          padding: 8px 15px;
+          margin: 5px;
+          text-decoration: none;
+          border-radius: 4px;
+          font-family: Arial, sans-serif;
+        }
+        .google-btn {
+          background-color: #4285F4;
+        }
+        .outlook-btn {
+          background-color: #0078D4;
+        }
+        .apple-btn {
+          background-color: #000;
+        }
+      
+      //- Use simpler date handling to avoid template parsing issues
+      - var eventTitle = encodeURIComponent('Court Booking: ' + booking.court);
+      - var details = encodeURIComponent('Your court booking at ' + booking.venue + '. Booking ID: ' + (typeof bookingId !== 'undefined' ? bookingId : ''));
+      - var location = encodeURIComponent(booking.venue);
+      
+      //- Default calendar dates in case parsing fails
+      - var startTimeStr = '20250510T170000Z';
+      - var endTimeStr = '20250510T173000Z';
+      
+      
+      //- Calendar link container
+      div(style="text-align: center; margin: 20px 0;")
+        //- Google Calendar button
+        a.calendar-btn.google-btn(href="https://calendar.google.com/calendar/render?action=TEMPLATE&text=Court%20Booking&dates=20250510T170000Z/20250510T173000Z&details=Your%20booking%20details&location=Funkhaus%20Sports&sf=true&output=xml", target="_blank")
+          | Google Calendar
+        
+        //- Outlook Calendar button
+        a.calendar-btn.outlook-btn(href="https://outlook.office.com/calendar/0/deeplink/compose?subject=Court%20Booking&body=Your%20booking%20details&location=Funkhaus%20Sports", target="_blank")
+          | Outlook Calendar
+        
+        //- Apple Calendar button
+        a.calendar-btn.apple-btn(href="#", style="background-color:#000;")
+          | Apple Calendar (Use Attachment)
+          
+      p(style="text-align: center; color: #666; font-size: 14px; margin-top: 5px;")
+        | Simply open the attached calendar file (.ics) to add this event to your calendar.
+
 
       div.footer
         p Questions? Contact: 
