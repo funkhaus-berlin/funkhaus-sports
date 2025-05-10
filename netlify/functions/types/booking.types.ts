@@ -3,7 +3,7 @@ export interface Booking {
 	userId: string
 	userName: string
 	courtId: string
-	venueId: string // Add this new field
+	venueId: string
 	startTime: string
 	endTime: string
 	price: number
@@ -24,4 +24,6 @@ export interface Booking {
 	updatedAt?: any
 	emailSent?: boolean
 	emailSentAt?: any
+	invoiceNumber?: string
+	invoiceGeneratedAt?: any
 }

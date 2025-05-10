@@ -128,12 +128,12 @@ export class SelectionTile extends $LitElement(css`
 	render() {
 		const dimensions = {
 			time: {
-				normal: { width: 'w-16 sm:w-16 md:w-18', height: 'h-16 sm:h-16 md:h-18' },
+				normal: { width: 'w-16 sm:w-16 md:w-18', height: 'h-18 sm:h-18 md:h-18' },
 				compact: { width: 'w-14', height: 'h-10' },
 			},
 			duration: {
 				normal: { width: 'w-20', height: 'h-20' },
-				compact: { width: 'w-16', height: 'h-16' },
+				compact: { width: 'w-16', height: 'h-18' },
 			},
 		}
 
