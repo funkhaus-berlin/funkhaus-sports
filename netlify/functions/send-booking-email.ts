@@ -129,6 +129,13 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 	try {
 		// Convert buffer to base64 for attachment
 		const pdfBase64 = pdfBuffer.toString('base64')
+		
+		// Generate ICS calendar file
+		console.log('Generating ICS file for booking:', data.bookingId)
+		const icsContent = generateICSFile(data)
+		const icsBase64 = Buffer.from(icsContent).toString('base64')
+		
+		console.log('Generating email HTML content')
 		const html = await emailHtml({
 			booking: data.bookingDetails,
 			customer: {
@@ -138,16 +145,26 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			},
 			venue: data.venueInfo,
 		})
+		
+		if (!html) {
+			throw new Error('Failed to generate email HTML content')
+		}
+		
+		console.log('Sending email to:', data.customerEmail)
 		// Send email with Resend
 		const response = await resend.emails.send({
 			from: `${emailConfig.fromName} <${emailConfig.from}>`,
 			to: data.customerEmail,
 			subject: `Your Court Booking Confirmation - ${data.bookingDetails.court}`,
-			html: html!,
+			html: html,
 			attachments: [
 				{
 					filename: `Booking-${data.bookingId}.pdf`,
 					content: pdfBase64,
+				},
+				{
+					filename: 'booking-event.ics',
+					content: icsBase64,
 				},
 			],
 		})
@@ -156,7 +173,259 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		return true
 	} catch (error) {
 		console.error('Error sending email with Resend:', error)
+		// Log more detailed error information
+		if (error instanceof Error) {
+			console.error('Error name:', error.name)
+			console.error('Error message:', error.message)
+			console.error('Error stack:', error.stack)
+		}
+		
+		// Try to identify specific issues
+		if (error instanceof RangeError && error.message.includes('Invalid time value')) {
+			console.error('Date/time validation failed, likely invalid date in booking details:', {
+				date: data.bookingDetails.date,
+				startTime: data.bookingDetails.startTime,
+				endTime: data.bookingDetails.endTime,
+			})
+		}
+		
 		return false
+	}
+}
+
+/**
+ * Generate an ICS file for calendar applications
+ */
+function generateICSFile(data: EmailBookingData): string {
+	try {
+		// Ensure date and time values exist and have the expected format
+		if (!data.bookingDetails.date || 
+			!data.bookingDetails.startTime || 
+			!data.bookingDetails.endTime) {
+			console.error('Missing required date or time fields in booking data:', data.bookingDetails)
+			throw new Error('Missing date or time data')
+		}
+		
+		// Check if raw values exist in the booking details
+		const hasRawValues = data.bookingDetails['rawDate'] && 
+						   data.bookingDetails['rawStartTime'] && 
+						   data.bookingDetails['rawEndTime']
+		
+		console.log('Date and time values:', {
+			date: data.bookingDetails.date,
+			startTime: data.bookingDetails.startTime,
+			endTime: data.bookingDetails.endTime,
+			rawDate: data.bookingDetails['rawDate'],
+			rawStartTime: data.bookingDetails['rawStartTime'],
+			rawEndTime: data.bookingDetails['rawEndTime'],
+			usingRawValues: hasRawValues
+		})
+		
+		// Parse date - prefer raw values if available
+		let year: number, month: number, day: number
+		
+		if (hasRawValues && data.bookingDetails['rawDate']) {
+			// Use raw date if available
+			const rawDateMatch = data.bookingDetails['rawDate'].match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+			if (rawDateMatch) {
+				year = parseInt(rawDateMatch[1], 10)
+				month = parseInt(rawDateMatch[2], 10)
+				day = parseInt(rawDateMatch[3], 10)
+			} else {
+				throw new Error(`Invalid raw date format: ${data.bookingDetails['rawDate']}`)
+			}
+		} else {
+			// Fall back to original date parsing logic
+			// Check if date is in YYYY-MM-DD format
+			const isoDateMatch = data.bookingDetails.date.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+			if (isoDateMatch) {
+				year = parseInt(isoDateMatch[1], 10)
+				month = parseInt(isoDateMatch[2], 10)
+				day = parseInt(isoDateMatch[3], 10)
+			} else {
+				// Try to handle formatted date string (e.g., "Monday, January 1, 2023")
+				try {
+					// Convert the formatted date back to a Date object
+					const parsedDate = new Date(data.bookingDetails.date)
+					if (isNaN(parsedDate.getTime())) {
+						throw new Error(`Cannot parse date string: ${data.bookingDetails.date}`)
+					}
+					
+					year = parsedDate.getFullYear()
+					month = parsedDate.getMonth() + 1 // JavaScript months are 0-indexed
+					day = parsedDate.getDate()
+				} catch (err) {
+					console.error('Date parsing error:', err)
+					throw new Error(`Invalid date format: ${data.bookingDetails.date}`)
+				}
+			}
+		}
+		
+		// Check for valid date components
+		if (isNaN(year) || isNaN(month) || isNaN(day) || 
+			year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) {
+			throw new Error(`Invalid date values: year=${year}, month=${month}, day=${day}`)
+		}
+		
+		// Parse time values - handle raw values if available, otherwise use formatted times
+		let startHour: number, startMinute: number, endHour: number, endMinute: number
+		
+		// Helper function to parse time values
+		const parseTimeValue = (timeStr: string): { hour: number, minute: number } => {
+			// Check for HH:MM format
+			const timeMatch = timeStr.match(/^(\d{1,2}):(\d{2})$/)
+			if (timeMatch) {
+				return {
+					hour: parseInt(timeMatch[1], 10),
+					minute: parseInt(timeMatch[2], 10)
+				}
+			}
+			
+			// Try to handle formatted time (e.g., "2:30 PM")
+			try {
+				// Use a dummy date to parse the time
+				const dummyDate = new Date(`1/1/2000 ${timeStr}`)
+				if (isNaN(dummyDate.getTime())) {
+					throw new Error(`Cannot parse time string: ${timeStr}`)
+				}
+				
+				return {
+					hour: dummyDate.getHours(),
+					minute: dummyDate.getMinutes()
+				}
+			} catch (err) {
+				console.error('Time parsing error:', err)
+				throw new Error(`Invalid time format: ${timeStr}`)
+			}
+		}
+		
+		// Use raw time values if available, otherwise parse formatted times
+		if (hasRawValues && data.bookingDetails['rawStartTime'] && data.bookingDetails['rawEndTime']) {
+			const rawStartTime = parseTimeValue(data.bookingDetails['rawStartTime'])
+			const rawEndTime = parseTimeValue(data.bookingDetails['rawEndTime'])
+			
+			startHour = rawStartTime.hour
+			startMinute = rawStartTime.minute
+			endHour = rawEndTime.hour
+			endMinute = rawEndTime.minute
+		} else {
+			const startTime = parseTimeValue(data.bookingDetails.startTime)
+			const endTime = parseTimeValue(data.bookingDetails.endTime)
+			
+			startHour = startTime.hour
+			startMinute = startTime.minute
+			endHour = endTime.hour
+			endMinute = endTime.minute
+		}
+		
+		// Check for valid time components
+		if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute) ||
+			startHour < 0 || startHour > 23 || startMinute < 0 || startMinute > 59 ||
+			endHour < 0 || endHour > 23 || endMinute < 0 || endMinute > 59) {
+			throw new Error(`Invalid time values: startHour=${startHour}, startMinute=${startMinute}, endHour=${endHour}, endMinute=${endMinute}`)
+		}
+		
+		console.log('Parsed date and time components:', { 
+			year, month, day, 
+			startHour, startMinute, 
+			endHour, endMinute 
+		})
+		
+		// Create JavaScript Date objects
+		const startDate = new Date(year, month - 1, day, startHour, startMinute)
+		const endDate = new Date(year, month - 1, day, endHour, endMinute)
+	
+		console.log('Created dates:', { 
+			startDate: startDate.toString(), 
+			endDate: endDate.toString(),
+			startDateValid: !isNaN(startDate.getTime()),
+			endDateValid: !isNaN(endDate.getTime())
+		})
+		
+		if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+			throw new Error('Invalid date created: ' + 
+				(isNaN(startDate.getTime()) ? `startDate: ${startDate}` : '') + 
+				(isNaN(endDate.getTime()) ? `endDate: ${endDate}` : ''))
+		}
+		
+		// Format dates for ICS file (YYYYMMDDTHHMMSSZ format)
+		const formatDateForICS = (date: Date): string => {
+			return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+		}
+		
+		const startDateICS = formatDateForICS(startDate)
+		const endDateICS = formatDateForICS(endDate)
+		const now = formatDateForICS(new Date())
+		
+		// Create a unique identifier for the event
+		const uid = `booking-${data.bookingId}@funkhaus-sports.com`
+		
+		// Build the location string
+		const location = data.venueInfo ? 
+			`${data.venueInfo.name}, ${data.venueInfo.address}, ${data.venueInfo.postalCode} ${data.venueInfo.city}, ${data.venueInfo.country}` : 
+			data.bookingDetails.venue
+		
+		// Create the ICS content
+		return [
+			'BEGIN:VCALENDAR',
+			'VERSION:2.0',
+			'PRODID:-//Funkhaus Sports//Court Booking//EN',
+			'CALSCALE:GREGORIAN',
+			'METHOD:PUBLISH',
+			'BEGIN:VEVENT',
+			`UID:${uid}`,
+			`DTSTAMP:${now}`,
+			`DTSTART:${startDateICS}`,
+			`DTEND:${endDateICS}`,
+			`SUMMARY:${data.bookingDetails.court} - ${data.bookingDetails.venue}`,
+			`DESCRIPTION:Your court booking at ${data.bookingDetails.venue}. Booking ID: ${data.bookingId}`,
+			`LOCATION:${location}`,
+			'STATUS:CONFIRMED',
+			'SEQUENCE:0',
+			'BEGIN:VALARM',
+			'TRIGGER:-PT30M',
+			'ACTION:DISPLAY',
+			'DESCRIPTION:Reminder: Your court booking starts in 30 minutes',
+			'END:VALARM',
+			'END:VEVENT',
+			'END:VCALENDAR'
+		].join('\r\n')
+	} catch (error) {
+		console.error('Error generating ICS file:', error)
+		
+		// Create a fallback ICS with current date/time as placeholder
+		const now = new Date()
+		const later = new Date(now.getTime() + 60 * 60 * 1000) // 1 hour later
+		
+		const formatDateForFallback = (date: Date): string => {
+			return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+		}
+		
+		const nowICS = formatDateForFallback(now)
+		const laterICS = formatDateForFallback(later)
+		
+		// Create a unique identifier for the event
+		const uid = `booking-${data.bookingId || 'unknown'}@funkhaus-sports.com`
+		
+		// Create a simplified ICS content as fallback
+		return [
+			'BEGIN:VCALENDAR',
+			'VERSION:2.0',
+			'PRODID:-//Funkhaus Sports//Court Booking//EN',
+			'CALSCALE:GREGORIAN',
+			'METHOD:PUBLISH',
+			'BEGIN:VEVENT',
+			`UID:${uid}`,
+			`DTSTAMP:${nowICS}`,
+			`DTSTART:${nowICS}`,
+			`DTEND:${laterICS}`,
+			`SUMMARY:Court Booking - ${data.bookingDetails?.venue || 'Unknown Venue'}`,
+			`DESCRIPTION:Your court booking. Booking ID: ${data.bookingId || 'Unknown'}`,
+			'STATUS:CONFIRMED',
+			'SEQUENCE:0',
+			'END:VEVENT',
+			'END:VCALENDAR'
+		].join('\r\n')
 	}
 }
 
@@ -212,7 +481,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 		// Generate QR code
 		const qrCodeData = await QRCode.toDataURL(data.bookingId)
 		doc.image(qrCodeData, 450, 50, { width: 80, height: 80 })
-		doc.font('Regular').text('Your Ticket', 450, 135)
+		doc.font('Regular').text('Your Ticket', 450, 130)
 	} catch (err) {
 		console.error('Error generating QR code:', err)
 	}

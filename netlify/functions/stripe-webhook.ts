@@ -416,7 +416,7 @@ function prepareEmailData(booking, court, venue, paymentIntent) {
 	const netAmount = booking.price / (1 + vatRate)
 	const vatAmount = booking.price - netAmount
 
-	// Format dates and times
+	// Format dates and times for human-readable display
 	const bookingDate = new Date(booking.date).toLocaleDateString('en-US', {
 		weekday: 'long',
 		year: 'numeric',
@@ -438,6 +438,20 @@ function prepareEmailData(booking, court, venue, paymentIntent) {
 		  })
 		: 'N/A'
 
+	// Machine-readable formats for ICS calendar
+	const rawDate = booking.date ? new Date(booking.date).toISOString().split('T')[0] : null
+	
+	const startDateTime = booking.startTime ? new Date(booking.startTime) : null
+	const endDateTime = booking.endTime ? new Date(booking.endTime) : null
+	
+	const rawStartTime = startDateTime ? 
+		`${startDateTime.getHours().toString().padStart(2, '0')}:${startDateTime.getMinutes().toString().padStart(2, '0')}` : 
+		null
+	
+	const rawEndTime = endDateTime ? 
+		`${endDateTime.getHours().toString().padStart(2, '0')}:${endDateTime.getMinutes().toString().padStart(2, '0')}` : 
+		null
+
 	return {
 		bookingId: booking.id,
 		customerEmail: booking.customerEmail || paymentIntent.receipt_email,
@@ -457,6 +471,12 @@ function prepareEmailData(booking, court, venue, paymentIntent) {
 				vatAmount: vatAmount.toFixed(2),
 				vatRate: `${(vatRate * 100).toFixed(0)}%`,
 			},
+			// Machine-readable formats for ICS calendar
+			rawDate: rawDate,
+			rawStartTime: rawStartTime,
+			rawEndTime: rawEndTime,
+			isoStartDateTime: booking.startTime || null,
+			isoEndDateTime: booking.endTime || null,
 		},
 		venueInfo: venue
 			? {
