@@ -169,7 +169,6 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 				// Only update venueAddress if we have valid parts
 				if (addressParts.length > 0) {
 					venueAddress = addressParts.join(', ')
-					console.log('Formatted venue address:', venueAddress)
 				}
 			} catch (error) {
 				console.error('Error formatting venue address:', error)
@@ -189,30 +188,20 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			`Court: ${data.bookingDetails.court}\nPrice: €${data.bookingDetails.price}`
 		)
 		
-		// Log calendar event data for debugging
-		console.log('Created calendar event data:', JSON.stringify({
-			dayName: calendarEvent.dayName, 
-			dayShort: calendarEvent.dayShort,
-			day: calendarEvent.day,
-			month: calendarEvent.month,
-			monthShort: calendarEvent.monthShort,
-			year: calendarEvent.year
-		}, null, 2))
-		
 		// Generate ICS file for attachment
-		console.log('Generating ICS file for booking:', data.bookingId)
 		const icsContent = generateICSFile(calendarEvent)
 		const icsBase64 = Buffer.from(icsContent).toString('base64')
 		
-		console.log('Generating email HTML content')
-		// Set up images for email clients using locally hosted images
+		// Set up images for email clients using absolute URLs to ensure proper rendering
 		const baseUrl = 'https://funkhausevents.netlify.app'
+		
+		// Use complete URLs with netlify cache-busting query parameter to prevent routing issues
 		const emailImages = {
-			googleCalendar: `${baseUrl}/icons/google-calendar.png`,
-			outlookCalendar: `${baseUrl}/icons/outlook-calendar.png`,
-			appleCalendar: `${baseUrl}/icons/apple-calendar.png`,
-			calendarIcon: `${baseUrl}/icons/calendar.png`,
-			logo: `${baseUrl}/logo-light.svg`
+			googleCalendar: `${baseUrl}/icons/google-calendar.png?v=1`,
+			outlookCalendar: `${baseUrl}/icons/outlook-calendar.png?v=1`,
+			appleCalendar: `${baseUrl}/icons/apple-calendar.png?v=1`,
+			calendarIcon: `${baseUrl}/icons/calendar.png?v=1`,
+			logo: `${baseUrl}/logo-light.svg?v=1`
 		}
 		
 		const html = await emailHtml({
@@ -232,7 +221,6 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			throw new Error('Failed to generate email HTML content')
 		}
 		
-		console.log('Sending email to:', data.customerEmail)
 		// Send email with Resend
 		const response = await resend.emails.send({
 			from: `${emailConfig.fromName} <${emailConfig.from}>`,
@@ -254,16 +242,9 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			],
 		})
 
-		console.log('Email sent successfully with Resend:', response)
 		return true
 	} catch (error) {
 		console.error('Error sending email with Resend:', error)
-		// Log more detailed error information
-		if (error instanceof Error) {
-			console.error('Error name:', error.name)
-			console.error('Error message:', error.message)
-			console.error('Error stack:', error.stack)
-		}
 		
 		// Try to identify specific issues
 		if (error instanceof RangeError && error.message.includes('Invalid time value')) {

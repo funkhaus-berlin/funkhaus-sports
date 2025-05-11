@@ -58,7 +58,55 @@
   status = 200
   force = true
 
+# Static asset exemptions - all assets in the public folder should be served directly
+# First, ensure all public directories are properly served with their content
+# This is the most important part - a special rule for any assets directly in the public folder
+[[redirects]]
+  from = "/:filename.:extension"
+  to = "/:filename.:extension"
+  status = 200
+  conditions = {Path = {":extension" = ["png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "pdf", "txt", "xml", "json", "webmanifest", "woff", "woff2", "ttf", "otf", "eot"]}}
 
+# Special case for directories in the public folder
+# Each directory needs its own rule to ensure all nested content is served correctly
+[[redirects]]
+  from = "/icons/*"
+  to = "/icons/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/svg/*"
+  to = "/svg/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/GT-Eesti/*"
+  to = "/GT-Eesti/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/login/*"
+  to = "/login/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/reset-password/*"
+  to = "/reset-password/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/signin/*"
+  to = "/signin/:splat"
+  status = 200
+
+# Catch any new directories automatically
+[[redirects]]
+  from = "/:directory/*"
+  to = "/:directory/:splat"
+  status = 200
+  conditions = {Directory = {":directory" = true}}
+
+# Catch-all redirect for SPA routes
 [[redirects]]
   from = "/*"
   to = "/index.html"

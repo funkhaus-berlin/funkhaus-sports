@@ -12,15 +12,6 @@ import { CalendarEvent } from '../../../src/types/api/email'
  */
 export function generateICSFile(event: CalendarEvent & { id?: string }): string {
   try {
-    // Log incoming event data for debugging
-    console.log('Creating calendar event with data:', {
-      id: event.id,
-      title: event.title,
-      startTime: event.startTime,
-      endTime: event.endTime,
-      location: event.location
-    })
-    
     // Convert string dates to Date objects for the ical library
     const startDate = moment(event.startTime).toDate()
     const endDate = moment(event.endTime).toDate()
@@ -60,8 +51,6 @@ export function generateICSFile(event: CalendarEvent & { id?: string }): string 
     
     // Generate the ICS content
     const icsContent = calendar.toString()
-    
-    console.log('Generated ICS file using ical-generator')
     
     return icsContent
   } catch (error) {
@@ -115,17 +104,6 @@ export function createCalendarEvent(
   year: number;
   formattedDate: string;
 } {
-  // Log all input parameters for debugging
-  console.log('createCalendarEvent input parameters:', {
-    bookingId,
-    courtName,
-    venueName,
-    venueAddress,
-    startTime,
-    endTime,
-    date,
-    additionalDetails
-  })
   
   // Parse date and time inputs
   let parsedStartTime: moment.Moment
@@ -190,13 +168,7 @@ export function createCalendarEvent(
     if (parsedEndTime.isSameOrBefore(parsedStartTime)) {
       parsedEndTime = moment(parsedStartTime).add(1, 'hour') // Add 1 hour
     }
-    
-    console.log('Parsed dates:', { 
-      startTime, 
-      endTime, 
-      parsedStartTime: parsedStartTime.toISOString(), 
-      parsedEndTime: parsedEndTime.toISOString() 
-    })
+
   } catch (error) {
     console.error('Error parsing dates, using defaults:', error)
     // Use default dates if parsing fails
@@ -213,8 +185,6 @@ export function createCalendarEvent(
      !venueAddress.includes('undefined undefined')) {
     formattedAddress = `${venueName}, ${venueAddress}`
   }
-  
-  console.log('Formatted location for calendar:', formattedAddress)
   
   // Format dates for various calendar systems
   const googleStartDate = parsedStartTime.utc().format('YYYYMMDDTHHmmss') + 'Z'

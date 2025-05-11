@@ -61,6 +61,9 @@ export class CourtBookingSystem extends $LitElement() {
 		// Add history state management
 		window.addEventListener('popstate', this.handleHistoryNavigation.bind(this))
 
+		// We'll rely on firstUpdated to handle the venueId check
+		// This allows time for both the URL parameters and context to be properly loaded
+
 		// Initialize Stripe
 		this.initializeStripe()
 	}
@@ -71,6 +74,9 @@ export class CourtBookingSystem extends $LitElement() {
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
+		// Check if venueId is missing and redirect if necessary
+		this.checkVenueIdAndRedirect()
+		
 		// Check for returning payment status
 		this.checkPaymentStatus()
 
@@ -81,6 +87,37 @@ export class CourtBookingSystem extends $LitElement() {
 		if (!window.history.state) {
 			this.updateUrlForStep(this.bookingProgress.currentStep)
 		}
+	}
+	
+	// Variable to store the state of the booking context
+	private hasCheckedContext = false;
+	
+	/**
+	 * Check if a valid venueId exists in the booking context
+	 * If not, redirect to the venues landing page
+	 * Uses a timeout approach to allow for context hydration
+	 */
+	private checkVenueIdAndRedirect(): void {
+		// Only check once to prevent redirect loops
+		if (this.hasCheckedContext) {
+			return;
+		}
+		
+		// Mark as checked to avoid multiple checks
+		this.hasCheckedContext = true;
+		
+		// Defer the check to allow context to be hydrated
+		// This is the key to solving the race condition
+		setTimeout(() => {
+			// Check for empty venueId after timeout
+			if (!this.booking.venueId || this.booking.venueId.trim() === '') {
+				console.warn('No venueId found in booking context. Redirecting to venues page.');
+				// Redirect to venues landing page
+				const baseUrl = window.location.origin;
+				const venuesUrl = `${baseUrl.replace(/\/$/, '')}/`;
+				window.location.href = venuesUrl;
+			}
+		}, 250); // Small timeout to allow context hydration
 	}
 
 	// SETUP METHODS

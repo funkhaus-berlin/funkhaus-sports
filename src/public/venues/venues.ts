@@ -18,6 +18,7 @@ export class VenueLandingPage extends $LitElement() {
 
 	// Handle venue card click to navigate to booking
 	private handleVenueClick(venue: Venue) {
+		// Set venue in the context
 		bookingContext.set({
 			venueId: venue.id,
 		})
@@ -25,10 +26,12 @@ export class VenueLandingPage extends $LitElement() {
 		BookingProgressContext.set({
 			currentStep: BookingStep.Date,
 		})
+		
+		// Navigate to the booking component
 		area.push({
 			component: CourtBookingSystem,
 			area: 'root',
-			historyStrategy: 'push',
+			historyStrategy: 'push'
 		})
 	}
 
