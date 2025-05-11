@@ -1,29 +1,10 @@
-export interface Booking {
-	id: string
-	userId: string
-	userName: string
-	courtId: string
-	venueId: string
-	startTime: string
-	endTime: string
-	price: number
-	date: string
-	paymentStatus?: string
-	courtPreference?: 'indoor' | 'outdoor'
-	status?: string
-	paymentIntentId?: string
-	customerEmail?: string
-	customerPhone: string
-	customerAddress: {
-		street: string
-		city: string
-		postalCode: string
-		country: string
-	}
-	createdAt?: any
-	updatedAt?: any
-	emailSent?: boolean
-	emailSentAt?: any
-	invoiceNumber?: string
-	invoiceGeneratedAt?: any
-}
+/**
+ * This file is deprecated. Please import from ./shared-types.ts instead.
+ * 
+ * @deprecated Use Booking from ./shared-types.ts instead
+ */
+
+import { Booking as SharedBooking } from './shared-types'
+
+// Re-export for backward compatibility
+export interface Booking extends SharedBooking {}

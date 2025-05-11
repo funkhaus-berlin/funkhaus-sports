@@ -4,6 +4,18 @@
  */
 
 /**
+ * Firebase Firestore Timestamp interface
+ * Used for date/time fields stored in Firestore
+ */
+export interface FirestoreTimestamp {
+  seconds: number;
+  nanoseconds: number;
+  toDate: () => Date;
+  toMillis: () => number;
+  valueOf: () => string;
+}
+
+/**
  * Booking status types
  */
 export type BookingStatus =
@@ -55,13 +67,13 @@ export interface Booking {
   customerEmail?: string
   customerPhone: string
   customerAddress: Address
-  createdAt?: any // Consider using a more specific type like Date or string
-  updatedAt?: any // Consider using a more specific type like Date or string
+  createdAt?: Date | string | FirestoreTimestamp
+  updatedAt?: Date | string | FirestoreTimestamp
   emailSent?: boolean
-  emailSentAt?: any // Consider using a more specific type like Date or string
+  emailSentAt?: Date | string | FirestoreTimestamp
   courtPreference?: 'indoor' | 'outdoor'
   invoiceNumber?: string
-  invoiceGeneratedAt?: any // Consider using a more specific type like Date or string
+  invoiceGeneratedAt?: Date | string | FirestoreTimestamp
 }
 
 /**

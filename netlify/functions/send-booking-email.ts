@@ -26,35 +26,12 @@ const db = admin.firestore()
 /**
  * Email handler for sending booking confirmations
  */
-// Define address type to handle both string and object formats
-type AddressType = string | {
-	street: string
-	city?: string
-	postalCode?: string
-	country?: string
-}
-
-interface EmailBookingData {
-	bookingId: string
-	customerEmail: string
-	customerName: string
-	customerPhone: string
-	venueInfo: {
-		name: string
-		address: AddressType
-		city?: string
-		postalCode?: string
-		country?: string
-	}
-	bookingDetails: {
-		date: string
-		startTime: string
-		endTime: string
-		price: string
-		court: string
-		venue: string
-	}
-}
+import { 
+	AddressType, 
+	VenueInfo, 
+	EmailBookingDetails, 
+	BookingEmailRequest as EmailBookingData 
+} from './types/shared-types'
 const handler: Handler = async (event, context) => {
 	// Handle preflight request for CORS
 	if (event.httpMethod === 'OPTIONS') {
@@ -218,6 +195,16 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		const icsBase64 = Buffer.from(icsContent).toString('base64')
 		
 		console.log('Generating email HTML content')
+		// Set up images for email clients using locally hosted images
+		const baseUrl = 'https://funkhausevents.netlify.app'
+		const emailImages = {
+			googleCalendar: `${baseUrl}/icons/google-calendar.png`,
+			outlookCalendar: `${baseUrl}/icons/outlook-calendar.png`,
+			appleCalendar: `${baseUrl}/icons/apple-calendar.png`,
+			calendarIcon: `${baseUrl}/icons/calendar.png`,
+			logo: `${baseUrl}/logo-light.svg`
+		}
+		
 		const html = await emailHtml({
 			booking: data.bookingDetails,
 			customer: {
@@ -227,7 +214,8 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			},
 			venue: data.venueInfo,
 			bookingId: data.bookingId,
-			calendarEvent: calendarEvent // Pass calendar event data to template
+			calendarEvent: calendarEvent, // Pass calendar event data to template
+			images: emailImages // Pass image URLs to template
 		})
 		
 		if (!html) {
@@ -250,6 +238,8 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 					filename: 'court-booking.ics',
 					content: icsBase64,
 					contentType: 'text/calendar; charset=UTF-8; method=PUBLISH',
+					disposition: 'attachment',
+					contentId: 'court-booking.ics',
 				},
 			],
 		})

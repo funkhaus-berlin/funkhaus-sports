@@ -1,117 +1,101 @@
 // /netlify/functions/_shared/calendar-utils.ts
 import moment from 'moment'
-
-export interface CalendarEvent {
-  id: string
-  title: string
-  description: string
-  location: string
-  startTime: Date | string
-  endTime: Date | string
-  // Add formatted date strings for Google Calendar and other services
-  googleStartDate?: string
-  googleEndDate?: string
-  startDate?: string
-  endDate?: string
-}
+import ical, { ICalEventStatus, ICalAlarmType } from 'ical-generator'
+import { v4 as uuidv4 } from 'uuid'
+import { CalendarEvent } from '../../../src/types/api/email'
 
 /**
- * Generate a simple ICS file following exactly the same format as the frontend implementation
- * This ensures compatibility with all calendar systems
+ * Generate an ICS file using ical-generator library
+ * 
+ * @param event Calendar event data following the CalendarEvent interface
+ * @returns ICS file content as a string
  */
-export function generateICSFile(event: CalendarEvent): string {
+export function generateICSFile(event: CalendarEvent & { id?: string }): string {
   try {
     // Log incoming event data for debugging
     console.log('Creating calendar event with data:', {
       id: event.id,
-      title: event.title, 
+      title: event.title,
       startTime: event.startTime,
       endTime: event.endTime,
       location: event.location
     })
     
-    // Convert dates to moment objects for consistent formatting
-    const startDate = moment(event.startTime)
-    const endDate = moment(event.endTime)
+    // Convert string dates to Date objects for the ical library
+    const startDate = moment(event.startTime).toDate()
+    const endDate = moment(event.endTime).toDate()
     
-    // Format dates exactly like the frontend implementation
-    const start = startDate.utc().format('YYYYMMDDTHHmmss')
-    const end = endDate.utc().format('YYYYMMDDTHHmmss')
-    const now = moment().utc().format('YYYYMMDDTHHmmss')
-    
-    // Create UID in same format as frontend
-    const uid = `booking-${event.id || Math.random().toString(36).substring(2, 11)}@funkhaus-sports.com`
-    
-    // Clean up location string to ensure it's properly formatted
-    // Remove any [object Object] references that might be in the string
+    // Clean up location string
     const cleanLocation = (typeof event.location === 'string') 
-      ? event.location.replace(/\[object Object\]/g, '').replace(/undefined/g, '').replace(/,\s*,/g, ',').replace(/,\s*$/g, '')
+      ? event.location
+          .replace(/\[object Object\]/g, '')
+          .replace(/undefined/g, '')
+          .replace(/,\s*,/g, ',')
+          .replace(/,\s*$/g, '')
       : 'Funkhaus Sports Berlin'
     
-    console.log('Cleaned location for calendar:', cleanLocation)
+    // Create a new calendar
+    const calendar = ical({
+      prodId: { company: 'Funkhaus Berlin Sports', product: 'Court Booking' },
+      name: 'Court Booking',
+      timezone: 'Europe/Berlin'
+    })
     
-    // Create calendar content in exact same format as frontend
-    // The key is to use \r\n for line breaks - critical for Apple Calendar compatibility
-    const icsContent = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//Funkhaus Berlin Sports//Court Booking//EN',
-      'CALSCALE:GREGORIAN',
-      'METHOD:PUBLISH',
-      'BEGIN:VEVENT',
-      `UID:${uid}`,
-      `DTSTAMP:${now}Z`,
-      `DTSTART:${start}Z`,
-      `DTEND:${end}Z`,
-      `SUMMARY:${event.title}`,
-      `LOCATION:${cleanLocation}`,
-      'STATUS:CONFIRMED',
-      'SEQUENCE:0',
-      'BEGIN:VALARM',
-      'TRIGGER:-PT1H',
-      'ACTION:DISPLAY',
-      'DESCRIPTION:Reminder',
-      'END:VALARM',
-      'END:VEVENT',
-      'END:VCALENDAR'
-    ].join('\r\n')
+    // Create unique identifier for this event
+    const eventId = `booking-${event.id || event.uid || uuidv4()}@funkhaus-sports.com`
     
-    // Log the generated ICS content for debugging
-    console.log('Generated ICS file content :', icsContent)
+    // Add an event to the calendar
+    const calEvent = calendar.createEvent({
+      start: startDate,
+      end: endDate,
+      summary: event.title,
+      description: event.description,
+      location: cleanLocation,
+      alarms: [{ type: ICalAlarmType.display, trigger: 3600 }] // 1 hour before
+    })
+    
+    // Set properties using methods
+    calEvent.uid(eventId)
+    calEvent.status(ICalEventStatus.CONFIRMED)
+    
+    // Generate the ICS content
+    const icsContent = calendar.toString()
+    
+    console.log('Generated ICS file using ical-generator')
     
     return icsContent
   } catch (error) {
     console.error('Error generating ICS file:', error)
     
-    // If anything fails, provide a simple fallback
-    return [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//Funkhaus Berlin Sports//Court Booking//EN',
-      'CALSCALE:GREGORIAN',
-      'METHOD:PUBLISH',
-      'BEGIN:VEVENT',
-      `UID:fallback-${Date.now()}@funkhaus-sports.com`,
-      `DTSTAMP:${moment().utc().format('YYYYMMDDTHHmmss')}Z`,
-      `DTSTART:${moment().utc().format('YYYYMMDDTHHmmss')}Z`,
-      `DTEND:${moment().add(1, 'hour').utc().format('YYYYMMDDTHHmmss')}Z`,
-      'SUMMARY:Court Booking',
-      'LOCATION:Funkhaus Berlin Sports Center',
-      'STATUS:CONFIRMED',
-      'SEQUENCE:0',
-      'BEGIN:VALARM',
-      'TRIGGER:-PT1H',
-      'ACTION:DISPLAY',
-      'DESCRIPTION:Reminder',
-      'END:VALARM',
-      'END:VEVENT',
-      'END:VCALENDAR'
-    ].join('\r\n')
+    // Fallback calendar if something goes wrong
+    const calendar = ical({
+      prodId: { company: 'Funkhaus Berlin Sports', product: 'Court Booking' },
+      name: 'Court Booking',
+      timezone: 'Europe/Berlin'
+    })
+    
+    // Create fallback event
+    const fallbackEvent = calendar.createEvent({
+      start: moment().toDate(),
+      end: moment().add(1, 'hour').toDate(),
+      summary: 'Court Booking',
+      location: 'Funkhaus Berlin Sports Center',
+      alarms: [{ type: ICalAlarmType.display, trigger: 3600 }]
+    })
+    
+    // Set properties using methods
+    fallbackEvent.uid(`fallback-${uuidv4()}@funkhaus-sports.com`)
+    fallbackEvent.status(ICalEventStatus.CONFIRMED)
+    
+    return calendar.toString()
   }
 }
 
 /**
  * Create a calendar event from booking data
+ * Returns an object that follows the CalendarEvent interface from the frontend
+ * 
+ * @returns CalendarEvent object following the interface
  */
 export function createCalendarEvent(
   bookingId: string,
@@ -122,7 +106,15 @@ export function createCalendarEvent(
   endTime: string,
   date: string,
   additionalDetails: string = ''
-): CalendarEvent {
+): CalendarEvent & { 
+  dayName: string;
+  dayShort: string;
+  day: number;
+  month: string;
+  monthShort: string;
+  year: number;
+  formattedDate: string;
+} {
   // Log all input parameters for debugging
   console.log('createCalendarEvent input parameters:', {
     bookingId,
@@ -133,15 +125,17 @@ export function createCalendarEvent(
     endTime,
     date,
     additionalDetails
-  });
-  let parsedStartTime: Date
-  let parsedEndTime: Date
+  })
+  
+  // Parse date and time inputs
+  let parsedStartTime: moment.Moment
+  let parsedEndTime: moment.Moment
   
   try {
     // Try to properly parse the time and date inputs
     if (startTime && startTime.includes('T') && startTime.includes('Z')) {
       // If it's already in ISO format
-      parsedStartTime = new Date(startTime)
+      parsedStartTime = moment(startTime)
     } else if (date && startTime) {
       // If we have separate date and time
       // First try to interpret the date
@@ -159,20 +153,19 @@ export function createCalendarEvent(
         if (ampm === 'am' && hours === 12) hours = 0
         
         // Set the time components
-        parsedDate.hours(hours).minutes(minutes).seconds(0).milliseconds(0)
-        parsedStartTime = parsedDate.toDate()
+        parsedStartTime = parsedDate.clone().hours(hours).minutes(minutes).seconds(0).milliseconds(0)
       } else {
         // Fallback: just try to parse the whole string
-        parsedStartTime = new Date(`${date}T${startTime}`)
+        parsedStartTime = moment(`${date} ${startTime}`)
       }
     } else {
       // Fallback to default
-      parsedStartTime = new Date('2025-05-10T17:00:00.000Z')
+      parsedStartTime = moment('2025-05-10T17:00:00.000Z')
     }
     
     // Same process for end time
     if (endTime && endTime.includes('T') && endTime.includes('Z')) {
-      parsedEndTime = new Date(endTime)
+      parsedEndTime = moment(endTime)
     } else if (date && endTime) {
       const parsedDate = moment(date, ['ddd, MMM D, YYYY', 'YYYY-MM-DD', 'M/D/YYYY', 'D MMM YYYY'])
       
@@ -185,18 +178,17 @@ export function createCalendarEvent(
         if (ampm === 'pm' && hours < 12) hours += 12
         if (ampm === 'am' && hours === 12) hours = 0
         
-        parsedDate.hours(hours).minutes(minutes).seconds(0).milliseconds(0)
-        parsedEndTime = parsedDate.toDate()
+        parsedEndTime = parsedDate.clone().hours(hours).minutes(minutes).seconds(0).milliseconds(0)
       } else {
-        parsedEndTime = new Date(`${date}T${endTime}`)
+        parsedEndTime = moment(`${date} ${endTime}`)
       }
     } else {
-      parsedEndTime = new Date('2025-05-10T17:30:00.000Z')
+      parsedEndTime = moment('2025-05-10T17:30:00.000Z')
     }
     
     // Ensure end time is after start time
-    if (parsedEndTime <= parsedStartTime) {
-      parsedEndTime = new Date(parsedStartTime.getTime() + 60 * 60 * 1000) // Add 1 hour
+    if (parsedEndTime.isSameOrBefore(parsedStartTime)) {
+      parsedEndTime = moment(parsedStartTime).add(1, 'hour') // Add 1 hour
     }
     
     console.log('Parsed dates:', { 
@@ -208,14 +200,14 @@ export function createCalendarEvent(
   } catch (error) {
     console.error('Error parsing dates, using defaults:', error)
     // Use default dates if parsing fails
-    parsedStartTime = new Date('2025-05-10T17:00:00.000Z')
-    parsedEndTime = new Date('2025-05-10T17:30:00.000Z')
+    parsedStartTime = moment('2025-05-10T17:00:00.000Z')
+    parsedEndTime = moment('2025-05-10T17:30:00.000Z')
   }
   
   // Format venue address properly
   let formattedAddress = venueName
   
-  // Only add address parts if they seem valid (not undefined or [object Object])
+  // Only add address parts if they seem valid
   if (venueAddress && 
      !venueAddress.includes('[object Object]') && 
      !venueAddress.includes('undefined undefined')) {
@@ -225,47 +217,61 @@ export function createCalendarEvent(
   console.log('Formatted location for calendar:', formattedAddress)
   
   // Format dates for Google Calendar (YYYYMMDDTHHmmssZ format)
-  let googleStartDate, googleEndDate, startDate, endDate
+  const googleStartDate = parsedStartTime.utc().format('YYYYMMDDTHHmmss') + 'Z'
+  const googleEndDate = parsedEndTime.utc().format('YYYYMMDDTHHmmss') + 'Z'
   
-  try {
-    // Use moment.js to format dates consistently for Google Calendar
-    googleStartDate = moment(parsedStartTime).utc().format('YYYYMMDDTHHmmss') + 'Z'
-    googleEndDate = moment(parsedEndTime).utc().format('YYYYMMDDTHHmmss') + 'Z'
+  // Create formatted event description with highlighted day name
+  const eventDescription = `Your court booking at ${venueName}.
     
-    // Format dates for ISO strings
-    startDate = moment(parsedStartTime).toISOString()
-    endDate = moment(parsedEndTime).toISOString()
-    
-    console.log('Successfully formatted calendar dates:', {
-      googleStartDate,
-      googleEndDate
-    })
-  } catch (error) {
-    console.error('Error formatting dates for calendar:', error)
-    // Provide fallback values
-    googleStartDate = ''
-    googleEndDate = ''
-    startDate = ''
-    endDate = ''
-  }
-  
-  return {
-    id: bookingId,
-    title: `Court Booking: ${courtName} - ${venueName}`,
-    description: `Your court booking at ${venueName}.
-    
-Time: ${moment(parsedStartTime).format('h:mm A')} - ${moment(parsedEndTime).format('h:mm A')}
-Date: ${moment(parsedStartTime).format('dddd, MMMM D, YYYY')}
+Time: ${parsedStartTime.format('h:mm A')} - ${parsedEndTime.format('h:mm A')}
+Date: ${parsedStartTime.format('dddd, MMMM D, YYYY')}
+Day: ${parsedStartTime.format('dddd')}
 ${additionalDetails ? `\n${additionalDetails}` : ''}
 
-Booking ID: ${bookingId}`,
+Booking ID: ${bookingId}`
+  
+  // Format dates for the email template display
+  const startDate = parsedStartTime.format('YYYY-MM-DD')
+  const endDate = parsedEndTime.format('YYYY-MM-DD')
+  
+  // Extract date components for the template
+  const day = parsedStartTime.date()
+  const month = parsedStartTime.format('MMMM')
+  const monthShort = parsedStartTime.format('MMM').toUpperCase()
+  const year = parsedStartTime.year()
+  const dayName = parsedStartTime.format('dddd')
+  const dayShort = parsedStartTime.format('ddd').toUpperCase()
+  const formattedDate = parsedStartTime.format('MMMM D, YYYY')
+  
+  // Create and return a CalendarEvent object that follows the interface
+  const calendarEvent: CalendarEvent & { 
+    dayName: string;
+    dayShort: string;
+    day: number;
+    month: string;
+    monthShort: string;
+    year: number;
+    formattedDate: string;
+  } = {
+    title: `Court Booking: ${courtName} - ${venueName}`,
+    description: eventDescription,
     location: formattedAddress,
-    startTime: parsedStartTime,
-    endTime: parsedEndTime,
-    // Add pre-formatted date strings to avoid template processing
+    startTime: parsedStartTime.toISOString(),  // Use ISO string to match interface
+    endTime: parsedEndTime.toISOString(),      // Use ISO string to match interface
+    startDate,  // Add formatted date for email template
+    endDate,    // Add formatted date for email template
     googleStartDate,
     googleEndDate,
-    startDate,
-    endDate
+    uid: bookingId,
+    // Add date components for template
+    dayName,
+    dayShort,
+    day,
+    month,
+    monthShort,
+    year,
+    formattedDate
   }
+  
+  return calendarEvent
 }

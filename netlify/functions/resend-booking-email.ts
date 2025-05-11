@@ -2,7 +2,12 @@
 import { Handler } from '@netlify/functions'
 import { corsHeaders } from './_shared/cors'
 import admin from 'firebase-admin'
-import { BookingEmailRequest, BookingEmailResponse } from './types/shared-types'
+import { 
+	BookingEmailRequest, 
+	BookingEmailResponse,
+	VenueInfo,
+	EmailBookingDetails
+} from './types/shared-types'
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {

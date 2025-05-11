@@ -1,4 +1,4 @@
 import { FirestoreService } from 'src/firebase/firestore.service'
-import { Booking } from 'src/public/book/context'
+import type { Booking } from '../types/booking/models'
 
 export const BookingsDB = new FirestoreService<Booking>('bookings')
