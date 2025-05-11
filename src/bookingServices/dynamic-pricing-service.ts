@@ -50,7 +50,11 @@ export class PricingService {
 		}
 
 		// Round to 2 decimal places and ensure minimum price
-		return Math.max(Math.round((totalPrice + Number.EPSILON) * 100) / 100, 1)
+		// For very short durations (less than 1 hour) allow prices less than 1 EUR
+		const durationHoursRounded = Math.round(durationHours * 100) / 100;
+		const minPrice = durationHoursRounded < 1 ? durationHoursRounded : 1;
+			
+		return Math.max(Math.round((totalPrice + Number.EPSILON) * 100) / 100, minPrice)
 	}
 
 	/**
