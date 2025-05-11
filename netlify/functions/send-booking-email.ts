@@ -201,7 +201,7 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			outlookCalendar: `${baseUrl}/icons/outlook-calendar.png?v=1`,
 			appleCalendar: `${baseUrl}/icons/apple-calendar.png?v=1`,
 			calendarIcon: `${baseUrl}/icons/calendar.png?v=1`,
-			logo: `${baseUrl}/logo-light.svg?v=1`
+			logo: `${baseUrl}/logo-light.svg`
 		}
 		
 		const html = await emailHtml({

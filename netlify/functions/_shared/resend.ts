@@ -22,7 +22,7 @@ export const emailHtml = async data => {
 		outlookCalendar: `${baseUrl}/icons/outlook-calendar.png`,
 		appleCalendar: `${baseUrl}/icons/apple-calendar.png`,
 		calendarIcon: `${baseUrl}/icons/calendar.png`,
-		logo: `${baseUrl}/logo-light.svg`
+		logo: `${baseUrl}/logo.svg`
 	}
 	
 	// Merge provided images with defaults
