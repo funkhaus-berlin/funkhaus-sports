@@ -4,7 +4,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, PropertyValues } from 'lit'
 import { customElement, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs'
+import { distinctUntilChanged, filter, map, take, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 import {
@@ -116,7 +116,13 @@ export class CourtBookingSystem extends $LitElement() {
 				const baseUrl = window.location.origin;
 				const venuesUrl = `${baseUrl.replace(/\/$/, '')}/`;
 				window.location.href = venuesUrl;
-			}
+			}else {
+        // ensure venucontext is hydrated if theere is a booking venue id
+        venuesContext.$.pipe( map(vs=> vs.get(this.booking.venueId)),take(1)).subscribe({next:()=>{
+              venueContext.set(venuesContext.value.get(this.booking.venueId)!)
+              this.requestUpdate()
+          }})
+      }
 		}, 250); // Small timeout to allow context hydration
 	}
 

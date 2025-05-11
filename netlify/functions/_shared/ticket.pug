@@ -549,25 +549,12 @@ html(lang="en")
                   p.price-display(style="font-family:'Playfair Display',Georgia,'Times New Roman',serif;font-size:22px;margin:0;color:#000;font-weight:600;") 
                     | €#{booking.price}
           
-          //- Calendar section using table layout
-          table.calendar-section(cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:35px 0;background-color:#f7f7f7;border-radius:4px;")
+          //- Compact Calendar section
+          table.calendar-section(cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:30px 0 20px;background-color:#f8f9fa;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.05);")
             tr
-              td(align="center" style="padding:30px 0;")
-                //- Improved calendar heading with icon and better description
-                table(cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:300px;margin:0 auto 20px;")
-                  tr
-                    td(align="center" style="padding-bottom:15px;")
-                      //- Calendar icon with text fallback
-                      <!--[if !mso]><!-- -->
-                      <img src="#{images.calendarIcon}" alt="Calendar" width="24" height="24" style="display:block;margin:0 auto;opacity:0.7;">
-                      <!--<![endif]-->
-                      <!--[if mso]>
-                      <div style="width:24px;height:24px;line-height:24px;border-radius:4px;background-color:#555555;color:white;font-size:14px;font-weight:bold;text-align:center;margin:0 auto;">C</div>
-                      <![endif]-->
-                  tr
-                    td(align="center")
-                      p(style="font-family:'Playfair Display',Georgia,'Times New Roman',serif;font-size:20px;font-style:italic;letter-spacing:0.02em;color:#333;margin:0 0 24px;font-weight:600;") 
-                        | Add to Calendar
+              td(align="center" style="padding:20px 0 10px;")
+                p(style="font-family:'Montserrat',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;color:#333;margin:0 0 15px;") 
+                  | Save to your calendar
                 
                 //- Process calendar links
                 - try {
@@ -581,7 +568,6 @@ html(lang="en")
                 
                 -     var googleLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${googleTitle}&dates=${googleStartDate}/${googleEndDate}&details=${googleDetails}&location=${googleLocation}&sf=true&output=xml`
                 -     var outlookLink = `https://outlook.office.com/calendar/0/deeplink/compose?subject=${googleTitle}&body=${googleDetails}&location=${googleLocation}`
-                -     var appleLink = `data:text/calendar;charset=utf8,${encodeURIComponent('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Funkhaus//Sports Booking//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:court-booking-' + (Math.random().toString(36).substring(2, 10)) + '@funkhaus-sports.com\r\nDTSTAMP:' + googleStartDate + '\r\nDTSTART:' + googleStartDate + '\r\nDTEND:' + googleEndDate + '\r\nSUMMARY:' + googleTitle + '\r\nDESCRIPTION:' + googleDetails + '\r\nLOCATION:' + googleLocation + '\r\nSTATUS:CONFIRMED\r\nSEQUENCE:0\r\nTRANSP:OPAQUE\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nTRIGGER:-PT1H\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR')}`
                 -   } else {
                 -     // Create fallback dates
                 -     var dateObj = new Date(booking.date)
@@ -599,64 +585,40 @@ html(lang="en")
                 
                 -     var googleLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${googleTitle}&dates=${startDate}/${endDate}&details=${googleDetails}&location=${googleLocation}&sf=true&output=xml`
                 -     var outlookLink = `https://outlook.office.com/calendar/0/deeplink/compose?subject=${googleTitle}&body=${googleDetails}&location=${googleLocation}`
-                -     var appleLink = `data:text/calendar;charset=utf8,${encodeURIComponent('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Funkhaus//Sports Booking//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nBEGIN:VEVENT\r\nUID:court-booking-' + (Math.random().toString(36).substring(2, 10)) + '@funkhaus-sports.com\r\nDTSTAMP:' + startDate + '\r\nDTSTART:' + startDate + '\r\nDTEND:' + endDate + '\r\nSUMMARY:' + googleTitle + '\r\nDESCRIPTION:' + googleDetails + '\r\nLOCATION:' + googleLocation + '\r\nSTATUS:CONFIRMED\r\nSEQUENCE:0\r\nTRANSP:OPAQUE\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nTRIGGER:-PT1H\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR')}`
                 -   }
                 - } catch(e) {
                 -   var googleLink = "#"
                 -   var outlookLink = "#"
-                -   var appleLink = "#"
                 - }
                 
-                //- Calendar links table for better email client compatibility with improved design
-                table(cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:480px;")
+                //- More compact calendar buttons side by side
+                table(cellpadding="0" cellspacing="0" border="0" width="280px" style="margin:0 auto;")
                   tr
                     //- Google Calendar button
-                    td.calendar-button-cell(align="center" style="padding:8px;vertical-align:top;width:50%;")
-                      table.calendar-button-wrapper(cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:150px;")
-                        tr
-                          td(align="center" style="background-color:#ffffff;border-radius:12px;border:1px solid #eaeaea;box-shadow:0 8px 15px rgba(0,0,0,0.05);transition:all 0.3s ease;transform:translateY(0);")
-                            a(href=googleLink target="_blank" style="display:block;color:#444;text-decoration:none;font-size:14px;padding:18px 10px;") 
-                              table(cellpadding="0" cellspacing="0" border="0" width="100%")
+                    td(align="center" style="padding:0 10px;")
+                      a(href=googleLink target="_blank" style="display:inline-block;text-decoration:none;")
+                        table(cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e5e5;")
+                          tr
+                            td(style="padding:12px 15px;")
+                              table(cellpadding="0" cellspacing="0" border="0")
                                 tr
-                                  td(align="center" style="padding-bottom:10px;")
-                                    //- Google Calendar icon with fallback text
-                                    <!--[if !mso]><!-- -->
-                                    <img src="#{images.googleCalendar}" alt="Google Calendar" width="28" height="28" style="display:block;margin:0 auto;">
-                                    <!--<![endif]-->
-                                    <!--[if mso]>
-                                    <div style="width:28px;height:28px;line-height:28px;border-radius:50%;background-color:#555555;color:white;font-size:16px;font-weight:bold;text-align:center;margin:0 auto;">G</div>
-                                    <![endif]-->
-                                tr
-                                  td(align="center" style="font-family:'Montserrat',Helvetica,Arial,sans-serif;font-size:12px;font-weight:600;color:#333;letter-spacing:0.03em;")
-                                    | Google Calendar
-                                tr
-                                  td(align="center" style="padding-top:5px;")
-                                    //- Add styled "Add" indicator
-                                    div(style="font-size:12px;color:#555555;background-color:rgba(85,85,85,0.1);display:inline-block;padding:4px 10px;border-radius:20px;font-weight:500;") Add
+                                  td(style="padding-right:10px;vertical-align:middle;")
+                                    img(src="https://funkhaus-sports.netlify.app/icons/google-calendar-2020.png" alt="Google" width="20" height="20" style="display:block;")
+                                  td(style="vertical-align:middle;")
+                                    p(style="font-family:'Montserrat',Helvetica,Arial,sans-serif;font-size:13px;font-weight:500;color:#333;margin:0;") Google
                     
                     //- Outlook Calendar button
-                    td.calendar-button-cell(align="center" style="padding:8px;vertical-align:top;width:50%;")
-                      table.calendar-button-wrapper(cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:150px;")
-                        tr
-                          td(align="center" style="background-color:#ffffff;border-radius:12px;border:1px solid #eaeaea;box-shadow:0 8px 15px rgba(0,0,0,0.05);transition:all 0.3s ease;transform:translateY(0);")
-                            a(href=outlookLink target="_blank" style="display:block;color:#444;text-decoration:none;font-size:14px;padding:18px 10px;") 
-                              table(cellpadding="0" cellspacing="0" border="0" width="100%")
+                    td(align="center" style="padding:0 10px;")
+                      a(href=outlookLink target="_blank" style="display:inline-block;text-decoration:none;")
+                        table(cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e5e5;")
+                          tr
+                            td(style="padding:12px 15px;")
+                              table(cellpadding="0" cellspacing="0" border="0")
                                 tr
-                                  td(align="center" style="padding-bottom:10px;")
-                                    //- Outlook Calendar icon with fallback text
-                                    <!--[if !mso]><!-- -->
-                                    <img src="#{images.outlookCalendar}" alt="Outlook Calendar" width="28" height="28" style="display:block;margin:0 auto;">
-                                    <!--<![endif]-->
-                                    <!--[if mso]>
-                                    <div style="width:28px;height:28px;line-height:28px;border-radius:50%;background-color:#555555;color:white;font-size:16px;font-weight:bold;text-align:center;margin:0 auto;">O</div>
-                                    <![endif]-->
-                                tr
-                                  td(align="center" style="font-family:'Montserrat',Helvetica,Arial,sans-serif;font-size:12px;font-weight:600;color:#333;letter-spacing:0.03em;")
-                                    | Outlook Calendar
-                                tr
-                                  td(align="center" style="padding-top:5px;")
-                                    //- Add styled "Add" indicator
-                                    div(style="font-size:12px;color:#555555;background-color:rgba(85,85,85,0.1);display:inline-block;padding:4px 10px;border-radius:20px;font-weight:500;") Add
+                                  td(style="padding-right:10px;vertical-align:middle;")
+                                    img(src="https://funkhaus-sports.netlify.app/icons/outlook-calendar-new.png" alt="Outlook" width="20" height="20" style="display:block;")
+                                  td(style="vertical-align:middle;")
+                                    p(style="font-family:'Montserrat',Helvetica,Arial,sans-serif;font-size:13px;font-weight:500;color:#333;margin:0;") Outlook
                     
                 
       

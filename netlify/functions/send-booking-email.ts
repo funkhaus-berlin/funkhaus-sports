@@ -5,10 +5,10 @@ import admin from 'firebase-admin'
 import { resolve } from 'path'
 import PDFDocument from 'pdfkit'
 import QRCode from 'qrcode'
+import { createCalendarEvent, generateICSFile } from './_shared/calendar-utils'
 import { corsHeaders } from './_shared/cors'
 import { emailConfig } from './_shared/email-config'
 import resend, { emailHtml } from './_shared/resend'
-import { createCalendarEvent, generateICSFile } from './_shared/calendar-utils'
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
@@ -26,11 +26,8 @@ const db = admin.firestore()
 /**
  * Email handler for sending booking confirmations
  */
-import { 
-	AddressType, 
-	VenueInfo, 
-	EmailBookingDetails, 
-	BookingEmailRequest as EmailBookingData 
+import {
+  BookingEmailRequest as EmailBookingData
 } from './types/shared-types'
 const handler: Handler = async (event, context) => {
 	// Handle preflight request for CORS
@@ -196,13 +193,43 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		
 		// Use complete URLs with netlify cache-busting query parameter to prevent routing issues
 		const emailImages = {
-			googleCalendar: `${baseUrl}/icons/google-calendar.png?v=1`,
+			googleCalendar: `${baseUrl}/icons/google-calendar-2020.png?v=1`,
 			outlookCalendar: `${baseUrl}/icons/outlook-calendar.png?v=1`,
 			appleCalendar: `${baseUrl}/icons/apple-calendar.png?v=1`,
 			calendarIcon: `${baseUrl}/icons/calendar.png?v=1`,
 			logo: `${baseUrl}/logo-light.png`
 		}
 		
+		// Check if there's an invoice number stored in the booking or use the one provided
+		// NOTE: We should never generate invoice numbers here, only use existing ones
+		let invoiceNumber: string | undefined = undefined
+		
+		// First check if an invoice number was provided in the email data
+		if (data.invoiceNumber) {
+			invoiceNumber = data.invoiceNumber
+			console.log(`Using provided invoice number ${invoiceNumber} for booking ${data.bookingId}`)
+		} else {
+			// Otherwise look it up from the database
+			try {
+				const bookingRef = db.collection('bookings').doc(data.bookingId)
+				const bookingDoc = await bookingRef.get()
+				
+				if (bookingDoc.exists && bookingDoc.data()?.invoiceNumber) {
+					invoiceNumber = bookingDoc.data()?.invoiceNumber
+					console.log(`Using database invoice number ${invoiceNumber} for booking ${data.bookingId}`)
+				} else {
+					// No invoice number exists - use a placeholder for display but don't save it
+					invoiceNumber = `${data.bookingId.substring(0, 6)}`
+					console.warn(`No invoice number found for booking ${data.bookingId}. Using placeholder.`)
+				}
+			} catch (error) {
+				console.error('Error retrieving invoice number from booking:', error)
+				// Fall back to placeholder for display only
+				invoiceNumber = `${data.bookingId.substring(0, 6)}`
+			}
+		}
+
+		// Pass invoice number to the email template
 		const html = await emailHtml({
 			booking: data.bookingDetails,
 			customer: {
@@ -212,6 +239,7 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			},
 			venue: data.venueInfo,
 			bookingId: data.bookingId,
+			invoiceNumber: invoiceNumber || '', // Add invoice number to template data with fallback
 			calendarEvent: calendarEvent, // Pass calendar event data to template
 			images: emailImages // Pass image URLs to template
 		})
@@ -224,11 +252,11 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		const response = await resend.emails.send({
 			from: `${emailConfig.fromName} <${emailConfig.from}>`,
 			to: data.customerEmail,
-			subject: `Your Court Booking Confirmation - ${data.bookingDetails.court}`,
+			subject: `${invoiceNumber || 'Booking'} | Your Court Booking Confirmation - ${data.bookingDetails.court}`,
 			html: html,
 			attachments: [
 				{
-					filename: `Booking-${data.bookingId}.pdf`,
+					filename: `${invoiceNumber || 'Booking'}.pdf`,
 					content: pdfBase64,
 				}
 			],
@@ -270,18 +298,50 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 
 	let buffers: Array<Buffer> = []
 	doc.on('data', chunk => buffers.push(chunk))
+	
+	// Look up invoice number but NEVER create a new one here
+	// Invoices should be created ONLY in the payment confirmation webhook
+	let invoiceNumber: string | undefined = undefined
+	
+	try {
+		// Check if this booking already has an invoice number
+		const bookingRef = db.collection('bookings').doc(data.bookingId)
+		const bookingDoc = await bookingRef.get()
+		
+		if (bookingDoc.exists) {
+			// If the booking has an invoice number, use it
+			if (bookingDoc.data()?.invoiceNumber) {
+				invoiceNumber = bookingDoc.data()?.invoiceNumber
+				console.log(`Using existing invoice number ${invoiceNumber} for booking ${data.bookingId}`)
+			} else {
+				// No invoice number exists yet - this would be unusual and indicates a problem
+				// in the payment process. Log this situation but don't create a new invoice number.
+				console.warn(`Booking ${data.bookingId} does not have an invoice number. This is unexpected at the email stage.`)
+				// Use booking ID as fallback for display purposes only, but don't save it
+				invoiceNumber = `${data.bookingId.substring(0, 6)}`
+			}
+		} else {
+			console.warn(`Booking ${data.bookingId} not found in database, using fallback invoice number`)
+			// Use booking ID as fallback for display purposes only
+			invoiceNumber = `${data.bookingId.substring(0, 6)}`
+		}
+	} catch (error) {
+		console.error('Error retrieving invoice number:', error)
+		// Fall back to using booking ID if there's an error, but only for display
+		invoiceNumber = `${data.bookingId.substring(0, 6)}`
+	}
 
 	// Header - Invoice title
 	let y = 90
 	doc.font('Bold').fontSize(24).fillColor('#333333').text('INVOICE', 50, 65)
 	doc.fillColor('#000000')
 
-	// invoice number - using booking ID
+	// invoice number - using sequential counter
 	doc
 		.font('Bold')
 		.fontSize(12)
 		.text('Invoice Number:', 50, (y += 4))
-	doc.font('Regular').text(`FBB-${data.bookingId.substring(0, 6)}`, 150, y)
+	doc.font('Regular').text(invoiceNumber || 'N/A', 150, y)
 
 	// invoice date
 	doc.font('Bold').text('Date of Issue:', 50, (y += 15))

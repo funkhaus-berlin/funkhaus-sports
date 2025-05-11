@@ -71,6 +71,7 @@ export interface BookingEmailRequest {
   customerPhone: string
   venueInfo: VenueInfo
   bookingDetails: EmailBookingDetails
+  invoiceNumber?: string // Invoice number (optional, should be generated during payment processing)
 }
 
 /**

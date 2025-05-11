@@ -84,9 +84,9 @@ export default class FunkhausVenueCard extends $LitElement(
 	protected render() {
 		if (!this.venue) return nothing
 		// Get theme values with defaults
-		const primaryColor = this.theme.primary || '#5e808e'
-		const textColor = this.theme.text || '#ffffff'
-		const logoType = this.theme.logo || 'light'
+		const primaryColor = this.theme?.primary || '#5e808e'
+		const textColor = this.theme?.text || '#ffffff'
+		const logoType = this.theme?.logo || 'light'
 
 		// Calculate golden ratio based spacing
 		const basePadding = 16

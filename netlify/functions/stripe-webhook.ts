@@ -19,6 +19,75 @@ if (!admin.apps.length) {
 const db = admin.firestore()
 
 /**
+ * Generate an invoice number for a booking
+ * 
+ * @param db Firestore instance
+ * @param bookingId The booking ID
+ * @param initialValue The initial counter value if not exists
+ * @returns The generated invoice number
+ */
+async function generateInvoiceNumber(db: FirebaseFirestore.Firestore, bookingId: string, initialValue: number = 1000): Promise<string> {
+	// First, check if this booking already has an invoice number
+	const bookingRef = db.collection('bookings').doc(bookingId)
+	const bookingDoc = await bookingRef.get()
+	
+	// If booking already has an invoice number, return it
+	if (bookingDoc.exists && bookingDoc.data()?.invoiceNumber) {
+		console.log(`Booking ${bookingId} already has invoice number: ${bookingDoc.data()?.invoiceNumber}`)
+		return bookingDoc.data()?.invoiceNumber
+	}
+	
+	// Otherwise, generate a new invoice number using a transaction
+	const counterRef = db.collection('counters').doc('invoices')
+	
+	try {
+		// Use a transaction to ensure atomicity
+		const invoiceNumber = await db.runTransaction(async (transaction) => {
+			const counterDoc = await transaction.get(counterRef)
+			
+			// If counter doesn't exist, initialize it
+			if (!counterDoc.exists) {
+				transaction.set(counterRef, { 
+					value: initialValue,
+					createdAt: admin.firestore.FieldValue.serverTimestamp(),
+					updatedAt: admin.firestore.FieldValue.serverTimestamp()
+				})
+				return initialValue
+			}
+			
+			// Otherwise, increment the counter
+			const currentValue = counterDoc.data()?.value || 0
+			const nextValue = currentValue + 1
+			
+			transaction.update(counterRef, { 
+				value: nextValue,
+				updatedAt: admin.firestore.FieldValue.serverTimestamp()
+			})
+			
+			return nextValue
+		})
+		
+		// Format the invoice number
+		const formattedInvoiceNumber = `${invoiceNumber.toString().padStart(6, '0')}`;
+		
+		// Update the booking with the new invoice number
+		await bookingRef.update({
+			invoiceNumber: formattedInvoiceNumber,
+			invoiceSequence: invoiceNumber
+		})
+		
+		console.log(`Generated invoice number ${formattedInvoiceNumber} for booking ${bookingId}`)
+		return formattedInvoiceNumber
+	} catch (error) {
+		console.error('Error generating invoice number:', error)
+		// Fallback to a simple invoice number based on timestamp (without prefix)
+		const fallbackNumber = `${Date.now().toString().substring(3)}`
+		await bookingRef.update({ invoiceNumber: fallbackNumber })
+		return fallbackNumber
+	}
+}
+
+/**
  * Enhanced webhook handler with improved reliability and error recovery
  */
 const handler: Handler = async (event, context) => {
@@ -233,13 +302,31 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 		const bookingDoc = await bookingRef.get()
 
 		if (bookingDoc.exists) {
-			// Booking exists, update its payment status
-			await bookingRef.update({
+			// Generate invoice number if one doesn't exist already (during payment confirmation)
+			// This is the primary place where invoice numbers should be created
+			let invoiceNumber: string | undefined = undefined
+			if (!bookingDoc.data()?.invoiceNumber) {
+				invoiceNumber = await generateInvoiceNumber(db, bookingId)
+				console.log(`Generated invoice number ${invoiceNumber} for booking ${bookingId} during payment confirmation`)
+			} else {
+				invoiceNumber = bookingDoc.data()?.invoiceNumber
+				console.log(`Using existing invoice number ${invoiceNumber} for booking ${bookingId}`)
+			}
+
+			// Booking exists, update its payment status (and include invoice number if just generated)
+			const updateData: any = {
 				paymentStatus: 'paid',
 				status: 'confirmed',
 				paymentIntentId: paymentIntent.id,
 				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-			})
+			}
+
+			// Only include invoiceNumber field if we just generated one
+			if (invoiceNumber && !bookingDoc.data()?.invoiceNumber) {
+				updateData.invoiceNumber = invoiceNumber
+			}
+
+			await bookingRef.update(updateData)
 
 			console.log(`Updated existing booking ${bookingId} to confirmed status`)
 
@@ -315,7 +402,11 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 			const endTime = paymentIntent.metadata?.endTime
 			const amount = paymentIntent.amount / 100 // Convert from cents
 
-			// Create an emergency booking record
+			// Create a unique invoice number for this emergency booking
+			const invoiceNumber = await generateInvoiceNumber(db, bookingId)
+			console.log(`Generated invoice number ${invoiceNumber} for emergency booking ${bookingId}`)
+
+			// Create an emergency booking record with invoice number
 			const newBooking = {
 				id: bookingId,
 				courtId: courtId || 'unknown',
@@ -334,11 +425,12 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 				createdAt: admin.firestore.FieldValue.serverTimestamp(),
 				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 				recoveredFromPayment: true, // Flag to indicate this was created from payment data
+				invoiceNumber: invoiceNumber // Add invoice number to emergency booking
 			}
 
 			await bookingRef.set(newBooking)
 
-			console.log(`Created emergency booking record for ${bookingId}`)
+			console.log(`Created emergency booking record for ${bookingId} with invoice number ${invoiceNumber}`)
 			await logPaymentTransaction(
 				paymentIntent,
 				'succeeded',
@@ -368,6 +460,7 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 						paymentStatus: 'paid',
 						paymentIntentId: paymentIntent.id,
 					},
+					invoiceNumber: invoiceNumber // Include invoice number in email data
 				}
 
 				// Import the email sending function
@@ -491,6 +584,8 @@ function prepareEmailData(booking, court, venue, paymentIntent) {
 			paymentStatus: booking.paymentStatus || 'paid',
 			paymentIntentId: booking.paymentIntentId || paymentIntent.id,
 		},
+		// Include invoice number in the email data
+		invoiceNumber: booking.invoiceNumber || null,
 	}
 }
 
