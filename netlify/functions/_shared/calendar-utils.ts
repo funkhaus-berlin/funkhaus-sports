@@ -12,71 +12,120 @@ import { CalendarEvent } from '../../../src/types/api/email'
  */
 export function generateICSFile(event: CalendarEvent & { id?: string }): string {
   try {
-    // Convert string dates to Date objects for the ical library
-    const startDate = moment(event.startTime).toDate()
-    const endDate = moment(event.endTime).toDate()
+    // Manual ICS generation for maximum compatibility
+    const startTime = moment(event.startTime)
+    const endTime = moment(event.endTime)
     
-    // Clean up location string
+    // Format times in the correct format: YYYYMMDDTHHMMSSZ
+    const formatTimeUTC = (time: moment.Moment) => {
+      return time.utc().format('YYYYMMDDTHHmmss') + 'Z'
+    }
+    
+    const startDateUTC = formatTimeUTC(startTime)
+    const endDateUTC = formatTimeUTC(endTime)
+    const currentDateUTC = formatTimeUTC(moment())
+    
+    // Clean up location and description strings for the ICS file
     const cleanLocation = (typeof event.location === 'string') 
       ? event.location
           .replace(/\[object Object\]/g, '')
           .replace(/undefined/g, '')
           .replace(/,\s*,/g, ',')
           .replace(/,\s*$/g, '')
+          .replace(/[\\,;]/g, '') // Remove characters that could break the ICS format
       : 'Funkhaus Sports Berlin'
     
-    // Create a new calendar
-    const calendar = ical({
-      prodId: { company: 'Funkhaus Berlin Sports', product: 'Court Booking' },
-      name: 'Court Booking',
-      timezone: 'Europe/Berlin'
-    })
+    const cleanDescription = event.description
+      ? event.description
+          .replace(/\n/g, '\\n')
+          .replace(/[\\,;]/g, '')
+      : 'Court booking at Funkhaus Sports'
+    
+    const cleanSummary = event.title
+      ? event.title.replace(/[\\,;]/g, '')
+      : 'Court Booking'
     
     // Create unique identifier for this event
-    const eventId = `booking-${event.id || event.uid || uuidv4()}@funkhaus-sports.com`
+    const eventId = `booking-${event.id || event.uid || uuidv4().substring(0, 8)}@funkhaus-sports.com`
     
-    // Add an event to the calendar
-    const calEvent = calendar.createEvent({
-      start: startDate,
-      end: endDate,
-      summary: event.title,
-      description: event.description,
-      location: cleanLocation,
-      alarms: [{ type: ICalAlarmType.display, trigger: 3600 }] // 1 hour before
-    })
+    // Build the ICS file as a basic string with proper line endings
+    // This is the most compatible format for various calendar applications
+    const icsLines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Funkhaus//Sports Booking//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'BEGIN:VEVENT',
+      `UID:${eventId}`,
+      `DTSTAMP:${currentDateUTC}`,
+      `DTSTART:${startDateUTC}`,
+      `DTEND:${endDateUTC}`,
+      `SUMMARY:${cleanSummary}`,
+      `DESCRIPTION:${cleanDescription}`,
+      `LOCATION:${cleanLocation}`,
+      'STATUS:CONFIRMED',
+      'SEQUENCE:0',
+      'TRANSP:OPAQUE',
+      'BEGIN:VALARM',
+      'ACTION:DISPLAY',
+      'DESCRIPTION:Reminder',
+      'TRIGGER:-PT1H',
+      'END:VALARM',
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ]
     
-    // Set properties using methods
-    calEvent.uid(eventId)
-    calEvent.status(ICalEventStatus.CONFIRMED)
-    
-    // Generate the ICS content
-    const icsContent = calendar.toString()
-    
-    return icsContent
+    // Join lines with CRLF as required by the iCalendar spec
+    return icsLines.join('\r\n')
   } catch (error) {
     console.error('Error generating ICS file:', error)
     
-    // Fallback calendar if something goes wrong
-    const calendar = ical({
-      prodId: { company: 'Funkhaus Berlin Sports', product: 'Court Booking' },
-      name: 'Court Booking',
-      timezone: 'Europe/Berlin'
-    })
+    // Create a basic fallback calendar manually
+    const now = moment()
+    const later = moment().add(1, 'hour')
     
-    // Create fallback event
-    const fallbackEvent = calendar.createEvent({
-      start: moment().toDate(),
-      end: moment().add(1, 'hour').toDate(),
-      summary: 'Court Booking',
-      location: 'Funkhaus Berlin Sports Center',
-      alarms: [{ type: ICalAlarmType.display, trigger: 3600 }]
-    })
+    // Format times in UTC
+    const formatTimeUTC = (time: moment.Moment) => {
+      return time.utc().format('YYYYMMDDTHHmmss') + 'Z'
+    }
     
-    // Set properties using methods
-    fallbackEvent.uid(`fallback-${uuidv4()}@funkhaus-sports.com`)
-    fallbackEvent.status(ICalEventStatus.CONFIRMED)
+    const startDateUTC = formatTimeUTC(now)
+    const endDateUTC = formatTimeUTC(later)
+    const currentDateUTC = formatTimeUTC(now)
     
-    return calendar.toString()
+    // Create a simple fallback event ID
+    const fallbackId = `fallback-${uuidv4().substring(0, 8)}@funkhaus-sports.com`
+    
+    // Build the ICS file as a basic string with proper line endings
+    const icsLines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Funkhaus//Sports Booking//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'BEGIN:VEVENT',
+      `UID:${fallbackId}`,
+      `DTSTAMP:${currentDateUTC}`,
+      `DTSTART:${startDateUTC}`,
+      `DTEND:${endDateUTC}`,
+      'SUMMARY:Court Booking',
+      'DESCRIPTION:Your court booking at Funkhaus Sports.',
+      'LOCATION:Funkhaus Berlin Sports Center',
+      'STATUS:CONFIRMED',
+      'SEQUENCE:0',
+      'TRANSP:OPAQUE',
+      'BEGIN:VALARM',
+      'ACTION:DISPLAY',
+      'DESCRIPTION:Reminder',
+      'TRIGGER:-PT1H',
+      'END:VALARM',
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ]
+    
+    // Join lines with CRLF as required by the iCalendar spec
+    return icsLines.join('\r\n')
   }
 }
 

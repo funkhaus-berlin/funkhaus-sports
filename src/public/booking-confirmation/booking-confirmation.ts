@@ -1,4 +1,4 @@
-import { $dialog, $notify, area, fullHeight } from '@mhmo91/schmancy'
+import { $dialog, $notify, area, fullHeight, SchmancyInputChangeEventV2 } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { html } from 'lit'
@@ -9,8 +9,8 @@ import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { VenueLandingPage } from 'src/public/venues/venues'
 import { BookingUtils } from '../book/booking-utils'
-import { Booking, bookingContext, BookingProgressContext } from '../book/context'
 import { resendBookingEmail } from '../book/components/services'
+import { Booking, bookingContext, BookingProgressContext } from '../book/context'
 
 @customElement('booking-confirmation')
 export class BookingConfirmation extends $LitElement() {
@@ -117,6 +117,10 @@ export class BookingConfirmation extends $LitElement() {
 						type="email"
 						value=${this.customerEmail}
 						required
+            @change=${(e:SchmancyInputChangeEventV2)=>{
+              if(!e.detail.value) return
+              this.customerEmail = e.detail.value
+            }}
 					></schmancy-input>
 				</div>
 			`,
@@ -125,11 +129,8 @@ export class BookingConfirmation extends $LitElement() {
 		});
 		
 		if (result) {
-			// Get the email from the input field
-			const emailField = document.getElementById('email-input') as HTMLInputElement;
-			const newEmail = emailField?.value || this.customerEmail;
 			
-			if (!newEmail || !newEmail.includes('@')) {
+			if (!this.customerEmail || !this.customerEmail.includes('@')) {
 				$notify.error('Please enter a valid email address');
 				return;
 			}
@@ -140,7 +141,7 @@ export class BookingConfirmation extends $LitElement() {
 				// Prepare booking data for API
 				const bookingData = {
 					bookingId: this.bookingId,
-					customerEmail: newEmail,
+					customerEmail: this.customerEmail,
 					customerName: this.customerName,
 					customerPhone: '',
 					venueInfo: {
@@ -162,12 +163,12 @@ export class BookingConfirmation extends $LitElement() {
 				
 				// Use the email service to resend the email
 				resendBookingEmail(bookingData).subscribe({
-					next: result => {
-						$notify.success(`Confirmation email sent to ${newEmail}`);
+					next: () => {
+						$notify.success(`Confirmation email sent to ${this.customerEmail}`);
 						
 						// Update the customer email if it changed
-						if (newEmail !== this.customerEmail) {
-							this.customerEmail = newEmail;
+						if (this.customerEmail !== this.customerEmail) {
+							this.customerEmail = this.customerEmail;
 						}
 					},
 					error: error => {

@@ -188,9 +188,8 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			`Court: ${data.bookingDetails.court}\nPrice: €${data.bookingDetails.price}`
 		)
 		
-		// Generate ICS file for attachment
-		const icsContent = generateICSFile(calendarEvent)
-		const icsBase64 = Buffer.from(icsContent).toString('base64')
+		// Generate ICS file for calendar data only
+		generateICSFile(calendarEvent)
 		
 		// Set up images for email clients using absolute URLs to ensure proper rendering
 		const baseUrl = 'https://funkhaus-sports.netlify.app'
@@ -201,7 +200,7 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			outlookCalendar: `${baseUrl}/icons/outlook-calendar.png?v=1`,
 			appleCalendar: `${baseUrl}/icons/apple-calendar.png?v=1`,
 			calendarIcon: `${baseUrl}/icons/calendar.png?v=1`,
-			logo: `${baseUrl}/logo-light.svg`
+			logo: `${baseUrl}/logo-light.png`
 		}
 		
 		const html = await emailHtml({
@@ -231,12 +230,7 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 				{
 					filename: `Booking-${data.bookingId}.pdf`,
 					content: pdfBase64,
-				},
-				{
-					filename: 'court-booking.ics',
-					content: icsBase64,
-					contentType: 'text/calendar; charset=UTF-8; method=PUBLISH',
-				},
+				}
 			],
 		})
 
