@@ -189,6 +189,16 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			`Court: ${data.bookingDetails.court}\nPrice: €${data.bookingDetails.price}`
 		)
 		
+		// Log calendar event data for debugging
+		console.log('Created calendar event data:', JSON.stringify({
+			dayName: calendarEvent.dayName, 
+			dayShort: calendarEvent.dayShort,
+			day: calendarEvent.day,
+			month: calendarEvent.month,
+			monthShort: calendarEvent.monthShort,
+			year: calendarEvent.year
+		}, null, 2))
+		
 		// Generate ICS file for attachment
 		console.log('Generating ICS file for booking:', data.bookingId)
 		const icsContent = generateICSFile(calendarEvent)

@@ -216,9 +216,13 @@ export function createCalendarEvent(
   
   console.log('Formatted location for calendar:', formattedAddress)
   
-  // Format dates for Google Calendar (YYYYMMDDTHHmmssZ format)
+  // Format dates for various calendar systems
   const googleStartDate = parsedStartTime.utc().format('YYYYMMDDTHHmmss') + 'Z'
   const googleEndDate = parsedEndTime.utc().format('YYYYMMDDTHHmmss') + 'Z'
+  
+  // Format for Apple Calendar deep link (used for webcal:// protocol)
+  const appleStartDate = parsedStartTime.utc().format('YYYYMMDDTHHmmss')
+  const appleEndDate = parsedEndTime.utc().format('YYYYMMDDTHHmmss')
   
   // Create formatted event description with highlighted day name
   const eventDescription = `Your court booking at ${venueName}.
@@ -234,14 +238,16 @@ Booking ID: ${bookingId}`
   const startDate = parsedStartTime.format('YYYY-MM-DD')
   const endDate = parsedEndTime.format('YYYY-MM-DD')
   
-  // Extract date components for the template
+  // Extract date components for the template using moment for proper formatting
   const day = parsedStartTime.date()
-  const month = parsedStartTime.format('MMMM')
-  const monthShort = parsedStartTime.format('MMM').toUpperCase()
+  const month = parsedStartTime.format('MMMM') // Full month name
+  const monthShort = parsedStartTime.format('MMM').toUpperCase() // Short month name in uppercase
   const year = parsedStartTime.year()
-  const dayName = parsedStartTime.format('dddd')
-  const dayShort = parsedStartTime.format('ddd').toUpperCase()
-  const formattedDate = parsedStartTime.format('MMMM D, YYYY')
+  
+  // Get full and abbreviated day names using moment
+  const dayName = parsedStartTime.format('dddd') // Full day name (e.g., "Sunday")
+  const dayShort = parsedStartTime.format('ddd').toUpperCase() // Short day name in uppercase (e.g., "SUN")
+  const formattedDate = `${day} ${month} ${year}`
   
   // Create and return a CalendarEvent object that follows the interface
   const calendarEvent: CalendarEvent & { 
@@ -270,7 +276,10 @@ Booking ID: ${bookingId}`
     month,
     monthShort,
     year,
-    formattedDate
+    formattedDate,
+    // Apple Calendar format
+    appleStartDate,
+    appleEndDate
   }
   
   return calendarEvent
