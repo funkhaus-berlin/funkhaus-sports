@@ -49,8 +49,8 @@ async function generateInvoiceNumber(db: FirebaseFirestore.Firestore, bookingId:
 			if (!counterDoc.exists) {
 				transaction.set(counterRef, { 
 					value: initialValue,
-					createdAt: admin.firestore.FieldValue.serverTimestamp(),
-					updatedAt: admin.firestore.FieldValue.serverTimestamp()
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
 				})
 				return initialValue
 			}
@@ -61,7 +61,7 @@ async function generateInvoiceNumber(db: FirebaseFirestore.Firestore, bookingId:
 			
 			transaction.update(counterRef, { 
 				value: nextValue,
-				updatedAt: admin.firestore.FieldValue.serverTimestamp()
+				updatedAt: new Date().toISOString()
 			})
 			
 			return nextValue
@@ -318,7 +318,7 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 				paymentStatus: 'paid',
 				status: 'confirmed',
 				paymentIntentId: paymentIntent.id,
-				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+				updatedAt: new Date().toISOString(),
 			}
 
 			// Only include invoiceNumber field if we just generated one
@@ -380,7 +380,7 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 						// Mark email as sent in booking record
 						await bookingRef.update({
 							emailSent: true,
-							emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+							emailSentAt: new Date().toISOString(),
 						})
 					} else {
 						console.error(`Failed to send confirmation email for booking ${bookingId}:`, emailResult.error)
@@ -422,8 +422,8 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 				paymentStatus: 'paid',
 				status: 'confirmed',
 				paymentIntentId: paymentIntent.id,
-				createdAt: admin.firestore.FieldValue.serverTimestamp(),
-				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
 				recoveredFromPayment: true, // Flag to indicate this was created from payment data
 				invoiceNumber: invoiceNumber // Add invoice number to emergency booking
 			}
@@ -483,7 +483,7 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 					// Mark email as sent in booking record
 					await bookingRef.update({
 						emailSent: true,
-						emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+						emailSentAt: new Date().toISOString(),
 					})
 				}
 			} catch (emailError) {
@@ -607,7 +607,7 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
 				await bookingRef.update({
 					paymentStatus: 'failed',
 					status: 'cancelled',
-					updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+					updatedAt: new Date().toISOString(),
 				})
 
 				console.log(`Updated booking ${bookingId} to failed status`)
@@ -644,7 +644,7 @@ async function handlePaymentIntentProcessing(paymentIntent: Stripe.PaymentIntent
 				if (currentStatus === 'pending' || !currentStatus) {
 					await bookingRef.update({
 						paymentStatus: 'processing',
-						updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+						updatedAt: new Date().toISOString(),
 					})
 
 					console.log(`Updated booking ${bookingId} to processing status`)
@@ -681,7 +681,7 @@ async function handlePaymentIntentCanceled(paymentIntent: Stripe.PaymentIntent) 
 				await bookingRef.update({
 					paymentStatus: 'cancelled',
 					status: 'cancelled',
-					updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+					updatedAt: new Date().toISOString(),
 				})
 
 				console.log(`Updated booking ${bookingId} to cancelled status`)

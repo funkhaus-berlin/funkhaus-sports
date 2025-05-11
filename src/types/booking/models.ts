@@ -55,6 +55,8 @@ export interface Booking {
   id: string
   userId: string
   userName: string
+  userEmail?: string          // Added email direct access
+  userPhone?: string          // Changed from customerPhone for consistency
   courtId: string
   venueId: string
   startTime: string
@@ -64,16 +66,19 @@ export interface Booking {
   paymentStatus?: string
   status: BookingStatus
   paymentIntentId?: string
-  customerEmail?: string
-  customerPhone: string
-  customerAddress: Address
-  createdAt?: Date | string | FirestoreTimestamp
-  updatedAt?: Date | string | FirestoreTimestamp
+  customerEmail?: string      // Keeping for backward compatibility
+  customerPhone?: string      // Made optional for consistency
+  customerAddress?: Address   // Made optional for consistency
+  createdAt?: string
+  updatedAt?: string
   emailSent?: boolean
-  emailSentAt?: Date | string | FirestoreTimestamp
+  emailSentAt?: string
   courtPreference?: 'indoor' | 'outdoor'
   invoiceNumber?: string
-  invoiceGeneratedAt?: Date | string | FirestoreTimestamp
+  invoiceGeneratedAt?: string
+  notes?: string              // Added for optional booking notes
+  recurringBookingId?: string // For recurring bookings
+  cancellationReason?: string // Track why bookings are cancelled
 }
 
 /**

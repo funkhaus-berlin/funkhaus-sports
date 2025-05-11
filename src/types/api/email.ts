@@ -59,6 +59,9 @@ export interface CalendarEvent {
   googleStartDate?: string
   googleEndDate?: string
   uid?: string
+  displayStartTime?: string
+  displayEndTime?: string
+  displayTimeRange?: string
 }
 
 /**
@@ -96,6 +99,6 @@ export interface CheckEmailStatusRequest {
 export interface CheckEmailStatusResponse {
   success: boolean
   emailSent: boolean
-  emailSentAt?: string
+  emailSentAt: string
   error?: string
 }

@@ -96,7 +96,7 @@ const handler: Handler = async (event, context) => {
 			// Update the booking record to indicate email was sent
 			await bookingRef.update({
 				emailSent: true,
-				emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+				emailSentAt: new Date().toISOString(),
 				emailResent: true, // Flag to indicate this was a manual resend
 			})
 

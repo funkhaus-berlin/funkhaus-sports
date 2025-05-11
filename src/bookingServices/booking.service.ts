@@ -180,8 +180,8 @@ export class BookingService {
 			id: bookingId,
 			status: booking.status || 'confirmed',
 			paymentStatus: booking.paymentStatus || 'pending',
-			createdAt: serverTimestamp(),
-			updatedAt: serverTimestamp(),
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
 			customerEmail: booking.customerEmail || null,
 			customerPhone: booking.customerPhone || null,
 			customerAddress: booking.customerAddress || {
@@ -258,7 +258,7 @@ export class BookingService {
 
 				const updateData = {
 					paymentStatus,
-					updatedAt: serverTimestamp(),
+					updatedAt: new Date().toISOString(),
 					...(paymentStatus === 'paid' ? { status: 'confirmed' } : {}),
 				}
 

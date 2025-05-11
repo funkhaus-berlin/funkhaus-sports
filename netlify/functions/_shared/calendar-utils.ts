@@ -235,6 +235,12 @@ export function createCalendarEvent(
     formattedAddress = `${venueName}, ${venueAddress}`
   }
   
+  // Make sure address doesn't have trailing commas
+  formattedAddress = formattedAddress
+    .replace(/,\s*,/g, ',')
+    .replace(/,\s*$/g, '')
+    .trim()
+  
   // Format dates for various calendar systems
   const googleStartDate = parsedStartTime.utc().format('YYYYMMDDTHHmmss') + 'Z'
   const googleEndDate = parsedEndTime.utc().format('YYYYMMDDTHHmmss') + 'Z'
@@ -298,7 +304,11 @@ Booking ID: ${bookingId}`
     formattedDate,
     // Apple Calendar format
     appleStartDate,
-    appleEndDate
+    appleEndDate,
+    // Add formatted time strings for display in email template
+    displayStartTime: parsedStartTime.format('h:mm A'),
+    displayEndTime: parsedEndTime.format('h:mm A'),
+    displayTimeRange: `${parsedStartTime.format('h:mm A')} - ${parsedEndTime.format('h:mm A')}`
   }
   
   return calendarEvent

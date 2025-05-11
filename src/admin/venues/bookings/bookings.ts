@@ -1,24 +1,32 @@
-// components/bookings/booking-list.ts
+// src/admin/venues/bookings/bookings.ts
 
-import { $notify, filterMap, fullHeight, select, TableColumn } from '@mhmo91/schmancy'
-import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
+import { $notify, fullHeight, select } from '@mhmo91/schmancy'
 import dayjs from 'dayjs'
 import isBetween from 'dayjs/plugin/isBetween'
-import { html, TemplateResult } from 'lit'
+import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
-import { when } from 'lit/directives/when.js'
-import { combineLatest, debounceTime, filter, map, startWith, switchMap, take, takeUntil, tap } from 'rxjs'
+import { combineLatest, debounceTime, filter, map, of, startWith, switchMap, take, takeUntil, tap } from 'rxjs'
+
+// Import our components directly
+import './bookings-filter'
+import './components/booking-day-view'
+
+import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
-import type { Booking } from '../../../types/booking/models'
+import { Booking } from 'src/types/booking/models'
 import { courtsContext } from '../courts/context'
 import { venueContext } from '../venue-context'
-import './bookings-filter'
-import { bookingFilterContext, BookingsContext, DEFAULT_DATE_RANGE, TBookingFilter } from './bookings.context'
+import { bookingFilterContext, BookingsContext } from './bookings.context'
+
 // Extend dayjs with isBetween plugin
 dayjs.extend(isBetween)
 
+/**
+ * Main booking management component
+ * Handles data fetching and rendering for bookings
+ */
 @customElement('booking-list')
 export class VenuBookingsList extends $LitElement() {
 	@select(venueContext)
@@ -28,229 +36,184 @@ export class VenuBookingsList extends $LitElement() {
 	courts!: Map<string, Court>
 
 	@select(bookingFilterContext)
-	bookingFilter!: TBookingFilter
+	bookingFilter!: { status?: string; search?: string }
 
-	@select(BookingsContext) bookings!: Map<string, Booking>
-	@state() filteredBookings: Booking[] = []
+	@select(BookingsContext)
+	bookings!: Map<string, Booking>
+
 	@state() loading: boolean = true
 	@state() error: string | null = null
 
-	// Pagination
-	@state() currentPage: number = 1
-	@state() itemsPerPage: number = 10
-	@state() totalPages: number = 1
+	// Default date range for bookings (current month +/- 1 month)
+	private dateFrom = dayjs().subtract(1, 'month').startOf('day').format('YYYY-MM-DD')
+	private dateTo = dayjs().add(1, 'month').endOf('day').format('YYYY-MM-DD')
 
-	connectedCallback(): void {
+	connectedCallback() {
 		super.connectedCallback()
 		this.fetchBookings()
 	}
 
 	/**
-	 * Fetch bookings with reactive filtering
+	 * Fetch bookings with reactive filtering and venue ID
 	 */
-	fetchBookings(): void {
-		// Wait for courts to be ready
-		courtsContext.$.pipe(
-			filter(() => !!courtsContext.ready),
-			take(1),
-			tap(() => {
-				if (courtsContext.value.size === 0) {
+	fetchBookings() {
+		// Wait for venue and courts to be ready
+		combineLatest([venueContext.$, courtsContext.$])
+			.pipe(
+				filter(() => !!venueContext.ready && !!courtsContext.ready),
+				take(1),
+				tap(() => {
+					if (!this.venue?.id) {
+						this.loading = false
+						this.error = 'No venue selected'
+						this.requestUpdate()
+						return
+					}
+
+					if (courtsContext.value.size === 0) {
+						this.loading = false
+						this.error = 'No courts available for this venue'
+						this.requestUpdate()
+						return
+					}
+				}),
+				switchMap(() => {
+					// Combine filter changes with initial fetch
+					return combineLatest([bookingFilterContext.$.pipe(startWith(bookingFilterContext.value), debounceTime(300))])
+				}),
+				switchMap(([filter]) => {
+					this.loading = true
+					this.error = null
+
+					// Get court IDs to filter by (only those belonging to current venue)
+					const venueCourts = Array.from(this.courts.values())
+						.filter(court => court.venueId === this.venue.id)
+						.map(court => court.id)
+
+					if (venueCourts.length === 0) {
+						return of(new Map()) // Return empty map if no courts
+					}
+
+					// Include venue ID in query for better performance
+					return BookingsDB.subscribeToCollection([
+						{ key: 'venueId', operator: '==', value: this.venue.id },
+						{
+							key: 'courtId',
+							operator: 'in',
+							value: venueCourts,
+						},
+						// Add date filters to Firebase query for better performance
+						{
+							key: 'date',
+							operator: '>=',
+							value: this.dateFrom,
+						},
+						{
+							key: 'date',
+							operator: '<=',
+							value: this.dateTo,
+						},
+					]).pipe(
+						map(bookings => {
+							console.log(`Fetched ${bookings.size} bookings for venue ${this.venue.id}`)
+
+							// Apply any additional filtering needed (status, search)
+							const filteredBookings = this.applyAdditionalFilters(bookings, filter)
+
+							return filteredBookings
+						}),
+					)
+				}),
+				takeUntil(this.disconnecting),
+			)
+			.subscribe({
+				next: filteredBookings => {
+					// Replace the context with the filtered bookings
+					BookingsContext.replace(filteredBookings)
 					this.loading = false
 					this.requestUpdate()
-					return
-				}
-			}),
-			switchMap(() => {
-				// Combine filter changes with initial fetch
-				return combineLatest([bookingFilterContext.$.pipe(startWith(bookingFilterContext.value), debounceTime(300))])
-			}),
-			switchMap(([filter]) => {
-				this.loading = true
-
-				// Get court IDs to filter by
-				const courtIds = (filter.courts ?? [])?.length > 0 ? filter.courts : Array.from(this.courts.keys())
-
-				return BookingsDB.subscribeToCollection([
-					{
-						key: 'courtId',
-						operator: 'in',
-						value: courtIds,
-					},
-				]).pipe(
-					map(bookings => {
-						console.log('Bookings:', bookings)
-						BookingsContext.replace(bookings)
-						// Filter bookings by date range
-						const filteredByDate = new Map(
-							Array.from(bookings).filter(([_, booking]) => {
-								const dateFrom = dayjs(filter.dateFrom || DEFAULT_DATE_RANGE.dateFrom)
-								const dateTo = dayjs(filter.dateTo || DEFAULT_DATE_RANGE.dateTo)
-								const bookingDate = dayjs(booking.date)
-								return true || bookingDate.isBetween(dateFrom, dateTo, 'day', '[]')
-							}),
-						)
-
-						return filteredByDate
-					}),
-				)
-			}),
-			takeUntil(this.disconnecting),
-		).subscribe({
-			next: filteredBookings => {
-				this.bookings = filteredBookings
-				this.applyFilters()
-				this.loading = false
-			},
-			error: err => {
-				console.error('Error fetching bookings:', err)
-				this.error = 'Failed to load bookings'
-				this.loading = false
-				$notify.error('Failed to load bookings')
-			},
-		})
+				},
+				error: err => {
+					console.error('Error fetching bookings:', err)
+					this.error = 'Failed to load bookings'
+					this.loading = false
+					$notify.error('Failed to load bookings')
+					this.requestUpdate()
+				},
+			})
 	}
 
 	/**
-	 * Apply additional filters and pagination
+	 * Apply additional filters that can't be handled by Firestore queries efficiently
 	 */
-	applyFilters(): void {
-		// Apply status and search filters
-		const filtered = filterMap<Booking>(this.bookings, [
-			{
-				key: 'status',
-				operator: this.bookingFilter.status === 'all' ? 'in' : '==',
-				value: this.bookingFilter.status === 'all' ? ['confirmed', 'pending', 'cancelled'] : this.bookingFilter.status,
-			},
-		])
-
-		// Apply search filter if present
-		let result = filtered
-		if (this.bookingFilter.search) {
-			const searchTerm = this.bookingFilter.search.toLowerCase()
-			result = result.filter(
-				booking =>
-					booking.userName?.toLowerCase().includes(searchTerm) ||
-					booking.customerEmail?.toLowerCase().includes(searchTerm) ||
-					booking.customerPhone?.toLowerCase().includes(searchTerm) ||
-					booking.id.toLowerCase().includes(searchTerm),
-			)
+	private applyAdditionalFilters(
+		bookings: Map<string, Booking>,
+		filter: { status?: string; search?: string },
+	): Map<string, Booking> {
+		// If no additional filtering required, return as is
+		if ((!filter.status || filter.status === 'all') && !filter.search) {
+			return bookings
 		}
 
-		// Sort bookings by date (newest first)
-		result.sort((a, b) => {
-			return dayjs(b.date).valueOf() - dayjs(a.date).valueOf()
-		})
+		return new Map(
+			Array.from(bookings.entries()).filter(([id, booking]) => {
+				// Status filter
+				if (filter.status && filter.status !== 'all' && booking.status !== filter.status) {
+					return false
+				}
 
-		// Calculate total pages
-		this.totalPages = Math.ceil(result.length / this.itemsPerPage)
+				// Search filter (case insensitive)
+				if (filter.search) {
+					const searchTerm = filter.search.toLowerCase()
+					const searchableFields = [
+						booking.userName?.toLowerCase() || '',
+						booking.userEmail?.toLowerCase() || '',
+						booking.userPhone?.toLowerCase() || '',
+						booking.customerEmail?.toLowerCase() || '',
+						booking.customerPhone?.toLowerCase() || '',
+						id.toLowerCase(),
+					]
 
-		// Apply pagination
-		const startIndex = (this.currentPage - 1) * this.itemsPerPage
-		const endIndex = startIndex + this.itemsPerPage
-		this.filteredBookings = result.slice(startIndex, endIndex)
+					if (!searchableFields.some(field => field.includes(searchTerm))) {
+						return false
+					}
+				}
+
+				return true
+			}),
+		)
 	}
 
-	/**
-	 * Navigate to a specific page
-	 */
-	goToPage(page: number): void {
-		if (page < 1 || page > this.totalPages) return
-		this.currentPage = page
-		this.applyFilters()
-	}
-
-	render(): TemplateResult {
-		return html`
-			<schmancy-surface ${fullHeight()} type="container" rounded="all">
-				<schmancy-grid ${fullHeight()} rows="auto auto 1fr auto" class="gap-4 p-4">
-					<!-- Header -->
-					<schmancy-grid cols="1fr auto" align="start">
-						<schmancy-typography type="headline" token="sm">Venue Bookings</schmancy-typography>
-						<schmancy-chip readOnly class="pointer-events-none">${this.bookings.size} Bookings</schmancy-chip>
-					</schmancy-grid>
-
-					<!-- Filters -->
-					<booking-filter .courts=${this.courts}></booking-filter>
-
-					<!-- Bookings Table -->
-					<div class="overflow-y-auto">
-						${when(
-							this.loading,
-							() => html`
-								<div class="flex justify-center items-center py-8">
-									<schmancy-spinner></schmancy-spinner>
-								</div>
-							`,
-							() => this.renderBookingsTable(),
-						)}
-					</div>
-
-					<!-- Pagination -->
-					<schmancy-flex justify="center" gap="sm" class="pb-2">
-						<schmancy-button
-							variant="text"
-							@click=${() => this.goToPage(this.currentPage - 1)}
-							?disabled=${this.currentPage === 1}
-						>
-							<schmancy-icon>chevron_left</schmancy-icon>
-						</schmancy-button>
-
-						<schmancy-typography type="body" class="flex items-center">
-							Page ${this.currentPage} of ${this.totalPages || 1}
-						</schmancy-typography>
-
-						<schmancy-button
-							variant="text"
-							@click=${() => this.goToPage(this.currentPage + 1)}
-							?disabled=${this.currentPage >= this.totalPages}
-						>
-							<schmancy-icon>chevron_right</schmancy-icon>
-						</schmancy-button>
-					</schmancy-flex>
-				</schmancy-grid>
-			</schmancy-surface>
-		`
-	}
-
-	/**
-	 * Render the bookings table or empty state
-	 */
-	private renderBookingsTable(): TemplateResult {
+	render() {
 		if (this.error) {
 			return html`
-				<div class="text-center text-error py-8">
-					<schmancy-icon>error</schmancy-icon>
-					<p>${this.error}</p>
+				<div ${fullHeight()} class="flex items-center justify-center">
+					<schmancy-surface type="container" rounded="all" class="p-8 max-w-md">
+						<schmancy-typography type="headline" token="sm" class="mb-4 text-error-default">
+							${this.error}
+						</schmancy-typography>
+						<schmancy-button @click=${this.fetchBookings}>Retry</schmancy-button>
+					</schmancy-surface>
 				</div>
 			`
 		}
 
-		if (this.filteredBookings.length === 0) {
+		if (this.loading && !BookingsContext.value.size) {
 			return html`
-				<div class="text-center py-8">
-					<schmancy-icon size="3rem" class="text-surface-on-variant opacity-50">calendar_month</schmancy-icon>
-					<schmancy-typography type="body" class="mt-2">
-						No bookings found for the selected filters.
-					</schmancy-typography>
+				<div class="loading-indicator">
+					<schmancy-progress type="circular" size="md"></schmancy-progress>
 				</div>
 			`
 		}
 
 		return html`
-			<schmancy-table
-				.cols=${'minmax(150px, 1fr) minmax(150px, 1fr) 150px 150px 100px 100px'}
-				.columns=${[
-					{ name: 'Customer', key: 'userName', align: 'left', sortable: true },
-					{ name: 'Court', key: 'courtId', align: 'left', sortable: true },
-					{ name: 'Date', key: 'date', align: 'center', sortable: true },
-					{ name: 'Time', key: 'startTime', align: 'center', sortable: true },
-					{ name: 'Status', key: 'status', align: 'center', sortable: true },
-					{ name: 'Price', key: 'price', align: 'right', sortable: true },
-				] as TableColumn[]}
-				.data=${this.filteredBookings}
-				keyField="id"
-				sortable
-			></schmancy-table>
+			<schmancy-grid rows="auto 1fr" ${fullHeight()}>
+				<!-- Simplified Booking Filter -->
+				<bookings-filter></bookings-filter>
+
+				<!-- Day View Calendar -->
+				<booking-day-view></booking-day-view>
+			</schmancy-grid>
 		`
 	}
 }

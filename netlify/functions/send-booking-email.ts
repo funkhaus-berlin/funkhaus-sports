@@ -72,7 +72,7 @@ const handler: Handler = async (event, context) => {
 			const bookingRef = db.collection('bookings').doc(data.bookingId)
 			await bookingRef.update({
 				emailSent: true,
-				emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+				emailSentAt: new Date().toISOString(),
 			})
 
 			return {
@@ -248,11 +248,22 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			throw new Error('Failed to generate email HTML content')
 		}
 		
+		// Format date and time in German style
+		const bookingDate = new Date(data.bookingDetails.date)
+		const formattedDate = bookingDate.toLocaleDateString('de-DE', {
+			weekday: 'long',
+			day: 'numeric',
+			month: 'long'
+		})
+		
+		// Extract time from booking details for email subject
+		const startTime = data.bookingDetails.startTime
+
 		// Send email with Resend
 		const response = await resend.emails.send({
 			from: `${emailConfig.fromName} <${emailConfig.from}>`,
 			to: data.customerEmail,
-			subject: `${invoiceNumber || 'Booking'} | Your Court Booking Confirmation - ${data.bookingDetails.court}`,
+			subject: `Funkhaus Sports - Court booking on ${formattedDate} at ${startTime}`,
 			html: html,
 			attachments: [
 				{

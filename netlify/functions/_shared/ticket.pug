@@ -3,9 +3,9 @@ html(lang="en")
   head
     meta(charset="UTF-8")
     meta(name="viewport" content="width=device-width, initial-scale=1.0")
-    link(href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet")
+    link(href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet")
     title Court Booking Confirmation
-    //- Simplified JSON-LD for Gmail calendar integration
+    //- Enhanced JSON-LD for Gmail calendar integration
     script(type="application/ld+json").
       {
         "@context": "http://schema.org",
@@ -14,621 +14,258 @@ html(lang="en")
         "reservationStatus": "http://schema.org/Confirmed",
         "underName": {
           "@type": "Person",
-          "name": "#{customer.name}"
+          "name": "#{customer.name}",
+          "email": "#{customer.email}"
         },
         "reservationFor": {
           "@type": "Event",
-          "name": "Court Booking: #{booking.court}",
-          "startDate": "#{calendarEvent && calendarEvent.startDate ? calendarEvent.startDate : ''}",
-          "endDate": "#{calendarEvent && calendarEvent.endDate ? calendarEvent.endDate : ''}",
+          "name": "#{calendarEvent && calendarEvent.title ? calendarEvent.title : 'Court Booking: ' + booking.court}",
+          "startDate": "#{calendarEvent && calendarEvent.startTime ? calendarEvent.startTime : ''}",
+          "endDate": "#{calendarEvent && calendarEvent.endTime ? calendarEvent.endTime : ''}",
+          "description": "#{calendarEvent && calendarEvent.description ? calendarEvent.description.replace(/\n/g, ' ').substring(0, 200) : 'Your court booking at ' + booking.venue}",
           "location": {
             "@type": "Place",
-            "name": "#{booking.venue}"
+            "name": "#{booking.venue}",
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": "#{venue && venue.address && venue.address.street ? venue.address.street : ''}",
+              "addressLocality": "#{venue && venue.city ? venue.city : (venue && venue.address && venue.address.city ? venue.address.city : '')}",
+              "postalCode": "#{venue && venue.postalCode ? venue.postalCode : (venue && venue.address && venue.address.postalCode ? venue.address.postalCode : '')}",
+              "addressCountry": "#{venue && venue.country ? venue.country : (venue && venue.address && venue.address.country ? venue.address.country : '')}"
+            }
           }
         }
       }
     style.
-      /* Base styles with premium font stack */
+      /* Base styles */
       body {
-        font-family: "Playfair Display", Georgia, "Times New Roman", serif;
+        font-family: "Montserrat", Helvetica, Arial, sans-serif;
         line-height: 1.5;
-        color: #2c2c2c;
+        color: #333333;
         background-color: #f8f8f8;
         margin: 0;
         padding: 0;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
       }
       
-      /* Web fonts import for email clients that support it */
-      @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Montserrat:wght@300;400;500;600;700&display=swap');
-      
-      /* Container */
-      .container {
-        width: 100%;
-        max-width: 620px;
-        margin: 0 auto;
-        background: #fff;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.06);
-        border-radius: 8px;
-        overflow: hidden;
-      }
-      
-      /* Reset table styles */
+      /* Table reset */
       table {
         border-collapse: collapse;
         border-spacing: 0;
-        mso-table-lspace: 0pt;
-        mso-table-rspace: 0pt;
       }
       
-      table td {
-        padding: 0;
-        vertical-align: top;
-      }
-      
-      /* Main table styles */
+      /* Main wrapper */
       .main-table {
         width: 100%;
         max-width: 600px;
         margin: 0 auto;
         background-color: #ffffff;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
       }
       
-      /* Header styles */
+      /* Header */
       .header {
         background-color: #000;
-        background-image: linear-gradient(135deg, #000000 0%, #1c1c1c 100%);
         text-align: center;
-        padding: 32px 0;
-        position: relative;
+        padding: 30px 0;
       }
       
-      .header:after {
-        content: "";
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 4px;
-        background: linear-gradient(90deg, #888888 0%, #444444 100%);
-      }
-      
-      .logo {
-        height: 32px;
-        width: auto;
-      }
-      
-      /* Content styles */
+      /* Content area */
       .content {
-        padding: 50px 40px;
-        background-color: #fff;
-        background-image: linear-gradient(180deg, #fcfcfc 0%, #ffffff 100%);
+        padding: 30px;
       }
       
-      /* Greeting styles */
-      .greeting {
-        font-family: "Montserrat", Helvetica, Arial, sans-serif;
-        font-size: 16px;
-        margin: 0 0 12px;
-        color: #666666;
-        letter-spacing: 0.01em;
-        font-weight: 400;
-      }
-      
-      .booking-title {
-        font-family: "Playfair Display", Georgia, "Times New Roman", serif;
-        font-size: 32px;
-        font-weight: 700;
-        margin: 0 0 36px;
-        color: #000;
-        letter-spacing: -0.01em;
-        line-height: 1.2;
-        position: relative;
-        padding-bottom: 16px;
-        font-style: italic;
-      }
-      
-      .booking-title:after {
-        content: "";
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        width: 60px;
-        height: 3px;
-        background: linear-gradient(90deg, #999999 0%, #444444 100%);
-      }
-      
-      /* Date banner styles */
+      /* Booking details banner */
       .date-banner {
-        width: 100%;
-        margin-bottom: 36px;
-        border: none;
-        border-radius: 10px;
-        box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+        border: 1px solid #e1e1e1;
+        border-radius: 8px;
         overflow: hidden;
-        background: #ffffff;
+        margin-bottom: 25px;
       }
       
       .date-box {
-        width: 110px;
-        background: linear-gradient(135deg, #000000 0%, #1c1c1c 100%);
+        width: 100px;
+        background-color: #000;
         color: #fff;
         text-align: center;
-        padding: 24px 14px;
-        position: relative;
-      }
-      
-      .date-day-name {
-        font-size: 13px;
-        font-weight: 600;
-        letter-spacing: 0.05em;
-        margin-bottom: 10px;
-      }
-      
-      @keyframes shimmer {
-        100% {
-          transform: translateX(100%);
-        }
+        padding: 15px 10px;
       }
       
       .date-day {
-        font-family: "Playfair Display", Georgia, "Times New Roman", serif;
-        font-size: 48px;
+        font-size: 38px;
         font-weight: 700;
         line-height: 1;
-        letter-spacing: -0.01em;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.2);
-      }
-      
-      .date-month {
-        font-family: "Montserrat", Helvetica, Arial, sans-serif;
-        text-transform: uppercase;
-        font-size: 16px;
-        letter-spacing: 0.12em;
-        margin-top: 6px;
-        font-weight: 600;
-      }
-      
-      .date-year {
-        font-family: "Montserrat", Helvetica, Arial, sans-serif;
-        font-size: 13px;
-        opacity: 0.7;
-        margin-top: 3px;
-        letter-spacing: 0.05em;
       }
       
       .date-details {
-        padding: 28px;
-        background: linear-gradient(180deg, #fcfcfc 0%, #ffffff 100%);
+        padding: 20px;
       }
       
-      .time-display {
-        font-family: "Playfair Display", Georgia, "Times New Roman", serif;
-        font-size: 24px;
-        font-weight: 600;
-        margin-bottom: 16px;
-        color: #000;
-      }
-      
-      .location-display {
-        font-family: "Montserrat", Helvetica, Arial, sans-serif;
-        font-size: 16px;
-        color: #333;
-        margin: 0 0 8px 0;
-        font-weight: 500;
-      }
-      
-      .address-line {
-        font-family: "Montserrat", Helvetica, Arial, sans-serif;
-        font-size: 15px;
-        color: #666;
-        margin: 0 0 6px 0;
-      }
-      
-      .price-label {
-        font-family: "Montserrat", Helvetica, Arial, sans-serif;
-        font-size: 13px;
-        color: #666;
-        margin: 0 0 4px 0;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        font-weight: 500;
-      }
-      
-      .price-display {
-        font-family: "Playfair Display", Georgia, "Times New Roman", serif;
-        font-size: 22px;
-        margin: 0;
-        color: #000;
-        font-weight: 600;
-        position: relative;
-      }
-      
-      /* Calendar section styles */
+      /* Calendar buttons */
       .calendar-section {
-        width: 100%;
-        margin: 45px 0;
-        padding: 36px 0;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 25px 0;
         text-align: center;
-        background: linear-gradient(135deg, #f8f9fa 0%, #f1f3f5 100%);
-        border-radius: 10px;
-        position: relative;
-        overflow: hidden;
-        box-shadow: 0 6px 20px rgba(0,0,0,0.05);
+        margin: 25px 0;
       }
       
-      .calendar-section:before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 4px;
-        background: linear-gradient(90deg, #888888 0%, #444444 100%);
-      }
-      
-      .calendar-section:after {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: radial-gradient(circle at top right, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 70%);
-      }
-      
-      .calendar-heading {
-        font-family: "Playfair Display", Georgia, "Times New Roman", serif;
-        font-size: 18px;
-        text-transform: none;
-        letter-spacing: 0.02em;
-        color: #333;
-        margin: 0 0 20px;
-        font-weight: 700;
-        position: relative;
-        z-index: 2;
-        font-style: italic;
-      }
-      
-      .calendar-link {
-        display: inline-block;
-        color: #000;
-        background-color: #fff;
-        text-decoration: none;
-        font-size: 14px;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        padding: 12px 24px;
-        margin: 0 10px;
-        border-radius: 6px;
-        border: 1px solid #e1e1e1;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        position: relative;
-        z-index: 2;
-      }
-      
-      .calendar-button-wrapper {
-        position: relative;
-        z-index: 2;
-      }
-      
-      .calendar-note {
-        font-size: 14px;
-        color: #666;
-        margin: 10px 0 0;
-        font-style: italic;
-      }
-      
-      /* Footer styles */
+      /* Footer */
       .footer {
-        font-family: "Montserrat", Helvetica, Arial, sans-serif;
-        margin-top: 50px;
-        padding: 30px 0;
         text-align: center;
-        font-size: 13px;
+        font-size: 12px;
         color: #777;
-        background: linear-gradient(180deg, #fcfcfc 0%, #f8f8f8 100%);
-        border-top: 1px solid #eaeaea;
-        border-radius: 0 0 8px 8px;
-        position: relative;
-      }
-      
-      .footer:before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 120px;
-        height: 1px;
-        background: linear-gradient(90deg, rgba(128,128,128,0) 0%, #888888 50%, rgba(128,128,128,0) 100%);
+        padding: 20px 0;
+        border-top: 1px solid #eeeeee;
       }
       
       .footer a {
-        color: #444444;
+        color: #333;
         text-decoration: none;
         font-weight: 500;
-        transition: color 0.3s ease;
       }
       
-      .footer a:hover {
-        color: #222222;
-      }
-      
-      /* Responsive styles */
-      @media screen and (max-width: 640px) {
-        body {
-          padding: 10px !important;
-        }
-        
-        .main-table {
-          max-width: 100% !important;
-        }
-        
-        .content {
-          padding: 30px 20px !important;
-        }
-        
-        .booking-title {
-          font-size: 24px !important;
-          padding-bottom: 12px !important;
-        }
-        
-        .booking-title:after {
-          width: 50px !important;
-          height: 2px !important;
-        }
-        
-        .calendar-link {
-          display: block;
-          margin: 10px auto;
-          max-width: 200px;
-        }
-        
-        .header:after {
-          height: 3px !important;
-        }
-      }
-      
-      /* Mobile-specific styles for email clients */
+      /* Mobile adjustments */
       @media screen and (max-width: 480px) {
-        /* Stack calendar buttons on small screens */
-        .calendar-button-cell {
-          display: block !important;
-          width: 100% !important;
-        }
-        
-        /* Increase tap target size on mobile */
-        .calendar-button-wrapper {
-          max-width: 280px !important;
-          margin: 0 auto 15px !important;
-        }
-        
-        /* Make date banner more compact on mobile */
-        .date-banner {
-          border-radius: 8px !important;
-          margin-bottom: 30px !important;
+        .content {
+          padding: 20px 15px;
         }
         
         .date-box {
-          width: 85px !important;
-        }
-        
-        .date-day-name {
-          font-size: 11px !important;
-          margin-bottom: 4px !important;
+          width: 80px;
+          padding: 12px 8px;
         }
         
         .date-day {
-          font-size: 36px !important;
-          text-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
-        }
-        
-        .date-month {
-          font-size: 13px !important;
+          font-size: 32px;
         }
         
         .date-details {
-          padding: 24px !important;
-        }
-        
-        .time-display {
-          font-size: 20px !important;
-        }
-        
-        .location-display {
-          font-size: 15px !important;
-        }
-        
-        .address-line {
-          font-size: 14px !important;
-        }
-        
-        .price-label {
-          font-size: 12px !important;
-        }
-        
-        .price-display {
-          font-size: 20px !important;
-        }
-        
-        
-        .calendar-section {
-          padding: 30px 0 !important;
-          margin: 35px 0 !important;
+          padding: 15px;
         }
       }
 
-  body(style="margin:0;padding:30px 20px;background-color:#f8f8f8;background-image:linear-gradient(135deg, #f8f8f8 0%, #f1f3f5 100%);")
-    //- Main container table with shadow and rounded corners
-    table.main-table(cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#ffffff" style="max-width:620px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.1);")
-      //- Header row with gradient background
+  body(style="margin:0;padding:20px;background-color:#f8f8f8;")
+    table.main-table(cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;margin:0 auto;border-radius:8px;overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,0.1);")
+      //- Header
       tr
-        td.header(align="center" bgcolor="#000000" style="padding:32px 0;background-image:linear-gradient(135deg, #000000 0%, #1c1c1c 100%);position:relative;")
-          img.logo(src="https://funkhaus-sports.netlify.app/logo-light.png" alt="Funkhaus" style="height:120px;width:auto;position:relative;z-index:2;")
+        td.header(align="center" bgcolor="#000000" style="padding:25px 0;")
+          img.logo(src="https://funkhaus-sports.netlify.app/logo-light.png" alt="Funkhaus" style="height:80px;width:auto;")
       
-      //- Content row
+      //- Content
       tr
-        td.content(style="padding:40px;")
+        td.content(style="padding:30px;background-color:#ffffff;")
           //- Greeting
-          p.greeting(style="font-size:15px;margin:0 0 8px;color:#666;letter-spacing:0.01em;") Hello #{customer.name},
-          h1.booking-title(style="font-size:26px;font-weight:500;margin:0 0 30px;color:#000;letter-spacing:-0.02em;") Your booking is confirmed
+          p(style="font-size:15px;margin:0 0 10px;color:#666;") Hello #{customer.name},
+          h1(style="font-size:24px;font-weight:600;margin:0 0 25px;color:#000;") Your booking is confirmed
           
-          //- Date banner using table layout
-          table.date-banner(cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:30px;border:1px solid #e1e1e1;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-radius:8px;overflow:hidden;")
+          //- Date banner
+          table.date-banner(cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:25px;border:1px solid #e1e1e1;border-radius:8px;overflow:hidden;")
             tr
-              //- Date box cell
-              td.date-box(width="100" bgcolor="#000000" style="width:100px;background-color:#000;color:#fff;text-align:center;padding:20px 10px;vertical-align:middle;")
+              //- Date cell
+              td.date-box(width="90" bgcolor="#000000" style="width:90px;background-color:#000;color:#fff;text-align:center;padding:15px 10px;")
                 if calendarEvent
-                  div.date-day-name(style="font-size:14px;font-weight:600;margin-bottom:5px;") #{calendarEvent.dayName}
-                  div.date-day(style="font-size:42px;font-weight:600;line-height:1;letter-spacing:-0.02em;") #{calendarEvent.day}
-                  div.date-month(style="text-transform:uppercase;font-size:14px;letter-spacing:0.05em;margin-top:4px;font-weight:500;") #{calendarEvent.monthShort}
-                  div.date-year(style="font-size:12px;opacity:0.7;margin-top:2px;") #{calendarEvent.year}
+                  div(style="font-size:14px;font-weight:600;margin-bottom:5px;") #{calendarEvent.dayName}
+                  div(style="font-size:36px;font-weight:700;line-height:1;") #{calendarEvent.day}
+                  div(style="text-transform:uppercase;font-size:14px;margin-top:4px;font-weight:500;") #{calendarEvent.monthShort}
+                  div(style="font-size:12px;opacity:0.7;margin-top:2px;") #{calendarEvent.year}
               
-              //- Booking details cell
-              td.date-details(style="padding:28px;vertical-align:middle;")
-                - var startHour = parseInt(booking.startTime.split(':')[0])
-                - var startMinute = booking.startTime.split(':')[1].split(' ')[0]
-                - var startAmPm = booking.startTime.toLowerCase().includes('pm')
-                - var startHour24 = startAmPm && startHour < 12 ? startHour + 12 : (startHour === 12 && !startAmPm ? 0 : startHour)
-                - var formattedStartTime = (startHour24 < 10 ? '0' : '') + startHour24 + ':' + startMinute
+              //- Details cell
+              td(style="padding:15px;vertical-align:middle;")
+                //- Time display
+                - var timeDisplay = calendarEvent && calendarEvent.displayTimeRange ? calendarEvent.displayTimeRange : `${booking.startTime} - ${booking.endTime}`
                 
-                - var endHour = parseInt(booking.endTime.split(':')[0])
-                - var endMinute = booking.endTime.split(':')[1].split(' ')[0]
-                - var endAmPm = booking.endTime.toLowerCase().includes('pm')
-                - var endHour24 = endAmPm && endHour < 12 ? endHour + 12 : (endHour === 12 && !endAmPm ? 0 : endHour)
-                - var formattedEndTime = (endHour24 < 10 ? '0' : '') + endHour24 + ':' + endMinute
-                
-                p.time-display(style="font-family:'Playfair Display',Georgia,'Times New Roman',serif;font-size:24px;font-weight:600;margin-bottom:16px;color:#000;margin-top:0;") 
-                  | #{formattedStartTime} — #{formattedEndTime}
-                p.location-display(style="font-family:'Montserrat',Helvetica,Arial,sans-serif;font-size:16px;color:#333;margin:0 0 8px 0;font-weight:500;")
+                p(style="font-size:20px;font-weight:600;margin:0 0 12px;color:#000;") #{timeDisplay}
+                p(style="font-size:15px;color:#333;margin:0 0 5px;font-weight:500;")
                   strong #{booking.court}
                   |  at #{booking.venue}
                 
-                //- Simplified address display
+                //- Venue address (complete and clickable)
                 if venue
-                  //- First try to fetch the address directly from the venue object
-                  - var addressParts = []
+                  - var addressText = ''
+                  - var mapUrl = ''
                   
-                  //- Street address
-                  if venue.address && typeof venue.address === 'string'
-                    - addressParts.push(venue.address)
+                  if typeof venue.address === 'string'
+                    - addressText = venue.address
                   else if venue.address && venue.address.street
-                    - addressParts.push(venue.address.street)
-                    
-                  //- City and postal code
-                  - var locationParts = []
+                    - var parts = []
+                    - if (venue.address.street) parts.push(venue.address.street)
+                    - if (venue.address.postalCode || venue.address.city) parts.push((venue.address.postalCode || '') + ' ' + (venue.address.city || ''))
+                    - if (venue.address.country) parts.push(venue.address.country)
+                    - addressText = parts.filter(Boolean).join(', ')
                   
-                  if venue.postalCode
-                    - locationParts.push(venue.postalCode)
-                  else if venue.address && venue.address.postalCode
-                    - locationParts.push(venue.address.postalCode)
-                    
-                  if venue.city
-                    - locationParts.push(venue.city)
-                  else if venue.address && venue.address.city
-                    - locationParts.push(venue.address.city)
-                    
-                  if locationParts.length > 0
-                    - addressParts.push(locationParts.join(' '))
-                    
-                  //- Country
-                  - var country = venue.country || (venue.address && venue.address.country ? venue.address.country : null)
-                  if country
-                    - addressParts.push(country)
+                  //- Create map URL for Google Maps
+                  - mapUrl = 'https://maps.google.com/?q=' + encodeURIComponent(venue.name + ', ' + addressText)
                   
-                  //- Display address if available
-                  if addressParts.length > 0
-                    p.address-line(style="font-family:'Montserrat',Helvetica,Arial,sans-serif;font-size:15px;color:#666;margin:0 0 6px 0;") #{addressParts.join(', ')}
+                  if addressText
+                    a(href=mapUrl target="_blank" style="font-size:14px;color:#0066cc;margin:0 0 12px;display:block;text-decoration:underline;")
+                      | #{addressText}
                 
-                div(style="margin:22px 0 0 0;")
-                  p.price-label(style="font-family:'Montserrat',Helvetica,Arial,sans-serif;font-size:13px;color:#666;margin:0 0 4px 0;text-transform:uppercase;letter-spacing:0.05em;font-weight:500;") Amount Paid
-                  p.price-display(style="font-family:'Playfair Display',Georgia,'Times New Roman',serif;font-size:22px;margin:0;color:#000;font-weight:600;") 
-                    | €#{booking.price}
+                //- Price
+                p(style="margin:10px 0 0;")
+                  span(style="font-size:13px;color:#666;text-transform:uppercase;display:block;margin-bottom:3px;") Amount Paid
+                  span(style="font-size:20px;color:#000;font-weight:600;") €#{booking.price}
           
-          //- Compact Calendar section
-          table.calendar-section(cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:30px 0 20px;background-color:#f8f9fa;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.05);")
+          //- Calendar section
+          - var googleLink = '#'
+          - var outlookLink = '#'
+          - try {
+          -   var googleTitle = encodeURIComponent(calendarEvent?.title || ('Court Booking: ' + booking.court))
+          -   var googleDetails = encodeURIComponent(calendarEvent?.description || ('Your booking at ' + booking.venue))
+          -   var googleLocation = encodeURIComponent(calendarEvent?.location || booking.venue)
+          -   
+          -   if (calendarEvent && calendarEvent.googleStartDate && calendarEvent.googleEndDate) {
+          -     googleLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${googleTitle}&dates=${calendarEvent.googleStartDate}/${calendarEvent.googleEndDate}&details=${googleDetails}&location=${googleLocation}&sf=true&output=xml`
+          -     outlookLink = `https://outlook.office.com/calendar/0/deeplink/compose?subject=${googleTitle}&body=${googleDetails}&location=${googleLocation}&startdt=${calendarEvent.startTime}&enddt=${calendarEvent.endTime}`
+          -   }
+          - } catch(e) {
+          -   console.error('Error generating calendar links:', e)
+          - }
+          
+          //- Create directions URL if address is available
+          - var directionsUrl = ''
+          if venue
+            - var venueAddress = ''
+            if typeof venue.address === 'string'
+              - venueAddress = venue.address
+            else if venue.address && venue.address.street
+              - var parts = []
+              - if (venue.address.street) parts.push(venue.address.street)
+              - if (venue.address.postalCode || venue.address.city) parts.push((venue.address.postalCode || '') + ' ' + (venue.address.city || ''))
+              - if (venue.address.country) parts.push(venue.address.country)
+              - venueAddress = parts.filter(Boolean).join(', ')
+            
+            if venueAddress
+              - directionsUrl = 'https://maps.google.com/?q=' + encodeURIComponent(venue.name + ', ' + venueAddress)
+          
+          table(cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:25px 0;background-color:#f8f9fa;border-radius:8px;")
             tr
-              td(align="center" style="padding:20px 0 10px;")
-                p(style="font-family:'Montserrat',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;color:#333;margin:0 0 15px;") 
-                  | Save to your calendar
+              td(align="center" style="padding:20px;")
+                p(style="font-size:14px;font-weight:600;color:#333;margin:0 0 15px;") Save to your calendar
                 
-                //- Process calendar links
-                - try {
-                -   var googleTitle = encodeURIComponent('Court Booking: ' + booking.court)
-                -   var googleDetails = encodeURIComponent('Your booking at ' + booking.venue)
-                -   var googleLocation = encodeURIComponent(booking.venue)
-                
-                -   if (calendarEvent && calendarEvent.googleStartDate && calendarEvent.googleEndDate) {
-                -     var googleStartDate = calendarEvent.googleStartDate
-                -     var googleEndDate = calendarEvent.googleEndDate
-                
-                -     var googleLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${googleTitle}&dates=${googleStartDate}/${googleEndDate}&details=${googleDetails}&location=${googleLocation}&sf=true&output=xml`
-                -     var outlookLink = `https://outlook.office.com/calendar/0/deeplink/compose?subject=${googleTitle}&body=${googleDetails}&location=${googleLocation}`
-                -   } else {
-                -     // Create fallback dates
-                -     var dateObj = new Date(booking.date)
-                -     var startHour = parseInt(booking.startTime.split(':')[0])
-                -     var startAmPm = booking.startTime.includes('PM') || booking.startTime.includes('pm')
-                -     if (startAmPm && startHour < 12) startHour += 12
-                -     var endHour = parseInt(booking.endTime.split(':')[0])
-                -     var endAmPm = booking.endTime.includes('PM') || booking.endTime.includes('pm')
-                -     if (endAmPm && endHour < 12) endHour += 12
-                
-                -     dateObj.setHours(startHour)
-                -     var startDate = dateObj.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
-                -     dateObj.setHours(endHour)
-                -     var endDate = dateObj.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
-                
-                -     var googleLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${googleTitle}&dates=${startDate}/${endDate}&details=${googleDetails}&location=${googleLocation}&sf=true&output=xml`
-                -     var outlookLink = `https://outlook.office.com/calendar/0/deeplink/compose?subject=${googleTitle}&body=${googleDetails}&location=${googleLocation}`
-                -   }
-                - } catch(e) {
-                -   var googleLink = "#"
-                -   var outlookLink = "#"
-                - }
-                
-                //- More compact calendar buttons side by side
-                table(cellpadding="0" cellspacing="0" border="0" width="280px" style="margin:0 auto;")
+                table(cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;")
                   tr
                     //- Google Calendar button
-                    td(align="center" style="padding:0 10px;")
-                      a(href=googleLink target="_blank" style="display:inline-block;text-decoration:none;")
-                        table(cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e5e5;")
-                          tr
-                            td(style="padding:12px 15px;")
-                              table(cellpadding="0" cellspacing="0" border="0")
-                                tr
-                                  td(style="padding-right:10px;vertical-align:middle;")
-                                    img(src="https://funkhaus-sports.netlify.app/icons/google-calendar-2020.png" alt="Google" width="20" height="20" style="display:block;")
-                                  td(style="vertical-align:middle;")
-                                    p(style="font-family:'Montserrat',Helvetica,Arial,sans-serif;font-size:13px;font-weight:500;color:#333;margin:0;") Google
+                    td(align="center" style="padding:0 8px;")
+                      a(href=googleLink target="_blank" style="display:inline-block;text-decoration:none;background-color:#ffffff;border-radius:6px;border:1px solid #e5e5e5;padding:10px 15px;")
+                        img(src="https://funkhaus-sports.netlify.app/icons/google-calendar-2020.png" alt="Google" width="20" height="20" style="vertical-align:middle;margin-right:8px;")
+                        span(style="font-size:13px;font-weight:500;color:#333;vertical-align:middle;") Google
                     
-                    //- Outlook Calendar button
-                    td(align="center" style="padding:0 10px;")
-                      a(href=outlookLink target="_blank" style="display:inline-block;text-decoration:none;")
-                        table(cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e5e5;")
-                          tr
-                            td(style="padding:12px 15px;")
-                              table(cellpadding="0" cellspacing="0" border="0")
-                                tr
-                                  td(style="padding-right:10px;vertical-align:middle;")
-                                    img(src="https://funkhaus-sports.netlify.app/icons/outlook-calendar-new.png" alt="Outlook" width="20" height="20" style="display:block;")
-                                  td(style="vertical-align:middle;")
-                                    p(style="font-family:'Montserrat',Helvetica,Arial,sans-serif;font-size:13px;font-weight:500;color:#333;margin:0;") Outlook
+                    //- Outlook button
+                    td(align="center" style="padding:0 8px;")
+                      a(href=outlookLink target="_blank" style="display:inline-block;text-decoration:none;background-color:#ffffff;border-radius:6px;border:1px solid #e5e5e5;padding:10px 15px;")
+                        img(src="https://funkhaus-sports.netlify.app/icons/outlook-calendar-new.png" alt="Outlook" width="20" height="20" style="vertical-align:middle;margin-right:8px;")
+                        span(style="font-size:13px;font-weight:500;color:#333;vertical-align:middle;") Outlook
                     
-                
+                    //- Google Maps button (only if we have a venue address)
+                    if directionsUrl
+                      td(align="center" style="padding:0 8px;")
+                        a(href=directionsUrl target="_blank" style="display:inline-block;text-decoration:none;background-color:#ffffff;border-radius:6px;border:1px solid #e5e5e5;padding:10px 15px;")
+                          span(style="font-size:13px;font-weight:500;color:#333;vertical-align:middle;") 📍 Directions
       
-      //- Footer row
+      //- Footer
       tr
-        td.footer(align="center" style="margin-top:40px;padding:24px 0;text-align:center;font-size:12px;color:#777;border-top:1px solid #e1e1e1;")
+        td(align="center" style="padding:20px 0;text-align:center;font-size:12px;color:#777;border-top:1px solid #eee;background-color:#ffffff;")
           | Questions? Contact 
-          if venue && venue.contactEmail
-            a(href=`mailto:${venue.contactEmail}` style="color:#000;text-decoration:none;font-weight:500;") #{venue.contactEmail}
-            if venue && venue.contactPhone
-              |  or call #{venue.contactPhone}
-          else
-            a(href="mailto:booking@funkhaus-sports.com" style="color:#000;text-decoration:none;font-weight:500;") booking@funkhaus-sports.com
+          a(href="mailto:booking@funkhaus-sports.com" style="color:#333;text-decoration:none;font-weight:500;") booking@funkhaus-sports.com
