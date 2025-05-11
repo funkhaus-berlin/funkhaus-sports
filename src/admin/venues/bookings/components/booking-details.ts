@@ -1,5 +1,5 @@
 // src/admin/venues/bookings/components/booking-details.ts
-import { $dialog, $notify, select, sheet } from '@mhmo91/schmancy'
+import { $dialog, $notify, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { html } from 'lit'
@@ -387,9 +387,18 @@ export class BookingDetails extends $LitElement() {
               ${this.resendingEmail ? 'Sending...' : 'Resend Email'}
             </schmancy-button>
             
-            <schmancy-button 
-              variant="outlined" 
-              @click=${() => {
+            <schmancy-menu>
+              <schmancy-button 
+                slot="button"
+                variant="outlined" 
+              >
+                <div class="flex items-center gap-2">
+                  <schmancy-icon>share</schmancy-icon>
+                  <span>Share</span>
+                </div>
+              </schmancy-button>
+
+              <schmancy-menu-item @click=${() => {
                 // Build a comprehensive booking info with all important details
                 const venueName = this.venue?.name || 'Venue';
                 const courtName = this.courtName || this.booking.courtId || 'Court';
@@ -437,11 +446,59 @@ export class BookingDetails extends $LitElement() {
                   navigator.clipboard.writeText(bookingInfo);
                   $notify.success('Booking details copied to clipboard');
                 }
-              }}
-            >
-              <schmancy-icon slot="prefix">share</schmancy-icon>
-              Share Details
-            </schmancy-button>
+              }}>
+                <div class="flex items-center gap-2">
+                  <schmancy-icon>content_copy</schmancy-icon>
+                  <span>Copy to Clipboard</span>
+                </div>
+              </schmancy-menu-item>
+
+              <schmancy-menu-item @click=${() => {
+                // Build a more WhatsApp-friendly message format
+                const venueName = this.venue?.name || 'Venue';
+                const courtName = this.courtName || this.booking.courtId || 'Court';
+                const status = this.booking.status.charAt(0).toUpperCase() + this.booking.status.slice(1);
+                
+                const message = [
+                  `*BOOKING DETAILS*`,
+                  `----------------`,
+                  `*Booking:* #${this.booking.id}`,
+                  `*Date:* ${formattedDate}`,
+                  `*Time:* ${formattedStartTime} - ${formattedEndTime}`,
+                  `*Status:* ${status}`,
+                  `*Venue:* ${venueName}`,
+                  `*Court:* ${courtName}`,
+                  ``,
+                  `Please contact us if you have any questions about your booking.`
+                ].join('\n');
+                
+                // Open WhatsApp with pre-filled message
+                const encoded = encodeURIComponent(message);
+                window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+                $notify.success('Opening WhatsApp sharing');
+              }}>
+                <div class="flex items-center gap-2">
+                  <schmancy-icon>chat</schmancy-icon>
+                  <span>Share via WhatsApp</span>
+                </div>
+              </schmancy-menu-item>
+              
+              <schmancy-menu-item @click=${() => {
+                // Format for SMS
+                const message = `Booking #${this.booking.id}: ${formattedDate} at ${formattedStartTime} - ${formattedEndTime}, ${this.venue?.name || 'Venue'}, ${this.courtName || this.booking.courtId || 'Court'}`;
+                
+                // Open SMS
+                const encoded = encodeURIComponent(message);
+                window.open(`sms:?&body=${encoded}`, '_blank');
+                $notify.success('Opening SMS app');
+              }}>
+                <div class="flex items-center gap-2">
+                  <schmancy-icon>sms</schmancy-icon>
+                  <span>Share via SMS</span>
+                </div>
+              </schmancy-menu-item>
+              
+            </schmancy-menu>
           </div>
         </div>
       </div>
