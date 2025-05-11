@@ -2,6 +2,7 @@
 import { Handler } from '@netlify/functions'
 import { corsHeaders } from './_shared/cors'
 import admin from 'firebase-admin'
+import { BookingEmailRequest, BookingEmailResponse } from './types/shared-types'
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
@@ -41,14 +42,18 @@ const handler: Handler = async (event, context) => {
 
 	try {
 		// Parse the request body
-		const data = JSON.parse(event.body || '{}')
+		const data = JSON.parse(event.body || '{}') as BookingEmailRequest
 
 		// Validate required fields
 		if (!data.bookingId || !data.customerEmail || !data.bookingDetails) {
+			const response: BookingEmailResponse = {
+				success: false,
+				error: 'Missing required fields'
+			}
 			return {
 				statusCode: 400,
 				headers: corsHeaders,
-				body: JSON.stringify({ error: 'Missing required fields' }),
+				body: JSON.stringify(response),
 			}
 		}
 
@@ -57,10 +62,14 @@ const handler: Handler = async (event, context) => {
 		const bookingDoc = await bookingRef.get()
 
 		if (!bookingDoc.exists) {
+			const response: BookingEmailResponse = {
+				success: false,
+				error: 'Booking not found'
+			}
 			return {
 				statusCode: 404,
 				headers: corsHeaders,
-				body: JSON.stringify({ error: 'Booking not found' }),
+				body: JSON.stringify(response),
 			}
 		}
 
@@ -86,33 +95,40 @@ const handler: Handler = async (event, context) => {
 				emailResent: true, // Flag to indicate this was a manual resend
 			})
 
+			const response: BookingEmailResponse = {
+				success: true,
+				message: 'Email resent successfully'
+			}
+
 			return {
 				statusCode: 200,
 				headers: corsHeaders,
-				body: JSON.stringify({
-					success: true,
-					message: 'Email resent successfully',
-				}),
+				body: JSON.stringify(response),
 			}
 		} else {
+			const response: BookingEmailResponse = {
+				success: false,
+				error: emailResult.error || 'Failed to resend email'
+			}
+			
 			return {
 				statusCode: 500,
 				headers: corsHeaders,
-				body: JSON.stringify({
-					success: false,
-					error: emailResult.error || 'Failed to resend email',
-				}),
+				body: JSON.stringify(response),
 			}
 		}
-	} catch (error) {
+	} catch (error: any) {
 		console.error('Error resending booking email:', error)
+
+		const response: BookingEmailResponse = {
+			success: false,
+			error: `Error resending email: ${error.message || 'Unknown error'}`
+		}
 
 		return {
 			statusCode: 500,
 			headers: corsHeaders,
-			body: JSON.stringify({
-				error: `Error resending email: ${error.message || 'Unknown error'}`,
-			}),
+			body: JSON.stringify(response),
 		}
 	}
 }

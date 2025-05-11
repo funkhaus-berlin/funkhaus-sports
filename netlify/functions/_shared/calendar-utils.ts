@@ -1,8 +1,6 @@
 // /netlify/functions/_shared/calendar-utils.ts
 import moment from 'moment'
 
-// We'll use moment instead of dayjs for better compatibility
-
 export interface CalendarEvent {
   id: string
   title: string
@@ -10,109 +8,102 @@ export interface CalendarEvent {
   location: string
   startTime: Date | string
   endTime: Date | string
+  // Add formatted date strings for Google Calendar and other services
+  googleStartDate?: string
+  googleEndDate?: string
+  startDate?: string
+  endDate?: string
 }
 
 /**
- * Generate an RFC 5545 compliant ICS file for maximum compatibility with Apple Calendar
- * 
- * This follows all the requirements for Apple Calendar:
- * - Proper UTC date/time formatting with Z suffix
- * - Consistent UID format
- * - Line folding for lines >75 characters
- * - Escaped special characters
- * - CRLF line endings
+ * Generate a simple ICS file following exactly the same format as the frontend implementation
+ * This ensures compatibility with all calendar systems
  */
 export function generateICSFile(event: CalendarEvent): string {
   try {
-    // Format dates in UTC format with Z suffix (required by Apple Calendar)
-    const formatUTCDate = (date: Date | string): string => {
-      return moment(date).utc().format('YYYYMMDDTHHmmss') + 'Z'
-    }
+    // Log incoming event data for debugging
+    console.log('Creating calendar event with data:', {
+      id: event.id,
+      title: event.title, 
+      startTime: event.startTime,
+      endTime: event.endTime,
+      location: event.location
+    })
     
-    // Convert string or Date objects to properly formatted dates
-    const startDate = formatUTCDate(event.startTime)
-    const endDate = formatUTCDate(event.endTime)
-    const now = formatUTCDate(new Date())
+    // Convert dates to moment objects for consistent formatting
+    const startDate = moment(event.startTime)
+    const endDate = moment(event.endTime)
     
-    // Create a unique, deterministic UID for this event
-    // Apple Calendar needs consistent UIDs for the same event
-    const uid = `booking-${event.id.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}@funkhaus-sports.com`
+    // Format dates exactly like the frontend implementation
+    const start = startDate.utc().format('YYYYMMDDTHHmmss')
+    const end = endDate.utc().format('YYYYMMDDTHHmmss')
+    const now = moment().utc().format('YYYYMMDDTHHmmss')
     
-    // Properly escape text for iCalendar format
-    const escapeText = (text: string): string => {
-      if (!text) return ''
-      
-      return text
-        .replace(/\\/g, '\\\\')  // Escape backslashes first
-        .replace(/;/g, '\\;')    // Escape semicolons
-        .replace(/,/g, '\\,')    // Escape commas
-        .replace(/\r?\n/g, '\\n') // Convert all newlines to \\n
-    }
+    // Create UID in same format as frontend
+    const uid = `booking-${event.id || Math.random().toString(36).substring(2, 11)}@funkhaus-sports.com`
     
-    // Implement line folding according to RFC 5545 (required for Apple Calendar)
-    const foldLine = (line: string): string => {
-      if (line.length <= 75) {
-        return line
-      }
-      
-      let result = ''
-      for (let i = 0; i < line.length; i += 75) {
-        result += (i > 0 ? '\r\n ' : '') + line.substring(i, Math.min(i + 75, line.length))
-      }
-      return result
-    }
+    // Clean up location string to ensure it's properly formatted
+    // Remove any [object Object] references that might be in the string
+    const cleanLocation = (typeof event.location === 'string') 
+      ? event.location.replace(/\[object Object\]/g, '').replace(/undefined/g, '').replace(/,\s*,/g, ',').replace(/,\s*$/g, '')
+      : 'Funkhaus Sports Berlin'
     
-    // Create safe, escaped versions of text fields
-    const safeTitle = escapeText(event.title)
-    const safeDescription = escapeText(event.description)
-    const safeLocation = escapeText(event.location)
+    console.log('Cleaned location for calendar:', cleanLocation)
     
-    // Build the iCalendar content with line folding where needed
-    const icsLines = [
+    // Create calendar content in exact same format as frontend
+    // The key is to use \r\n for line breaks - critical for Apple Calendar compatibility
+    const icsContent = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//Funkhaus Sports//Court Booking//EN',
+      'PRODID:-//Funkhaus Berlin Sports//Court Booking//EN',
       'CALSCALE:GREGORIAN',
-      'METHOD:REQUEST', // REQUEST is for invitations, Apple Calendar prefers this
+      'METHOD:PUBLISH',
       'BEGIN:VEVENT',
-      foldLine(`UID:${uid}`),
-      `DTSTAMP:${now}`,
-      `DTSTART:${startDate}`,
-      `DTEND:${endDate}`,
-      foldLine(`SUMMARY:${safeTitle}`),
-      foldLine(`DESCRIPTION:${safeDescription}`),
-      foldLine(`LOCATION:${safeLocation}`),
+      `UID:${uid}`,
+      `DTSTAMP:${now}Z`,
+      `DTSTART:${start}Z`,
+      `DTEND:${end}Z`,
+      `SUMMARY:${event.title}`,
+      `LOCATION:${cleanLocation}`,
       'STATUS:CONFIRMED',
-      'SEQUENCE:0', // Increment for updates to the same event
+      'SEQUENCE:0',
       'BEGIN:VALARM',
-      'TRIGGER:-PT30M', // 30 minute reminder
+      'TRIGGER:-PT1H',
       'ACTION:DISPLAY',
       'DESCRIPTION:Reminder',
       'END:VALARM',
       'END:VEVENT',
       'END:VCALENDAR'
-    ]
+    ].join('\r\n')
     
-    // Join with CRLF as required by RFC 5545
-    return icsLines.join('\r\n')
+    // Log the generated ICS content for debugging
+    console.log('Generated ICS file content :', icsContent)
+    
+    return icsContent
   } catch (error) {
     console.error('Error generating ICS file:', error)
     
-    // Provide a fallback basic ICS file if there's an error
+    // If anything fails, provide a simple fallback
     return [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//Funkhaus Sports//Court Booking//EN',
+      'PRODID:-//Funkhaus Berlin Sports//Court Booking//EN',
       'CALSCALE:GREGORIAN',
-      'METHOD:REQUEST',
+      'METHOD:PUBLISH',
       'BEGIN:VEVENT',
       `UID:fallback-${Date.now()}@funkhaus-sports.com`,
       `DTSTAMP:${moment().utc().format('YYYYMMDDTHHmmss')}Z`,
       `DTSTART:${moment().utc().format('YYYYMMDDTHHmmss')}Z`,
       `DTEND:${moment().add(1, 'hour').utc().format('YYYYMMDDTHHmmss')}Z`,
       'SUMMARY:Court Booking',
-      'DESCRIPTION:Your court booking at Funkhaus Sports',
+      'LOCATION:Funkhaus Berlin Sports Center',
       'STATUS:CONFIRMED',
+      'SEQUENCE:0',
+      'BEGIN:VALARM',
+      'TRIGGER:-PT1H',
+      'ACTION:DISPLAY',
+      'DESCRIPTION:Reminder',
+      'END:VALARM',
       'END:VEVENT',
       'END:VCALENDAR'
     ].join('\r\n')
@@ -132,36 +123,131 @@ export function createCalendarEvent(
   date: string,
   additionalDetails: string = ''
 ): CalendarEvent {
-  // Use hardcoded values for testing to ensure stability
-  const testDate = new Date('2025-05-10T17:00:00.000Z')
-  const testEndDate = new Date('2025-05-10T17:30:00.000Z')
-  
-  // Store the real dates as a fallback
-  let realStartTime: Date | null = null
-  let realEndTime: Date | null = null
+  // Log all input parameters for debugging
+  console.log('createCalendarEvent input parameters:', {
+    bookingId,
+    courtName,
+    venueName,
+    venueAddress,
+    startTime,
+    endTime,
+    date,
+    additionalDetails
+  });
+  let parsedStartTime: Date
+  let parsedEndTime: Date
   
   try {
-    // Attempt to parse the real dates, but don't use them yet - just log for debugging
+    // Try to properly parse the time and date inputs
     if (startTime && startTime.includes('T') && startTime.includes('Z')) {
-      realStartTime = new Date(startTime)
+      // If it's already in ISO format
+      parsedStartTime = new Date(startTime)
     } else if (date && startTime) {
-      realStartTime = new Date(`${date}T${startTime}`)
+      // If we have separate date and time
+      // First try to interpret the date
+      const parsedDate = moment(date, ['ddd, MMM D, YYYY', 'YYYY-MM-DD', 'M/D/YYYY', 'D MMM YYYY'])
+      
+      // Then extract hours and minutes from the time string
+      const timeMatch = startTime.match(/(\d+):(\d+)\s*(am|pm|AM|PM)?/)
+      if (timeMatch) {
+        let hours = parseInt(timeMatch[1])
+        const minutes = parseInt(timeMatch[2])
+        const ampm = timeMatch[3]?.toLowerCase()
+        
+        // Handle AM/PM if present
+        if (ampm === 'pm' && hours < 12) hours += 12
+        if (ampm === 'am' && hours === 12) hours = 0
+        
+        // Set the time components
+        parsedDate.hours(hours).minutes(minutes).seconds(0).milliseconds(0)
+        parsedStartTime = parsedDate.toDate()
+      } else {
+        // Fallback: just try to parse the whole string
+        parsedStartTime = new Date(`${date}T${startTime}`)
+      }
+    } else {
+      // Fallback to default
+      parsedStartTime = new Date('2025-05-10T17:00:00.000Z')
     }
     
+    // Same process for end time
     if (endTime && endTime.includes('T') && endTime.includes('Z')) {
-      realEndTime = new Date(endTime)
+      parsedEndTime = new Date(endTime)
     } else if (date && endTime) {
-      realEndTime = new Date(`${date}T${endTime}`)
+      const parsedDate = moment(date, ['ddd, MMM D, YYYY', 'YYYY-MM-DD', 'M/D/YYYY', 'D MMM YYYY'])
+      
+      const timeMatch = endTime.match(/(\d+):(\d+)\s*(am|pm|AM|PM)?/)
+      if (timeMatch) {
+        let hours = parseInt(timeMatch[1])
+        const minutes = parseInt(timeMatch[2])
+        const ampm = timeMatch[3]?.toLowerCase()
+        
+        if (ampm === 'pm' && hours < 12) hours += 12
+        if (ampm === 'am' && hours === 12) hours = 0
+        
+        parsedDate.hours(hours).minutes(minutes).seconds(0).milliseconds(0)
+        parsedEndTime = parsedDate.toDate()
+      } else {
+        parsedEndTime = new Date(`${date}T${endTime}`)
+      }
+    } else {
+      parsedEndTime = new Date('2025-05-10T17:30:00.000Z')
     }
     
-    console.log('Real dates:', { startTime, endTime, realStartTime, realEndTime })
+    // Ensure end time is after start time
+    if (parsedEndTime <= parsedStartTime) {
+      parsedEndTime = new Date(parsedStartTime.getTime() + 60 * 60 * 1000) // Add 1 hour
+    }
+    
+    console.log('Parsed dates:', { 
+      startTime, 
+      endTime, 
+      parsedStartTime: parsedStartTime.toISOString(), 
+      parsedEndTime: parsedEndTime.toISOString() 
+    })
   } catch (error) {
-    console.error('Error parsing dates:', error)
+    console.error('Error parsing dates, using defaults:', error)
+    // Use default dates if parsing fails
+    parsedStartTime = new Date('2025-05-10T17:00:00.000Z')
+    parsedEndTime = new Date('2025-05-10T17:30:00.000Z')
   }
   
-  // Always use the test dates for now until we debug the real date parsing
-  const parsedStartTime = testDate
-  const parsedEndTime = testEndDate
+  // Format venue address properly
+  let formattedAddress = venueName
+  
+  // Only add address parts if they seem valid (not undefined or [object Object])
+  if (venueAddress && 
+     !venueAddress.includes('[object Object]') && 
+     !venueAddress.includes('undefined undefined')) {
+    formattedAddress = `${venueName}, ${venueAddress}`
+  }
+  
+  console.log('Formatted location for calendar:', formattedAddress)
+  
+  // Format dates for Google Calendar (YYYYMMDDTHHmmssZ format)
+  let googleStartDate, googleEndDate, startDate, endDate
+  
+  try {
+    // Use moment.js to format dates consistently for Google Calendar
+    googleStartDate = moment(parsedStartTime).utc().format('YYYYMMDDTHHmmss') + 'Z'
+    googleEndDate = moment(parsedEndTime).utc().format('YYYYMMDDTHHmmss') + 'Z'
+    
+    // Format dates for ISO strings
+    startDate = moment(parsedStartTime).toISOString()
+    endDate = moment(parsedEndTime).toISOString()
+    
+    console.log('Successfully formatted calendar dates:', {
+      googleStartDate,
+      googleEndDate
+    })
+  } catch (error) {
+    console.error('Error formatting dates for calendar:', error)
+    // Provide fallback values
+    googleStartDate = ''
+    googleEndDate = ''
+    startDate = ''
+    endDate = ''
+  }
   
   return {
     id: bookingId,
@@ -173,8 +259,13 @@ Date: ${moment(parsedStartTime).format('dddd, MMMM D, YYYY')}
 ${additionalDetails ? `\n${additionalDetails}` : ''}
 
 Booking ID: ${bookingId}`,
-    location: venueAddress,
+    location: formattedAddress,
     startTime: parsedStartTime,
-    endTime: parsedEndTime
+    endTime: parsedEndTime,
+    // Add pre-formatted date strings to avoid template processing
+    googleStartDate,
+    googleEndDate,
+    startDate,
+    endDate
   }
 }

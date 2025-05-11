@@ -528,7 +528,6 @@ export class TimeSelectionStep extends $LitElement(css`
 
 		// After data is loaded, try to scroll to appropriate position
 		this.updateComplete.then(() => {
-			this.checkSelectedTimeAvailability()
 			if (this.state$.value.viewMode === 'list') {
 				if (this.booking.startTime) {
 					setTimeout(() => this.scrollToTime(this.booking.startTime), 150)
@@ -537,6 +536,10 @@ export class TimeSelectionStep extends $LitElement(css`
 					setTimeout(() => this.scrollToFirstAvailableTime(), 150)
 				}
 			}
+
+      setTimeout(() => {
+			  this.checkSelectedTimeAvailability()
+      }, 1000);
 		})
 	}
 
@@ -614,6 +617,30 @@ export class TimeSelectionStep extends $LitElement(css`
 		if (!slot.available) return
 
 		try {
+			// Check if this time is already selected (user clicked on a selected time)
+			const isCurrentlySelected = this.isTimeSelected(slot)
+			
+			if (isCurrentlySelected) {
+				// If the time is already selected, unselect it
+				bookingContext.set({
+					startTime: '',
+					endTime: ''
+				}, true)
+				
+				// Highlight the unselected time using our ref system
+				const selectedEl = this.timeSlotRefs.get(slot.value)
+				if (selectedEl) {
+					selectedEl.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
+				}
+				
+			
+				
+				// Announce for screen reader
+				this.announceForScreenReader('Time selection cleared')
+				
+				return // Exit the function early, no need to proceed with selection logic
+			}
+			
 			// Convert selected time to UTC ISO string
 			const hour = Math.floor(slot.value / 60)
 			const minute = slot.value % 60

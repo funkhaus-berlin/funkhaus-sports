@@ -26,6 +26,14 @@ const db = admin.firestore()
 /**
  * Email handler for sending booking confirmations
  */
+// Define address type to handle both string and object formats
+type AddressType = string | {
+	street: string
+	city?: string
+	postalCode?: string
+	country?: string
+}
+
 interface EmailBookingData {
 	bookingId: string
 	customerEmail: string
@@ -33,10 +41,10 @@ interface EmailBookingData {
 	customerPhone: string
 	venueInfo: {
 		name: string
-		address: string
-		city: string
-		postalCode: string
-		country: string
+		address: AddressType
+		city?: string
+		postalCode?: string
+		country?: string
 	}
 	bookingDetails: {
 		date: string
@@ -132,10 +140,65 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		// Convert buffer to base64 for attachment
 		const pdfBase64 = pdfBuffer.toString('base64')
 		
-		// Build the venue address string
-		const venueAddress = data.venueInfo ? 
-			`${data.venueInfo.name}, ${data.venueInfo.address}, ${data.venueInfo.postalCode} ${data.venueInfo.city}, ${data.venueInfo.country}` : 
-			data.bookingDetails.venue
+		// Build the venue address string based on the venue interface (Address type)
+		let venueAddress = data.bookingDetails.venue
+		
+		// Check if venue info is available
+		if (data.venueInfo) {
+			try {
+				const addressParts: string[] = []
+				
+				// Handle address which could be a string or an object
+				if (data.venueInfo.address) {
+					if (typeof data.venueInfo.address === 'string') {
+						// If it's a simple string
+						addressParts.push(data.venueInfo.address)
+					} else if (typeof data.venueInfo.address === 'object' && data.venueInfo.address.street) {
+						// If it's an object with a street property
+						addressParts.push(data.venueInfo.address.street)
+					}
+				}
+				
+				// Format city and postal code
+				const cityPostal: string[] = []
+				
+				// Check direct properties first
+				if (data.venueInfo.postalCode) {
+					cityPostal.push(data.venueInfo.postalCode)
+				} else if (typeof data.venueInfo.address === 'object' && data.venueInfo.address.postalCode) {
+					cityPostal.push(data.venueInfo.address.postalCode)
+				}
+				
+				if (data.venueInfo.city) {
+					cityPostal.push(data.venueInfo.city)
+				} else if (typeof data.venueInfo.address === 'object' && data.venueInfo.address.city) {
+					cityPostal.push(data.venueInfo.address.city)
+				}
+				
+				if (cityPostal.length > 0) {
+					addressParts.push(cityPostal.join(' '))
+				}
+				
+				// Add country if available (check both direct and nested properties)
+				let country = data.venueInfo.country
+				if (!country && typeof data.venueInfo.address === 'object' && data.venueInfo.address.country) {
+					country = data.venueInfo.address.country
+				}
+				
+				if (country) {
+					addressParts.push(country)
+				}
+				
+				// Only update venueAddress if we have valid parts
+				if (addressParts.length > 0) {
+					venueAddress = addressParts.join(', ')
+					console.log('Formatted venue address:', venueAddress)
+				}
+			} catch (error) {
+				console.error('Error formatting venue address:', error)
+				// Keep the default venue address from booking details
+			}
+		}
 		
 		// Create calendar event data
 		const calendarEvent = createCalendarEvent(
@@ -184,9 +247,9 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 					content: pdfBase64,
 				},
 				{
-					filename: 'calendar-event.ics',
+					filename: 'court-booking.ics',
 					content: icsBase64,
-					contentType: 'text/calendar; charset=UTF-8; method=REQUEST',
+					contentType: 'text/calendar; charset=UTF-8; method=PUBLISH',
 				},
 			],
 		})

@@ -97,6 +97,7 @@ export class CourtBookingSystem extends $LitElement() {
 		bookingContext.$.pipe(
 			filter(() => !!this.booking),
 			filter(booking => !!booking.startTime && !!booking.endTime && !!booking.courtId),
+      filter(b=> !!this.availableCourts.get(b.courtId)),
 			distinctUntilChanged((prev, curr) => {
 				return prev.startTime === curr.startTime && prev.endTime === curr.endTime && prev.courtId === curr.courtId
 			}),
@@ -359,7 +360,7 @@ private shouldShowStep(step: BookingFlowStep): boolean {
   if (
     dateStep &&
     this.bookingProgress.currentStep === dateStep.step &&
-    this.bookingProgress.expandedSteps.includes(dateStep.step)
+    this.bookingProgress.expandedSteps.includes(dateStep.step) 
   ) {
     return step.step === dateStep.step
   }

@@ -46,6 +46,18 @@
   status = 200
   force = true
 
+[[redirects]]
+  from = "/api/resend-booking-email"
+  to = "/.netlify/functions/resend-booking-email"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/check-email-status"
+  to = "/.netlify/functions/check-email-status"
+  status = 200
+  force = true
+
 
 [[redirects]]
   from = "/*"

@@ -3,197 +3,323 @@ html(lang="en")
   head
     meta(charset="UTF-8")
     meta(name="viewport" content="width=device-width, initial-scale=1.0")
-    title Booking Confirmation
+    title Court Booking Confirmation
+    //- Simplified JSON-LD for Gmail calendar integration
+    script(type="application/ld+json").
+      {
+        "@context": "http://schema.org",
+        "@type": "EventReservation",
+        "reservationId": "#{bookingId || ''}",
+        "reservationStatus": "http://schema.org/Confirmed",
+        "underName": {
+          "@type": "Person",
+          "name": "#{customer.name}"
+        },
+        "reservationFor": {
+          "@type": "Event",
+          "name": "Court Booking: #{booking.court}",
+          "startDate": "#{calendarEvent && calendarEvent.startDate ? calendarEvent.startDate : ''}",
+          "endDate": "#{calendarEvent && calendarEvent.endDate ? calendarEvent.endDate : ''}",
+          "location": {
+            "@type": "Place",
+            "name": "#{booking.venue}"
+          }
+        }
+      }
     style.
+      /* Base styles */
       body {
-        font-family: Arial, sans-serif;
-        line-height: 1.5;
-        color: #000;
-        background-color: #fff;
+        font-family: "GT-Eesti-Pro-Display-Regular", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        line-height: 1.4;
+        color: #222;
+        background-color: #121212;
         margin: 0;
         padding: 0;
       }
+      
+      /* Container */
       .container {
         max-width: 600px;
         margin: 0 auto;
-        padding: 20px;
+        background: #fff;
       }
+      
+      /* Header */
       .header {
+        background-color: #000;
+        padding: 24px 0;
         text-align: center;
-        padding-bottom: 20px;
-        border-bottom: 1px solid #000;
-        margin-bottom: 20px;
       }
       .logo {
-        max-width: 120px;
-        height: auto;
+        height: 24px;
+        width: auto;
       }
-      h1 {
-        font-size: 20px;
-        margin-top: 15px;
+      
+      /* Main content */
+      .content {
+        padding: 40px;
       }
-      h2 {
-        font-size: 16px;
-        margin-top: 20px;
-        margin-bottom: 10px;
-        border-bottom: 1px solid #000;
-        padding-bottom: 5px;
+      
+      /* Booking details */
+      .greeting {
+        font-size: 15px;
+        margin: 0 0 8px;
+        color: #666;
+        letter-spacing: 0.01em;
       }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 20px;
+      .booking-title {
+        font-size: 26px;
+        font-weight: 500;
+        margin: 0 0 30px;
+        color: #000;
+        letter-spacing: -0.02em;
       }
-      table tr td {
-        padding: 8px 0;
+      
+      /* Featured date box - improved layout */
+      .date-banner {
+        display: flex;
+        align-items: stretch;
+        margin-bottom: 30px;
+        background-color: #fff;
+        border: 1px solid #e1e1e1;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
       }
-      .label {
-        font-weight: bold;
-        width: 40%;
-      }
-      .footer {
-        margin-top: 30px;
+      .date-box {
+        flex-shrink: 0;
         text-align: center;
-        padding-top: 20px;
-        border-top: 1px solid #000;
-        font-size: 14px;
-      }
-      .button {
-        display: inline-block;
+        padding: 20px 10px;
+        width: 90px;
         background-color: #000;
-        color: white;
-        padding: 8px 15px;
+        color: #fff;
+      }
+      .date-day {
+        font-size: 42px;
+        font-weight: 600;
+        line-height: 1;
+        letter-spacing: -0.02em;
+      }
+      .date-month {
+        text-transform: uppercase;
+        font-size: 14px;
+        letter-spacing: 0.05em;
+        margin-top: 4px;
+        font-weight: 500;
+      }
+      .date-year {
+        font-size: 12px;
+        opacity: 0.7;
+        margin-top: 2px;
+      }
+      .date-details {
+        flex-grow: 1;
+        padding: 20px;
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+      }
+      .time-display {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: #000;
+      }
+      .location-display {
+        font-size: 15px;
+        color: #444;
+        margin: 0 0 5px 0;
+      }
+      .address-line {
+        font-size: 14px;
+        color: #666;
+        margin: 0 0 5px 0;
+      }
+      .price-display {
+        font-size: 16px;
+        margin: 10px 0 0 0;
+        color: #000;
+      }
+      
+      /* Calendar section - improved layout */
+      .calendar-section {
+        margin: 35px 0;
+        padding: 30px;
+        text-align: center;
+        background-color: #f7f7f7;
+        border-radius: 4px;
+      }
+      .calendar-heading {
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #555;
+        margin: 0 0 20px;
+        font-weight: 500;
+      }
+      .calendar-links {
+        display: flex;
+        justify-content: center;
+        gap: 24px;
+        margin: 0;
+        padding: 0;
+      }
+      .calendar-links a {
+        display: inline-block;
+        color: #000;
+        background-color: #fff;
         text-decoration: none;
-        margin-top: 15px;
+        font-size: 13px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 10px 20px;
+        border-radius: 3px;
+        border: 1px solid #e1e1e1;
+        transition: all 0.2s ease;
+      }
+      .calendar-links a:hover {
+        background-color: #f0f0f0;
+      }
+      .calendar-note {
+        font-size: 14px;
+        color: #666;
+        margin: 10px 0 0;
+        font-style: italic;
+      }
+      
+      /* Footer */
+      .footer {
+        margin-top: 40px;
+        padding: 24px 0;
+        text-align: center;
+        font-size: 12px;
+        color: #777;
+        border-top: 1px solid #e1e1e1;
+      }
+      .footer a {
+        color: #000;
+        text-decoration: none;
+        font-weight: 500;
       }
 
   body
     div.container
       div.header
-        img.logo(src="https://funkhausevents.netlify.app/logo.png" alt="Funkhaus Sports Logo")
-        h1 Booking Confirmation
-
-      p Hi #{customer.name},
+        img.logo(src="https://funkhausevents.netlify.app/logo-light.svg" alt="Funkhaus")
       
-      p Your court reservation has been confirmed.
-      
-      h2 Court Details
-      table
-        tr
-          td.label Court:
-          td #{booking.court}
-        tr
-          td.label Venue:
-          td #{booking.venue}
-        if venue && venue.address
-          tr
-            td.label Address:
-            td #{venue.address.street}, #{venue.address.city}, #{venue.address.postalCode}, #{venue.address.country}
-              
-      h2 Booking Details
-      table
-        tr
-          td.label Date:
-          td #{booking.date}
-        tr
-          td.label Time:
-          td #{booking.startTime} - #{booking.endTime}
-        tr
-          td.label Total Price:
-          td €#{booking.price}
+      div.content
+        p.greeting Hello #{customer.name},
+        h1.booking-title Your booking is confirmed
+        
+        //- Featured date banner with key booking info
+        div.date-banner
+          //- Date box with day, month, year
+          div.date-box
+            if booking.date
+              - var dateObj = new Date(booking.date)
+              - var day = dateObj.getDate()
+              - var month = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][dateObj.getMonth()]
+              - var year = dateObj.getFullYear()
+              div.date-day #{day}
+              div.date-month #{month}
+              div.date-year #{year}
           
-      h2 Your Event
-      //- Email-safe calendar preview using tables
-      table(cellpadding="0" cellspacing="0" border="0" style="width: 100%; max-width: 600px; margin: 20px 0; background-color: #f8f8f8; border-left: 4px solid #000; border-radius: 4px;")
-        tr
-          td(style="padding: 20px;")
-            //- Date Column (Left side)
-            table(cellpadding="0" cellspacing="0" border="0" style="float: left; text-align: center; padding-right: 15px; margin-right: 15px; border-right: 1px solid #ddd; min-width: 60px;")
-              tr
-                //- Use hardcoded date for reliability
-                - var month = 'MAY';
-                - var day = '10';
-                - var year = '2025';
-                td(style="text-transform: uppercase; font-size: 14px; font-weight: bold; color: #000; font-family: Arial, sans-serif;")= month
-              tr
-                td(style="font-size: 24px; font-weight: bold; line-height: 1; margin: 5px 0; font-family: Arial, sans-serif;")= day
-              tr
-                td(style="font-size: 14px; color: #666; font-family: Arial, sans-serif;")= year
+          div.date-details
+            p.time-display #{booking.startTime} — #{booking.endTime}
+            p.location-display
+              strong #{booking.court}
+              |  at #{booking.venue}
             
-            //- Event Details (Right side)
-            table(cellpadding="0" cellspacing="0" border="0" style="font-family: Arial, sans-serif;")
-              tr
-                td(style="font-weight: bold; margin-bottom: 10px; font-size: 16px; font-family: Arial, sans-serif;")
-                  | 🎾 Court Booking: #{booking.court}
-              tr
-                td(style="font-weight: bold; margin-bottom: 8px; font-size: 14px; font-family: Arial, sans-serif;")
-                  | ⏰ #{booking.startTime} - #{booking.endTime}
-              tr
-                td(style="color: #666; font-size: 14px; font-family: Arial, sans-serif;")
-                  | 📍 #{booking.venue}
-                  
-      //- We've attached the calendar details section
-      p We've attached a calendar file (.ics) to this email that you can add to your calendar.
-      
-      //- Add to Calendar buttons
-      h2 Add to Calendar
-      
-      //- Calendar button styles
-      style.
-        .calendar-btn {
-          display: inline-block;
-          background-color: #000;
-          color: white !important;
-          padding: 8px 15px;
-          margin: 5px;
-          text-decoration: none;
-          border-radius: 4px;
-          font-family: Arial, sans-serif;
-        }
-        .google-btn {
-          background-color: #4285F4;
-        }
-        .outlook-btn {
-          background-color: #0078D4;
-        }
-        .apple-btn {
-          background-color: #000;
-        }
-      
-      //- Use simpler date handling to avoid template parsing issues
-      - var eventTitle = encodeURIComponent('Court Booking: ' + booking.court);
-      - var details = encodeURIComponent('Your court booking at ' + booking.venue + '. Booking ID: ' + (typeof bookingId !== 'undefined' ? bookingId : ''));
-      - var location = encodeURIComponent(booking.venue);
-      
-      //- Default calendar dates in case parsing fails
-      - var startTimeStr = '20250510T170000Z';
-      - var endTimeStr = '20250510T173000Z';
-      
-      
-      //- Calendar link container
-      div(style="text-align: center; margin: 20px 0;")
-        //- Google Calendar button
-        a.calendar-btn.google-btn(href="https://calendar.google.com/calendar/render?action=TEMPLATE&text=Court%20Booking&dates=20250510T170000Z/20250510T173000Z&details=Your%20booking%20details&location=Funkhaus%20Sports&sf=true&output=xml", target="_blank")
-          | Google Calendar
+            //- Simplified address display
+            if venue
+              //- First try to fetch the address directly from the venue object
+              - var addressParts = []
+              
+              //- Street address
+              if venue.address && typeof venue.address === 'string'
+                - addressParts.push(venue.address)
+              else if venue.address && venue.address.street
+                - addressParts.push(venue.address.street)
+                
+              //- City and postal code
+              - var locationParts = []
+              
+              if venue.postalCode
+                - locationParts.push(venue.postalCode)
+              else if venue.address && venue.address.postalCode
+                - locationParts.push(venue.address.postalCode)
+                
+              if venue.city
+                - locationParts.push(venue.city)
+              else if venue.address && venue.address.city
+                - locationParts.push(venue.address.city)
+                
+              if locationParts.length > 0
+                - addressParts.push(locationParts.join(' '))
+                
+              //- Country
+              - var country = venue.country || (venue.address && venue.address.country ? venue.address.country : null)
+              if country
+                - addressParts.push(country)
+              
+              //- Display address if available
+              if addressParts.length > 0
+                p.address-line #{addressParts.join(', ')}
+            
+            p.price-display 
+              strong €#{booking.price}
         
-        //- Outlook Calendar button
-        a.calendar-btn.outlook-btn(href="https://outlook.office.com/calendar/0/deeplink/compose?subject=Court%20Booking&body=Your%20booking%20details&location=Funkhaus%20Sports", target="_blank")
-          | Outlook Calendar
-        
-        //- Apple Calendar button
-        a.calendar-btn.apple-btn(href="#", style="background-color:#000;")
-          | Apple Calendar (Use Attachment)
+        //- Calendar section simplified
+        div.calendar-section
+          p.calendar-heading Add to your calendar
           
-      p(style="text-align: center; color: #666; font-size: 14px; margin-top: 5px;")
-        | Simply open the attached calendar file (.ics) to add this event to your calendar.
-
-
+          //- Simple calendar links using calendarEvent data
+          - try {
+          -   var googleTitle = encodeURIComponent('Court Booking: ' + booking.court)
+          -   var googleDetails = encodeURIComponent('Your booking at ' + booking.venue)
+          -   var googleLocation = encodeURIComponent(booking.venue)
+          
+          -   if (calendarEvent && calendarEvent.googleStartDate && calendarEvent.googleEndDate) {
+          -     var googleStartDate = calendarEvent.googleStartDate
+          -     var googleEndDate = calendarEvent.googleEndDate
+          
+          -     var googleLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${googleTitle}&dates=${googleStartDate}/${googleEndDate}&details=${googleDetails}&location=${googleLocation}&sf=true&output=xml`
+          -     var outlookLink = `https://outlook.office.com/calendar/0/deeplink/compose?subject=${googleTitle}&body=${googleDetails}&location=${googleLocation}`
+          -   } else {
+          -     // Create fallback dates
+          -     var dateObj = new Date(booking.date)
+          -     var startHour = parseInt(booking.startTime.split(':')[0])
+          -     var startAmPm = booking.startTime.includes('PM') || booking.startTime.includes('pm')
+          -     if (startAmPm && startHour < 12) startHour += 12
+          -     var endHour = parseInt(booking.endTime.split(':')[0])
+          -     var endAmPm = booking.endTime.includes('PM') || booking.endTime.includes('pm')
+          -     if (endAmPm && endHour < 12) endHour += 12
+          
+          -     dateObj.setHours(startHour)
+          -     var startDate = dateObj.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+          -     dateObj.setHours(endHour)
+          -     var endDate = dateObj.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+          
+          -     var googleLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${googleTitle}&dates=${startDate}/${endDate}&details=${googleDetails}&location=${googleLocation}&sf=true&output=xml`
+          -     var outlookLink = `https://outlook.office.com/calendar/0/deeplink/compose?subject=${googleTitle}&body=${googleDetails}&location=${googleLocation}`
+          -   }
+          - } catch(e) {
+          -   var googleLink = "#"
+          -   var outlookLink = "#"
+          - }
+          
+          div.calendar-links
+            a(href=googleLink, target="_blank") 
+              | Google Calendar
+            a(href=outlookLink, target="_blank") 
+              | Outlook
+            a(href="#" download="court-booking.ics") 
+              | Apple Calendar
+      
       div.footer
-        p Questions? Contact: 
+        | Questions? Contact 
         if venue && venue.contactEmail
           a(href=`mailto:${venue.contactEmail}`) #{venue.contactEmail}
+          if venue && venue.contactPhone
+            |  or call #{venue.contactPhone}
         else
           a(href="mailto:booking@funkhaus-sports.com") booking@funkhaus-sports.com
-        
-        if venue && venue.contactPhone
-          p Phone: #{venue.contactPhone}
