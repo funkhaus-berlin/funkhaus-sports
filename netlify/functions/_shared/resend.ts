@@ -16,7 +16,7 @@ export const emailHtml = async data => {
 	})
 	
 	// Default images in case they're not provided
-	const baseUrl = 'https://funkhausevents.netlify.app'
+	const baseUrl = 'https://funkhaus-sports.netlify.app'
 	const defaultImages = {
 		googleCalendar: `${baseUrl}/icons/google-calendar.png`,
 		outlookCalendar: `${baseUrl}/icons/outlook-calendar.png`,

@@ -193,7 +193,7 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		const icsBase64 = Buffer.from(icsContent).toString('base64')
 		
 		// Set up images for email clients using absolute URLs to ensure proper rendering
-		const baseUrl = 'https://funkhausevents.netlify.app'
+		const baseUrl = 'https://funkhaus-sports.netlify.app'
 		
 		// Use complete URLs with netlify cache-busting query parameter to prevent routing issues
 		const emailImages = {
@@ -236,8 +236,6 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 					filename: 'court-booking.ics',
 					content: icsBase64,
 					contentType: 'text/calendar; charset=UTF-8; method=PUBLISH',
-					disposition: 'attachment',
-					contentId: 'court-booking.ics',
 				},
 			],
 		})
