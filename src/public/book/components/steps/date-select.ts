@@ -124,7 +124,6 @@ export class DateSelectionStep extends $LitElement(css`
 
 			// Enhanced BookingProgressContext subscription with animation handling
 			BookingProgressContext.$.pipe(
-				startWith(BookingProgressContext.value),
 				map(progress => {
 					// Find the position of Date step in the steps array
 					const dateStepIndex = progress.steps.findIndex(s => s.step === BookingStep.Date)

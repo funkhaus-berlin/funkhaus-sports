@@ -1,6 +1,6 @@
 import { createContext, SchmancyStoreObject } from '@mhmo91/schmancy'
 import dayjs from 'dayjs'
-import { Booking } from 'src/public/book/context'
+import type { Booking } from '../../../types/booking/models'
 
 // Define default date range
 export const DEFAULT_DATE_RANGE = {

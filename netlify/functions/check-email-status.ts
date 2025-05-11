@@ -2,7 +2,7 @@
 import { Handler } from '@netlify/functions'
 import admin from 'firebase-admin'
 import { corsHeaders } from './_shared/cors'
-import { Booking } from './types/booking.types'
+import { Booking, CheckEmailStatusRequest, CheckEmailStatusResponse } from './types/shared-types'
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
@@ -31,23 +31,47 @@ const handler: Handler = async (event, context) => {
 		}
 	}
 
-	// Only allow GET requests
-	if (event.httpMethod !== 'GET') {
+	// Allow both GET and POST requests for flexibility
+	if (event.httpMethod !== 'GET' && event.httpMethod !== 'POST') {
+		const response: CheckEmailStatusResponse = {
+			success: false,
+			emailSent: false,
+			error: 'Method Not Allowed'
+		}
+		
 		return {
 			statusCode: 405,
 			headers: corsHeaders,
-			body: JSON.stringify({ error: 'Method Not Allowed' }),
+			body: JSON.stringify(response),
 		}
 	}
 
-	// Get booking ID from query parameters
-	const bookingId = event.queryStringParameters?.bookingId
+	// Get booking ID (either from query parameters or request body)
+	let bookingId: string | undefined;
+	
+	if (event.httpMethod === 'GET') {
+		bookingId = event.queryStringParameters?.bookingId;
+	} else {
+		// For POST requests, parse the body
+		try {
+			const data = JSON.parse(event.body || '{}') as CheckEmailStatusRequest;
+			bookingId = data.bookingId;
+		} catch (error) {
+			console.error('Error parsing request body:', error);
+		}
+	}
 
 	if (!bookingId) {
+		const response: CheckEmailStatusResponse = {
+			success: false,
+			emailSent: false,
+			error: 'Missing bookingId parameter'
+		}
+		
 		return {
 			statusCode: 400,
 			headers: corsHeaders,
-			body: JSON.stringify({ error: 'Missing bookingId parameter' }),
+			body: JSON.stringify(response),
 		}
 	}
 
@@ -57,33 +81,46 @@ const handler: Handler = async (event, context) => {
 		const bookingDoc = await bookingRef.get()
 
 		if (!bookingDoc.exists) {
+			const response: CheckEmailStatusResponse = {
+				success: false,
+				emailSent: false,
+				error: 'Booking not found'
+			}
+			
 			return {
 				statusCode: 404,
 				headers: corsHeaders,
-				body: JSON.stringify({ error: 'Booking not found' }),
+				body: JSON.stringify(response),
 			}
 		}
 
 		const bookingData: Booking = bookingDoc.data() as Booking
 
 		// Return email status
+		const response: CheckEmailStatusResponse = {
+			success: true,
+			emailSent: !!bookingData.emailSent,
+			emailSentAt: bookingData.emailSentAt ? bookingData.emailSentAt.toDate().toISOString() : undefined
+		}
+		
 		return {
 			statusCode: 200,
 			headers: corsHeaders,
-			body: JSON.stringify({
-				emailSent: !!bookingData.emailSent,
-				emailSentAt: bookingData.emailSentAt ? bookingData.emailSentAt.toDate().toISOString() : null,
-			}),
+			body: JSON.stringify(response),
 		}
-	} catch (error) {
+	} catch (error: any) {
 		console.error('Error checking email status:', error)
 
+		const response: CheckEmailStatusResponse = {
+			success: false,
+			emailSent: false,
+			error: `Error checking email status: ${error.message || 'Unknown error'}`
+		}
+		
 		return {
 			statusCode: 500,
 			headers: corsHeaders,
-			body: JSON.stringify({
-				error: `Error checking email status: ${error.message || 'Unknown error'}`,
-			}),
+			body: JSON.stringify(response),
 		}
 	}
 }

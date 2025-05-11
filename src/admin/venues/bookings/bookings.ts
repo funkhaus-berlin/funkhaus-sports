@@ -11,7 +11,7 @@ import { combineLatest, debounceTime, filter, map, startWith, switchMap, take, t
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
-import { Booking } from 'src/public/book/context'
+import type { Booking } from '../../../types/booking/models'
 import { courtsContext } from '../courts/context'
 import { venueContext } from '../venue-context'
 import './bookings-filter'

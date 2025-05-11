@@ -97,6 +97,7 @@ export class CourtBookingSystem extends $LitElement() {
 		bookingContext.$.pipe(
 			filter(() => !!this.booking),
 			filter(booking => !!booking.startTime && !!booking.endTime && !!booking.courtId),
+      filter(b=> !!this.availableCourts.get(b.courtId)),
 			distinctUntilChanged((prev, curr) => {
 				return prev.startTime === curr.startTime && prev.endTime === curr.endTime && prev.courtId === curr.courtId
 			}),
@@ -349,29 +350,32 @@ export class CourtBookingSystem extends $LitElement() {
 private shouldShowStep(step: BookingFlowStep): boolean {
   if (!this.availability?.bookingFlowType) return true
 
-  // Get all steps in the current flow
   const flowSteps = getBookingFlowSteps()
-
-  // Get the indices in the flow
   const stepIndex = flowSteps.indexOf(step)
-  
-  // Check if this step's number is in the expandedSteps array
   const isExpanded = this.bookingProgress.expandedSteps.includes(step.step)
-  
-  // Update maxStepReached if needed
   const currentStepIndex = flowSteps.findIndex(s => s.step === this.bookingProgress.currentStep)
+
+  // If Date step is current and expanded, only show Date step
+  const dateStep = flowSteps.find(s => s.label === 'Date')
+  if (
+    dateStep &&
+    this.bookingProgress.currentStep === dateStep.step &&
+    this.bookingProgress.expandedSteps.includes(dateStep.step) 
+  ) {
+    return step.step === dateStep.step
+  }
+
   if (currentStepIndex > this.bookingProgress.maxStepReached) {
     BookingProgressContext.set({
       maxStepReached: currentStepIndex,
     })
   }
-  
+
   // Special case for Duration step - only show if time is selected
   if (step.label === 'Duration' && !this.booking.startTime) {
-    return false;
+    return false
   }
-  
-  // A step should be shown if it's in the expandedSteps array
+
   return stepIndex !== -1 && isExpanded
 }
 	/**

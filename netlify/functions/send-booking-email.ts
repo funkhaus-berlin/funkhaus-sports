@@ -8,6 +8,7 @@ import QRCode from 'qrcode'
 import { corsHeaders } from './_shared/cors'
 import { emailConfig } from './_shared/email-config'
 import resend, { emailHtml } from './_shared/resend'
+import { createCalendarEvent, generateICSFile } from './_shared/calendar-utils'
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
@@ -25,27 +26,12 @@ const db = admin.firestore()
 /**
  * Email handler for sending booking confirmations
  */
-interface EmailBookingData {
-	bookingId: string
-	customerEmail: string
-	customerName: string
-	customerPhone: string
-	venueInfo: {
-		name: string
-		address: string
-		city: string
-		postalCode: string
-		country: string
-	}
-	bookingDetails: {
-		date: string
-		startTime: string
-		endTime: string
-		price: string
-		court: string
-		venue: string
-	}
-}
+import { 
+	AddressType, 
+	VenueInfo, 
+	EmailBookingDetails, 
+	BookingEmailRequest as EmailBookingData 
+} from './types/shared-types'
 const handler: Handler = async (event, context) => {
 	// Handle preflight request for CORS
 	if (event.httpMethod === 'OPTIONS') {
@@ -122,6 +108,7 @@ const handler: Handler = async (event, context) => {
 	}
 }
 
+
 /**
  * Send email with booking confirmation using Resend
  */
@@ -130,7 +117,104 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		// Convert buffer to base64 for attachment
 		const pdfBase64 = pdfBuffer.toString('base64')
 		
+		// Build the venue address string based on the venue interface (Address type)
+		let venueAddress = data.bookingDetails.venue
+		
+		// Check if venue info is available
+		if (data.venueInfo) {
+			try {
+				const addressParts: string[] = []
+				
+				// Handle address which could be a string or an object
+				if (data.venueInfo.address) {
+					if (typeof data.venueInfo.address === 'string') {
+						// If it's a simple string
+						addressParts.push(data.venueInfo.address)
+					} else if (typeof data.venueInfo.address === 'object' && data.venueInfo.address.street) {
+						// If it's an object with a street property
+						addressParts.push(data.venueInfo.address.street)
+					}
+				}
+				
+				// Format city and postal code
+				const cityPostal: string[] = []
+				
+				// Check direct properties first
+				if (data.venueInfo.postalCode) {
+					cityPostal.push(data.venueInfo.postalCode)
+				} else if (typeof data.venueInfo.address === 'object' && data.venueInfo.address.postalCode) {
+					cityPostal.push(data.venueInfo.address.postalCode)
+				}
+				
+				if (data.venueInfo.city) {
+					cityPostal.push(data.venueInfo.city)
+				} else if (typeof data.venueInfo.address === 'object' && data.venueInfo.address.city) {
+					cityPostal.push(data.venueInfo.address.city)
+				}
+				
+				if (cityPostal.length > 0) {
+					addressParts.push(cityPostal.join(' '))
+				}
+				
+				// Add country if available (check both direct and nested properties)
+				let country = data.venueInfo.country
+				if (!country && typeof data.venueInfo.address === 'object' && data.venueInfo.address.country) {
+					country = data.venueInfo.address.country
+				}
+				
+				if (country) {
+					addressParts.push(country)
+				}
+				
+				// Only update venueAddress if we have valid parts
+				if (addressParts.length > 0) {
+					venueAddress = addressParts.join(', ')
+					console.log('Formatted venue address:', venueAddress)
+				}
+			} catch (error) {
+				console.error('Error formatting venue address:', error)
+				// Keep the default venue address from booking details
+			}
+		}
+		
+		// Create calendar event data
+		const calendarEvent = createCalendarEvent(
+			data.bookingId,
+			data.bookingDetails.court,
+			data.bookingDetails.venue,
+			venueAddress,
+			data.bookingDetails.startTime,
+			data.bookingDetails.endTime,
+			data.bookingDetails.date,
+			`Court: ${data.bookingDetails.court}\nPrice: €${data.bookingDetails.price}`
+		)
+		
+		// Log calendar event data for debugging
+		console.log('Created calendar event data:', JSON.stringify({
+			dayName: calendarEvent.dayName, 
+			dayShort: calendarEvent.dayShort,
+			day: calendarEvent.day,
+			month: calendarEvent.month,
+			monthShort: calendarEvent.monthShort,
+			year: calendarEvent.year
+		}, null, 2))
+		
+		// Generate ICS file for attachment
+		console.log('Generating ICS file for booking:', data.bookingId)
+		const icsContent = generateICSFile(calendarEvent)
+		const icsBase64 = Buffer.from(icsContent).toString('base64')
+		
 		console.log('Generating email HTML content')
+		// Set up images for email clients using locally hosted images
+		const baseUrl = 'https://funkhausevents.netlify.app'
+		const emailImages = {
+			googleCalendar: `${baseUrl}/icons/google-calendar.png`,
+			outlookCalendar: `${baseUrl}/icons/outlook-calendar.png`,
+			appleCalendar: `${baseUrl}/icons/apple-calendar.png`,
+			calendarIcon: `${baseUrl}/icons/calendar.png`,
+			logo: `${baseUrl}/logo-light.svg`
+		}
+		
 		const html = await emailHtml({
 			booking: data.bookingDetails,
 			customer: {
@@ -139,6 +223,9 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 				phone: data.customerPhone,
 			},
 			venue: data.venueInfo,
+			bookingId: data.bookingId,
+			calendarEvent: calendarEvent, // Pass calendar event data to template
+			images: emailImages // Pass image URLs to template
 		})
 		
 		if (!html) {
@@ -156,6 +243,13 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 				{
 					filename: `Booking-${data.bookingId}.pdf`,
 					content: pdfBase64,
+				},
+				{
+					filename: 'court-booking.ics',
+					content: icsBase64,
+					contentType: 'text/calendar; charset=UTF-8; method=PUBLISH',
+					disposition: 'attachment',
+					contentId: 'court-booking.ics',
 				},
 			],
 		})

@@ -10,7 +10,6 @@ import { Venue } from 'src/db/venue-collection'
 import { VenueLandingPage } from 'src/public/venues/venues'
 import { BookingUtils } from '../book/booking-utils'
 import { Booking, bookingContext, BookingProgressContext } from '../book/context'
-import { resendBookingEmail } from '../book/components/services'
 
 @customElement('booking-confirmation')
 export class BookingConfirmation extends $LitElement() {
@@ -111,13 +110,13 @@ export class BookingConfirmation extends $LitElement() {
 			content: html`
 				<div class="space-y-4">
 					<p>Enter the email address to receive the booking confirmation:</p>
-					<schmancy-input
+					<schmancy-text-field
 						id="email-input"
 						label="Email Address"
 						type="email"
 						value=${this.customerEmail}
 						required
-					></schmancy-input>
+					></schmancy-text-field>
 				</div>
 			`,
 			confirmText: 'Send',
@@ -145,10 +144,10 @@ export class BookingConfirmation extends $LitElement() {
 					customerPhone: '',
 					venueInfo: {
 						name: this.venue?.name || '',
-						address: this.venue?.address.street || '',
-						city: this.venue?.address.city || '',
-						postalCode: this.venue?.address.postalCode || '',
-						country: this.venue?.address.country || ''
+						address: this.venue?.address || '',
+						city: this.venue?.city || '',
+						postalCode: this.venue?.postalCode || '',
+						country: this.venue?.country || ''
 					},
 					bookingDetails: {
 						date: this.booking.date,
@@ -160,27 +159,31 @@ export class BookingConfirmation extends $LitElement() {
 					}
 				};
 				
-				// Use the email service to resend the email
-				resendBookingEmail(bookingData).subscribe({
-					next: result => {
-						$notify.success(`Confirmation email sent to ${newEmail}`);
-						
-						// Update the customer email if it changed
-						if (newEmail !== this.customerEmail) {
-							this.customerEmail = newEmail;
-						}
+				// Call the API to resend email
+				const response = await fetch('/api/resend-booking-email', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
 					},
-					error: error => {
-						console.error('Error resending email:', error);
-						$notify.error(`Failed to send email: ${error?.message || 'Unknown error'}`);
-					},
-					complete: () => {
-						this.resendingEmail = false;
-					}
+					body: JSON.stringify(bookingData)
 				});
-			} catch (error :any) {
+				
+				const result = await response.json();
+				
+				if (result.success) {
+					$notify.success(`Confirmation email sent to ${newEmail}`);
+					
+					// Update the customer email if it changed
+					if (newEmail !== this.customerEmail) {
+						this.customerEmail = newEmail;
+					}
+				} else {
+					throw new Error(result.error || 'Failed to send email');
+				}
+			} catch (error) {
 				console.error('Error resending email:', error);
-				$notify.error(`Failed to send email: ${error?.message || 'Unknown error'}`);
+				$notify.error(`Failed to send email: ${error.message || 'Unknown error'}`);
+			} finally {
 				this.resendingEmail = false;
 			}
 		}
@@ -318,7 +321,7 @@ export class BookingConfirmation extends $LitElement() {
 							
 							<sch-flex gap="2">
 								<schmancy-button 
-									variant="filled tonal" 
+									variant="tonal" 
 									@click=${() => this.handleResendEmail()}
 									.disabled=${this.resendingEmail}
 								>

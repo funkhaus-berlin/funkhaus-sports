@@ -7,7 +7,7 @@ import { html, TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { BehaviorSubject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs'
 import { Court } from 'src/db/courts.collection'
-import { Booking } from 'src/public/book/context'
+import type { Booking } from '../../../types/booking/models'
 import { bookingFilterContext, BookingsContext, DEFAULT_DATE_RANGE, TBookingFilter } from './bookings.context'
 
 @customElement('booking-filter')

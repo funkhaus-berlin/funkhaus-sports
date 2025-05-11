@@ -23,3 +23,13 @@ netlify dev
 ```bash
 yarn up -i '*'
 ```
+
+
+# Remove Netlify CLI global and local configs
+rm -rf ~/.netlify
+rm -rf ~/.config/netlify
+rm -rf .netlify
+
+# Optional: Reinstall CLI if it keeps acting weird
+npm uninstall -g netlify-cli
+npm install -g netlify-cli

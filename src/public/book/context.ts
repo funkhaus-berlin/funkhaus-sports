@@ -1,66 +1,13 @@
 // src/public/book/context.ts
 
 import { createContext } from '@mhmo91/schmancy'
+import type { BookingError } from '../../types/booking/errors'
+import { Booking } from '../../types/booking/models'
 
-export type BookingStatus =
-	| 'pending'
-	| 'confirmed'
-	| 'cancelled'
-	| 'completed'
-	| 'no-show'
-	| 'refunded'
-	| 'failed'
-	| 'processing'
-// Error interfaces
-export interface BookingErrorField {
-	field: string
-	message: string
-}
-
-export enum ErrorCategory {
-	VALIDATION = 'validation',
-	PAYMENT = 'payment',
-	NETWORK = 'network',
-	AVAILABILITY = 'availability',
-	SYSTEM = 'system',
-}
-
-export interface BookingError {
-	message: string
-	category: ErrorCategory
-	code?: string
-	timestamp: number
-	fieldErrors?: BookingErrorField[]
-	isDismissible?: boolean
-}
-
-// Booking interface
-export interface Booking {
-	id: string
-	userId: string
-	userName: string
-	courtId: string
-	venueId: string
-	startTime: string
-	endTime: string
-	price: number
-	date: string
-	paymentStatus?: string
-	status: BookingStatus
-	paymentIntentId?: string
-	customerEmail?: string
-	customerPhone: string
-	customerAddress: {
-		street: string
-		city: string
-		postalCode: string
-		country: string
-	}
-	createdAt?: any
-	updatedAt?: any
-	emailSent?: boolean
-	emailSentAt?: any
-}
+// Export types directly from their source modules
+export { ErrorCategory } from '../../types/booking/errors'
+export type { BookingError, BookingErrorField } from '../../types/booking/errors'
+export type { Booking, BookingStatus } from '../../types/booking/models'
 
 // Create global context for booking information
 export const bookingContext = createContext<Booking>(
@@ -80,7 +27,7 @@ export const bookingContext = createContext<Booking>(
 			city: '',
 			postalCode: '',
 			country: '',
-		},
+		} ,
 		venueId: '',
 	},
 	'session',

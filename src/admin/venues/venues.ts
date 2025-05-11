@@ -14,9 +14,7 @@ import { VenueDetailView } from './venue-detail'
 // --- Venue Management Component ---
 @customElement('venues-management')
 export class VenueManagement extends $LitElement() {
-	@select(venuesContext, undefined, {
-		required: true,
-	})
+	@select(venuesContext)
 	venues!: Map<string, Venue>
 
 	@state() loading: boolean = true

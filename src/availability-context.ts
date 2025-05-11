@@ -11,7 +11,8 @@ import { BookingsDB } from 'src/db/bookings.collection'
 import { CourtTypeEnum, SportTypeEnum } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { getUserTimezone, isTimeSlotInPast } from 'src/utils/timezone'
-import { Booking, bookingContext } from './public/book/context'
+import { bookingContext } from './public/book/context'
+import type { Booking } from './types/booking/models'
 import { Duration, TimeSlot } from './public/book/types'
 
 /**
