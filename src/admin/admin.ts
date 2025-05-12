@@ -10,7 +10,6 @@ import '@mhmo91/schmancy'
 import FunkhausSportsSignin from './signin'
 import { VenueManagement } from './venues/venues'
 import './venues/scanner/scanner-view'
-import { ScannerView } from './venues/scanner/scanner-view'
 
 @customElement('funkhaus-sports-admin')
 export default class FunkhausAdmin extends $LitElement() {
@@ -199,7 +198,7 @@ export default class FunkhausAdmin extends $LitElement() {
 
 				<schmancy-nav-drawer-content class=${this.classMap(contentDrawerClasses)}>
 					<schmancy-grid ${fullHeight()} rows="${this.fullScreen ? '1fr' : 'auto 1fr'}">
-						<schmancy-area name="admin" .default=${ScannerView}></schmancy-area>
+						<schmancy-area name="admin" .default=${VenueManagement}></schmancy-area>
 					</schmancy-grid>
 				</schmancy-nav-drawer-content>
 			</schmancy-nav-drawer>

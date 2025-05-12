@@ -296,30 +296,6 @@ export class BookingConfirmation extends $LitElement() {
                       <schmancy-typography type="body" weight="medium">${courtName}</schmancy-typography>
                     </schmancy-grid>
                     
-                    <!-- Address with map link -->
-                    <schmancy-grid span="2">
-                      <div class="flex items-center justify-between w-full">
-                        <schmancy-typography type="label" token="sm" class="text-surface-on-variant">
-                          Address:
-                        </schmancy-typography>
-                        ${this.venue?.address 
-                          ? html`
-                            <a 
-                              href="${this.getMapUrl()}" 
-                              target="_blank"
-                              class="text-primary-default hover:underline flex items-center gap-1 truncate max-w-[200px]" 
-                              title="${this.getFormattedAddress()}"
-                            >
-                              <span class="truncate font-medium">${this.getFormattedAddress()}</span>
-                              <schmancy-icon size="16px">place</schmancy-icon>
-                            </a>
-                          ` 
-                          : html`
-                            <span class="font-medium">Address unavailable</span>
-                          `
-                        }
-                      </div>
-                    </schmancy-grid>
 
                     <!-- Date -->
                     <schmancy-grid>
@@ -356,6 +332,34 @@ export class BookingConfirmation extends $LitElement() {
                         €${this.booking.price.toFixed(2)}
                       </schmancy-typography>
                     </schmancy-grid>
+                    
+                    <!-- Address with map link (full width at bottom) -->
+                    <div class="col-span-2 mt-2 border-t border-surface-variant pt-2">
+                      <div class="flex flex-col gap-1">
+                        <schmancy-typography type="label" token="sm" class="text-surface-on-variant">
+                          Address:
+                        </schmancy-typography>
+                        ${this.venue?.address 
+                          ? html`
+                            <a 
+                              href="${this.getMapUrl()}" 
+                              target="_blank"
+                              class="text-primary-default hover:underline flex items-center gap-1" 
+                            >
+                              <schmancy-typography type="body" weight="medium" class="flex-grow">
+                                ${this.getFormattedAddress()}
+                              </schmancy-typography>
+                              <schmancy-icon>directions</schmancy-icon>
+                            </a>
+                          ` 
+                          : html`
+                            <schmancy-typography type="body" weight="medium">
+                              Address unavailable
+                            </schmancy-typography>
+                          `
+                        }
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
