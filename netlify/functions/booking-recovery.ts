@@ -1,6 +1,7 @@
 // netlify/functions/booking-recovery.ts
 import { Handler } from '@netlify/functions'
 import admin from 'firebase-admin'
+import moment from 'moment'
 import { corsHeaders } from './_shared/cors'
 import stripe from './_shared/stripe'
 import { Booking } from './types/booking.types'
@@ -131,8 +132,8 @@ async function recoverSingleBooking(bookingId: string): Promise<any> {
 
 		// If booking has 'pending' status for too long, mark as abandoned
 		if (booking.paymentStatus === 'pending') {
-			const createdAt = booking.createdAt.toDate ? booking.createdAt.toDate() : new Date(booking.createdAt)
-			const hoursSincePending = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60)
+			const createdAt = moment(booking.createdAt)
+			const hoursSincePending = (Date.now() - createdAt.valueOf()) / (1000 * 60 * 60)
 
 			if (hoursSincePending > 2) {
 				// 2 hours is enough time to complete payment
