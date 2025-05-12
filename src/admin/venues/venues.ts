@@ -79,7 +79,7 @@ export class VenueManagement extends $LitElement() {
 			<schmancy-surface ${fullHeight()} type="container" rounded="all" elevation="1">
 				<div ${fullHeight()} class="max-w-6xl mx-auto p-6 h-full grid grid-rows-[auto_auto_1fr] gap-4">
 					<!-- Header with title -->
-					<div class="flex justify-between items-center mb-2">
+           				<schmancy-nav-drawer-navbar  width="200px">
 						<schmancy-typography type="headline">Venue Management</schmancy-typography>
 						<schmancy-button
 							variant="filled"
@@ -92,7 +92,8 @@ export class VenueManagement extends $LitElement() {
 						>
 							<schmancy-icon>add</schmancy-icon>Add Venue
 						</schmancy-button>
-					</div>
+</schmancy-nav-drawer-navbar>
+					
 
 					<div class="overflow-y-auto">
 						<div class="flex flex-col gap-4 p-2">

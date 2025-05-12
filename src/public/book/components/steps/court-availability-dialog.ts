@@ -151,8 +151,8 @@ export class CourtAvailabilityDialog extends $LitElement() {
 	private getTimeRanges(timeSlots: string[]): Array<{ start: string; end: string }> {
 		if (!timeSlots || timeSlots.length === 0) return []
 
-		// Sort time slots
-		const sortedSlots = [...timeSlots].sort()
+		// Keep original order without sorting
+		const sortedSlots = [...timeSlots]
 		const ranges: Array<{ start: string; end: string }> = []
 
 		let currentRange: { start: string; end: string } | null = null
@@ -477,8 +477,8 @@ export class CourtAvailabilityDialog extends $LitElement() {
 			return { extendedSlot: null, partialSlot: null, alternativeSlot: null }
 		}
 
-		// Sort available time slots
-		const availableSlots = [...availability.availableTimeSlots].sort()
+		// Keep original order without sorting
+		const availableSlots = [...availability.availableTimeSlots]
 
 		// Original booking details
 		const originalStart = dayjs(this.bookingData.startTime).format('HH:mm')
@@ -566,12 +566,8 @@ export class CourtAvailabilityDialog extends $LitElement() {
 			return null
 		}
 
-		// Sort segments by duration (longest first)
-		segments.sort((a, b) => {
-			const durationA = this.calculateSlotDuration(a.start, a.end)
-			const durationB = this.calculateSlotDuration(b.start, b.end)
-			return durationB - durationA
-		})
+		// Use the first segment without sorting by duration
+		// No sorting to maintain original order
 
 		// Return the longest available segment
 		return segments[0]

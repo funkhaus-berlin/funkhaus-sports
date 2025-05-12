@@ -735,18 +735,8 @@ export function getAllCourtsAvailability(startTime?: string, durationMinutes?: n
 		result.push(status)
 	})
 
-	// Sort courts: fully available first, then by most available slots, then by name
-	return result.sort((a, b) => {
-		if (a.fullyAvailable !== b.fullyAvailable) {
-			return a.fullyAvailable ? -1 : 1
-		}
-
-		if (a.availableTimeSlots.length !== b.availableTimeSlots.length) {
-			return b.availableTimeSlots.length - a.availableTimeSlots.length
-		}
-
-		return a.courtName.localeCompare(b.courtName)
-	})
+	// Return results without sorting
+	return result
 }
 
 /**

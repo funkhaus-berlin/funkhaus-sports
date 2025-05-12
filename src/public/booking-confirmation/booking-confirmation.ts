@@ -105,6 +105,40 @@ export class BookingConfirmation extends $LitElement() {
   }
   
   /**
+   * Get formatted address string from venue data
+   */
+  private getFormattedAddress(): string {
+    if (!this.venue?.address) return 'Address unavailable';
+    
+    // Handle both string and object address formats
+    if (typeof this.venue.address === 'string') {
+      return this.venue.address;
+    }
+    
+    const address = this.venue.address;
+    const parts = [];
+    
+    if (address.street) parts.push(address.street);
+    if (address.city) parts.push(address.city);
+    if (address.postalCode) parts.push(address.postalCode);
+    if (address.country) parts.push(address.country);
+    
+    return parts.join(', ') || 'Address unavailable';
+  }
+  
+  /**
+   * Generate Google Maps URL for directions to the venue
+   */
+  private getMapUrl(): string {
+    const address = this.getFormattedAddress();
+    const venueName = this.venue?.name || '';
+    
+    // Construct a Google Maps URL with the venue name and address
+    const query = encodeURIComponent(`${venueName}, ${address}`);
+    return `https://maps.google.com/maps?q=${query}&daddr=${query}&dirflg=d`;
+  }
+  
+  /**
    * Handle resending email confirmation
    * Prompts user for email address then calls API
    */
@@ -260,6 +294,31 @@ export class BookingConfirmation extends $LitElement() {
                         >Court:</schmancy-typography
                       >
                       <schmancy-typography type="body" weight="medium">${courtName}</schmancy-typography>
+                    </schmancy-grid>
+                    
+                    <!-- Address with map link -->
+                    <schmancy-grid span="2">
+                      <div class="flex items-center justify-between w-full">
+                        <schmancy-typography type="label" token="sm" class="text-surface-on-variant">
+                          Address:
+                        </schmancy-typography>
+                        ${this.venue?.address 
+                          ? html`
+                            <a 
+                              href="${this.getMapUrl()}" 
+                              target="_blank"
+                              class="text-primary-default hover:underline flex items-center gap-1 truncate max-w-[200px]" 
+                              title="${this.getFormattedAddress()}"
+                            >
+                              <span class="truncate font-medium">${this.getFormattedAddress()}</span>
+                              <schmancy-icon size="16px">place</schmancy-icon>
+                            </a>
+                          ` 
+                          : html`
+                            <span class="font-medium">Address unavailable</span>
+                          `
+                        }
+                      </div>
                     </schmancy-grid>
 
                     <!-- Date -->

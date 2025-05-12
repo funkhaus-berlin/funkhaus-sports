@@ -659,30 +659,11 @@ export class CourtSelectStep extends $LitElement(css`
 	}
 
 	/**
-	 * Sort courts by availability status and name
-	 * Doesn't change order when a court is selected to maintain consistency
+	 * Return courts in original order, no sorting by availability
 	 */
 	private sortCourtsByAvailability(courts: Court[]): Court[] {
-		// If a court is already selected, don't change order
-		if (this.booking?.courtId) {
-			return [...courts];
-		}
-		
-		// Otherwise sort by availability and name
-		return courts.sort((a, b) => {
-			const aInfo = this.getCourtAvailabilityInfo(a.id)
-			const bInfo = this.getCourtAvailabilityInfo(b.id)
-
-			// Sort by availability status
-			if (aInfo.status !== bInfo.status) {
-				// Full > Partial > None
-				const statusOrder = { full: 0, partial: 1, none: 2 }
-				return statusOrder[aInfo.status] - statusOrder[bInfo.status]
-			}
-
-			// Finally sort by name
-			return a.name.localeCompare(b.name)
-		})
+		// Return courts in original order
+		return [...courts];
 	}
 
 	//#endregion
@@ -921,39 +902,31 @@ export class CourtSelectStep extends $LitElement(css`
 	}
 
 	/**
-	 * Apply court preference filters to the list of courts
+	 * Apply court preference filters to the list of courts without sorting
 	 * Filters courts based on court type, player count, and other preferences
+	 * but maintains original court order
 	 */
 	private applyCourtPreferenceFilters(courts: Court[]): Court[] {
-		// If no filters are active, return all courts sorted by name
+		// If no filters are active, return courts in original order
 		if (!this.getActiveFilterCount()) {
-			return [...courts].sort((a, b) => a.name.localeCompare(b.name))
+			return [...courts]
 		}
 
-		// For active filters, prioritize matching courts first, then availability,
-		// but keep all courts visible in the display
-		return [...courts].sort((a, b) => {
-			const aMatchesFilters = this.courtMatchesFilters(a)
-			const bMatchesFilters = this.courtMatchesFilters(b)
-
-			// First sort by matching filters
-			if (aMatchesFilters !== bMatchesFilters) {
-				return aMatchesFilters ? -1 : 1
+		// For active filters, prioritize matching courts first
+		// but maintain original order within groups
+		const matchingCourts: Court[] = []
+		const nonMatchingCourts: Court[] = []
+		
+		courts.forEach(court => {
+			if (this.courtMatchesFilters(court)) {
+				matchingCourts.push(court)
+			} else {
+				nonMatchingCourts.push(court)
 			}
-
-			// If both have same filter status, then sort by availability
-			const aInfo = this.getCourtAvailabilityInfo(a.id)
-			const bInfo = this.getCourtAvailabilityInfo(b.id)
-
-			if (aInfo.status !== bInfo.status) {
-				// Full > Partial > None
-				const statusOrder = { full: 0, partial: 1, none: 2 }
-				return statusOrder[aInfo.status] - statusOrder[bInfo.status]
-			}
-
-			// If both have same filter status and availability, sort by name
-			return a.name.localeCompare(b.name)
 		})
+		
+		// Return matching courts first, then non-matching courts
+		return [...matchingCourts, ...nonMatchingCourts]
 	}
 
 	/**
