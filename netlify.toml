@@ -1,5 +1,5 @@
 [functions]
-  external_node_modules = ["react", "react/jsx-runtime", "react-dom/server"]
+  external_node_modules = ["react", "react/jsx-runtime", "react-dom/server", "firebase-admin"]
   included_files = ["netlify/functions/_shared/ticket.pug", "netlify/functions/_shared/assets/**", "netlify/functions/_shared/data/**"]
 
 [[redirects]]
