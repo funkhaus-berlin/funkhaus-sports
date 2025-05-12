@@ -235,7 +235,7 @@ html(lang="en")
               - venueAddress = parts.filter(Boolean).join(', ')
             
             if venueAddress
-              - directionsUrl = 'https://maps.google.com/?q=' + encodeURIComponent(venue.name + ', ' + venueAddress)
+              - directionsUrl = 'https://maps.google.com/?q=' + encodeURIComponent(venueAddress)
           
           //- Calendar section
           table(cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:25px 0;background-color:#f8f9fa;border-radius:8px;")
