@@ -12,8 +12,8 @@ import { CourtTypeEnum, SportTypeEnum } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { getUserTimezone, isTimeSlotInPast } from 'src/utils/timezone'
 import { bookingContext } from './public/book/context'
-import type { Booking } from './types/booking/models'
 import { Duration, TimeSlot } from './public/book/types'
+import type { Booking } from './types/booking/models'
 
 /**
  * Interface for court selection preferences
@@ -330,7 +330,7 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 				// Fetch bookings for this date
 				return BookingsDB.subscribeToCollection([
 					{ key: 'date', operator: '==', value: dayjs(date).format('YYYY-MM-DD') },
-					{ key: 'status', operator: 'in', value: ['confirmed', 'pending'] },
+					{ key: 'status', operator: 'in', value: ['confirmed', 'pending','temporary'] },
 				]).pipe(
 					map(bookingsMap => {
 						// Convert to array
