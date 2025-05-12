@@ -90,6 +90,53 @@ async function generateInvoiceNumber(db: FirebaseFirestore.Firestore, bookingId:
 /**
  * Enhanced webhook handler with improved reliability and error recovery
  */
+/**
+ * Cleanup abandoned temporary bookings that are older than a certain time threshold
+ * This helps prevent court slots from being blocked by incomplete bookings
+ */
+async function cleanupAbandonedBookings() {
+	try {
+		// Calculate cutoff time (30 minutes ago)
+		const cutoffTime = new Date()
+		cutoffTime.setMinutes(cutoffTime.getMinutes() - 30)
+		const cutoffTimeString = cutoffTime.toISOString()
+		
+		// Query for abandoned temporary bookings
+		const bookingsRef = db.collection('bookings')
+		const query = bookingsRef
+			.where('status', '==', 'temporary')
+			.where('createdAt', '<', cutoffTimeString)
+			.where('paymentStatus', '==', 'pending')
+			.limit(50) // Process in batches
+			
+		const snapshot = await query.get()
+		console.log(`Found ${snapshot.size} abandoned temporary bookings to clean up`)
+		
+		if (snapshot.empty) {
+			return
+		}
+		
+		// Mark bookings as cancelled
+		const batch = db.batch()
+		
+		snapshot.forEach(doc => {
+			const bookingRef = bookingsRef.doc(doc.id)
+			batch.update(bookingRef, {
+				status: 'cancelled',
+				paymentStatus: 'cancelled',
+				updatedAt: new Date().toISOString(),
+				cancellationReason: 'auto_cleanup_abandoned_booking'
+			})
+			console.log(`Marking abandoned booking ${doc.id} as cancelled`)
+		})
+		
+		await batch.commit()
+		console.log(`Successfully cancelled ${snapshot.size} abandoned bookings`)
+	} catch (error) {
+		console.error('Error cleaning up abandoned bookings:', error)
+	}
+}
+
 const handler: Handler = async (event, context) => {
 	// Handle preflight request for CORS
 	if (event.httpMethod === 'OPTIONS') {
@@ -107,6 +154,11 @@ const handler: Handler = async (event, context) => {
 			body: JSON.stringify({ error: 'Method Not Allowed' }),
 		}
 	}
+	
+	// Run cleanup for abandoned bookings (non-blocking)
+	cleanupAbandonedBookings().catch(error => 
+		console.error('Background cleanup task failed:', error)
+	)
 
 	try {
 		// Get the signature from the headers

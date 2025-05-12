@@ -11,6 +11,7 @@ import {
 	serverTimestamp,
 	updateDoc,
 	where,
+	setDoc
 } from 'firebase/firestore'
 import { Observable, from, of, throwError } from 'rxjs'
 import { catchError, map, switchMap } from 'rxjs/operators'
@@ -28,7 +29,9 @@ export class BookingService {
 	}
 
 	/**
-	 * Create a new booking and reserve the time slots
+	 * Create a new booking and reserve the time slots.
+	 * For 'temporary' status bookings, we only create the booking without reserving slots.
+	 * For 'confirmed' or 'paid' status bookings, we reserve the slots.
 	 */
 	createBooking(booking: Booking): Observable<Booking> {
 		// Validate required fields
@@ -36,16 +39,33 @@ export class BookingService {
 			return throwError(() => new Error('Missing required booking fields'))
 		}
 
+		// Generate a new booking ID if not provided
+		const bookingsRef = collection(this.firestore, 'bookings')
+		const bookingId = booking.id || doc(bookingsRef).id
+		
+		// If this is a temporary booking (payment not confirmed yet), just create the booking record
+		// without reserving time slots to prevent blocking courts for payments that might fail
+		if (booking.status === 'temporary') {
+			console.log('Creating temporary booking without reserving slots:', bookingId)
+			const bookingData = this.prepareBookingData(booking, bookingId)
+			const newBookingRef = doc(bookingsRef, bookingId)
+			
+			return from(setDoc(newBookingRef, bookingData)).pipe(
+				map(() => ({ ...bookingData, id: bookingId } as Booking)),
+				catchError(error => {
+					console.error('Error creating temporary booking:', error)
+					return throwError(() => new Error(`Failed to create temporary booking: ${error.message}`))
+				})
+			)
+		}
+		
+		// Otherwise, proceed with normal booking creation + slot reservation
 		// Parse date to get month document ID
 		const [year, month] = booking.date.split('-')
 		const monthDocId = `${year}-${month}`
-
+		
 		// Get references
-		const bookingsRef = collection(this.firestore, 'bookings')
 		const availabilityRef = doc(this.firestore, 'availability', monthDocId)
-
-		// Generate a new booking ID if not provided
-		const bookingId = booking.id || doc(bookingsRef).id
 
 		// Create a transaction to ensure atomicity
 		return from(

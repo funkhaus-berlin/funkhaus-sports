@@ -72,6 +72,7 @@ export class PaymentService {
 			customerEmail: booking.customerEmail || '',
 			date: formattedDate,
 			paymentStatus: 'pending',
+			status: 'temporary', // Mark as temporary until payment is confirmed
 			customerAddress,
 		}
 	}
@@ -132,33 +133,35 @@ export class PaymentService {
 		// Payment data for Stripe
 		const paymentData = this.preparePaymentData(bookingData)
 
-		// First create booking, then process payment
-		return from(this.bookingService.createBooking(bookingData)).pipe(
-			tap(createdBooking => console.log('Booking created successfully:', createdBooking)),
-			switchMap(createdBooking => {
+		// First create payment intent, then create a temporary booking
+		return from(createPaymentIntent(paymentData)).pipe(
+			tap(response => console.log('Payment intent created:', response)),
+			switchMap(response => {
 				// Skip further processing if component is unmounted
 				if (this._processingLock !== lockFlag) {
-					return of({ success: false, booking: createdBooking })
+					return of({ success: false, booking: bookingData })
 				}
-
-				return from(createPaymentIntent(paymentData)).pipe(
-					tap(response => console.log('Payment intent created:', response)),
-					switchMap(response => {
-						const clientSecret = response.clientSecret
-
+				
+				const clientSecret = response.clientSecret
+				
+				// Create temporary booking record
+				return from(this.bookingService.createBooking(bookingData)).pipe(
+					tap(createdBooking => console.log('Temporary booking created:', createdBooking)),
+					switchMap(createdBooking => {
 						if (!stripe || !elements) {
 							throw new Error('Payment system not available')
 						}
-
+						
+						// Now process the payment with Stripe
 						return this.confirmPayment(stripe, elements, clientSecret, createdBooking)
 					}),
 					map(stripeResult => {
 						if (stripeResult.error) {
 							throw stripeResult.error
 						}
-
+						
 						return { success: true, booking: bookingData }
-					}),
+					})
 				)
 			}),
 			catchError(error => {
