@@ -44,9 +44,9 @@ export class VenuBookingsList extends $LitElement() {
 	@state() loading: boolean = true
 	@state() error: string | null = null
 
-	// Default date range for bookings (current month +/- 1 month)
-	private dateFrom = dayjs().subtract(1, 'month').startOf('day').format('YYYY-MM-DD')
-	private dateTo = dayjs().add(1, 'month').endOf('day').format('YYYY-MM-DD')
+	// Date range for bookings - will be updated from filter context
+	private dateFrom = dayjs().startOf('day').format('YYYY-MM-DD')
+	private dateTo = dayjs().endOf('day').format('YYYY-MM-DD')
 
 	connectedCallback() {
 		super.connectedCallback()
@@ -84,6 +84,14 @@ export class VenuBookingsList extends $LitElement() {
 				switchMap(([filter]) => {
 					this.loading = true
 					this.error = null
+
+					// Update date range from filter context if available
+					if (filter.dateFrom) {
+						this.dateFrom = dayjs(filter.dateFrom).format('YYYY-MM-DD')
+					}
+					if (filter.dateTo) {
+						this.dateTo = dayjs(filter.dateTo).format('YYYY-MM-DD')
+					}
 
 					// Get court IDs to filter by (only those belonging to current venue)
 					const venueCourts = Array.from(this.courts.values())
