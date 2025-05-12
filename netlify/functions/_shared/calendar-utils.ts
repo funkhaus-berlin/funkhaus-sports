@@ -249,12 +249,11 @@ export function createCalendarEvent(
   const appleStartDate = parsedStartTime.utc().format('YYYYMMDDTHHmmss')
   const appleEndDate = parsedEndTime.utc().format('YYYYMMDDTHHmmss')
   
-  // Create formatted event description with highlighted day name
+  // Create formatted event description with highlighted day name in 24-hour format
   const eventDescription = `Your court booking at ${venueName}.
     
-Time: ${parsedStartTime.format('h:mm A')} - ${parsedEndTime.format('h:mm A')}
-Date: ${parsedStartTime.format('dddd, MMMM D, YYYY')}
-Day: ${parsedStartTime.format('dddd')}
+Time: ${parsedStartTime.format('HH:mm')} - ${parsedEndTime.format('HH:mm')}
+Date: ${parsedStartTime.format('dddd, D MMMM YYYY')}
 ${additionalDetails ? `\n${additionalDetails}` : ''}
 
 Booking ID: ${bookingId}`
@@ -305,10 +304,10 @@ Booking ID: ${bookingId}`
     // Apple Calendar format
     appleStartDate,
     appleEndDate,
-    // Add formatted time strings for display in email template
-    displayStartTime: parsedStartTime.format('h:mm A'),
-    displayEndTime: parsedEndTime.format('h:mm A'),
-    displayTimeRange: `${parsedStartTime.format('h:mm A')} - ${parsedEndTime.format('h:mm A')}`
+    // Add formatted time strings for display in email template (24-hour format)
+    displayStartTime: parsedStartTime.format('HH:mm'),
+    displayEndTime: parsedEndTime.format('HH:mm'),
+    displayTimeRange: `${parsedStartTime.format('HH:mm')} - ${parsedEndTime.format('HH:mm')}`
   }
   
   return calendarEvent

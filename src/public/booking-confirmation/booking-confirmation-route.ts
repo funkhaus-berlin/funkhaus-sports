@@ -28,6 +28,8 @@ export class BookingConfirmationRoute extends $LitElement() {
 	@state() booking: any = null
 	@state() retryCount: number = 0
 	@state() timeoutError: boolean = false
+	@state() autoGenerateWallet: boolean = false
+	@state() walletPlatform: string = ''
 	@select(courtsContext) courts!: Map<string, Court>
 
 	private maxRetries = MAX_RETRIES
@@ -35,16 +37,37 @@ export class BookingConfirmationRoute extends $LitElement() {
 
 	connectedCallback() {
 		super.connectedCallback()
-		// Extract booking ID from URL if not provided as property
+		// Extract booking ID and wallet parameters from URL if not provided as property
+		const urlParams = new URLSearchParams(window.location.search)
+		
+		// Get booking ID
 		if (!this.bookingId) {
-			const urlParams = new URLSearchParams(window.location.search)
 			this.bookingId = urlParams.get('id') || ''
+		}
+		
+		// Check for wallet parameters
+		const wallet = urlParams.get('wallet')
+		if (wallet && (wallet === 'apple' || wallet === 'google')) {
+			this.walletPlatform = wallet
+		}
+		
+		// Check if we should auto-generate wallet pass
+		if (urlParams.get('autoGenerate') === 'true') {
+			this.autoGenerateWallet = true
 		}
 
 		// Update URL to include the booking ID for bookmarking/sharing
-		if (this.bookingId && !window.location.search.includes('id=')) {
+		// But strip wallet parameters to prevent repeated auto-generation
+		if (this.bookingId) {
 			const url = new URL(window.location.href)
 			url.searchParams.set('id', this.bookingId)
+			if (this.walletPlatform && !this.autoGenerateWallet) {
+				url.searchParams.set('wallet', this.walletPlatform)
+			} else {
+				// Remove auto-generate parameter to prevent repeated generation
+				url.searchParams.delete('wallet')
+				url.searchParams.delete('autoGenerate')
+			}
 			window.history.replaceState({ confirmation: true, bookingId: this.bookingId }, '', url.toString())
 		}
 		
@@ -229,6 +252,8 @@ export class BookingConfirmationRoute extends $LitElement() {
 				.customerName=${this.booking.userName || ''}
 				.bookingId=${this.booking.id || ''}
 				.onNewBooking=${() => this.handleNewBooking()}
+				.autoGenerateWallet=${this.autoGenerateWallet}
+				.walletPlatform=${this.walletPlatform}
 			></booking-confirmation>
 		`
 	}
