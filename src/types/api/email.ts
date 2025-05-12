@@ -56,8 +56,11 @@ export interface CalendarEvent {
   startTime: string
   endTime: string
   startDate?: string
+  endDate?: string
   googleStartDate?: string
   googleEndDate?: string
+  appleStartDate?: string
+  appleEndDate?: string
   uid?: string
   displayStartTime?: string
   displayEndTime?: string

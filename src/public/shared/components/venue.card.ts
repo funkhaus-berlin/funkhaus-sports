@@ -8,18 +8,18 @@ import { delay, fromEvent, merge, startWith, takeUntil } from 'rxjs'
 import { Venue } from 'src/db/venue-collection'
 import { CourtBookingSystem } from '../../book/book'
 import '../../venues/logo'
+import { bookingContext, BookingProgressContext } from 'src/public/book/context'
+import { BookingStep } from 'src/types'
 
 // Define golden ratio constant
 const GOLDEN_RATIO = 1.618
 
 @customElement('funkhaus-venue-card')
-export default class FunkhausVenueCard extends $LitElement(
-	css`
-		:host {
-			display: block;
-		}
-	`,
-) {
+export default class FunkhausVenueCard extends $LitElement(css`
+	:host {
+		display: block;
+	}
+`) {
 	@query('section') card!: HTMLElement
 	@property({ type: Object }) venue!: Venue
 	@property({ type: Object }) theme: { logo?: string; primary?: string; text?: string } = {}
@@ -138,6 +138,17 @@ export default class FunkhausVenueCard extends $LitElement(
 			<schmancy-theme .color="${primaryColor}">
 				<section
 					@click=${() => {
+						// Reset existing booking data
+						bookingContext.clear()
+						// Set the venue ID only
+						bookingContext.set({
+							venueId: this.venue.id,
+						})
+						// Reset to first step (Date)
+						BookingProgressContext.set({
+							currentStep: BookingStep.Date,
+						})
+						// Navigate to booking system
 						area.push({
 							component: new CourtBookingSystem(),
 							area: 'root',
@@ -210,7 +221,7 @@ export default class FunkhausVenueCard extends $LitElement(
 															+${this.venue.facilities.length - 5}
 														</schmancy-typography>
 													</div>
-											  `
+												`
 											: nothing}
 									</div>
 								`,

@@ -327,10 +327,11 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 				// Generate initial time slots
 				const timeSlots = generateTimeSlots(date, activeCourtIds)
 
-				// Fetch bookings for this date
+				// Fetch bookings for this date and venue
 				return BookingsDB.subscribeToCollection([
 					{ key: 'date', operator: '==', value: dayjs(date).format('YYYY-MM-DD') },
 					{ key: 'status', operator: 'in', value: ['confirmed', 'pending','temporary'] },
+					{ key: 'venueId', operator: '==', value: venueId }, // Filter by venue ID
 				]).pipe(
 					map(bookingsMap => {
 						// Convert to array

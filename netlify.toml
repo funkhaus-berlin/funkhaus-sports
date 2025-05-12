@@ -1,7 +1,6 @@
 [functions]
-  external_node_modules = ["react", "react/jsx-runtime", "react-dom/server", "google-auth-library", "googleapis", "jsonwebtoken", "firebase-admin"]
+  external_node_modules = ["react", "react/jsx-runtime", "react-dom/server"]
   included_files = ["netlify/functions/_shared/ticket.pug", "netlify/functions/_shared/assets/**", "netlify/functions/_shared/data/**"]
-
 
 [[redirects]]
   from = "/api/email-tickets"

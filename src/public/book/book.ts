@@ -469,7 +469,19 @@ private shouldShowStep(step: BookingFlowStep): boolean {
 					<funkhaus-venue-card
 						class="hidden md:block col-auto justify-self-start mt-4"
 						.venue=${venueContext.value as Venue}
-						@click=${() => {}}
+						@click=${() => {
+							// Reset booking context when venue card is clicked
+							bookingContext.clear();
+							bookingContext.set({
+								venueId: (venueContext.value as Venue).id,
+							});
+							// Reset booking progress context
+							BookingProgressContext.set({
+								currentStep: BookingStep.Date,
+							});
+							// Request update to refresh the UI
+							this.requestUpdate();
+						}}
 						.theme=${(venueContext.value as Venue).theme!}
 					></funkhaus-venue-card>
 				</schmancy-grid>

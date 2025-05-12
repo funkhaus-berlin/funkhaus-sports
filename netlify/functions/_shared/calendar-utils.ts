@@ -1,6 +1,5 @@
 // /netlify/functions/_shared/calendar-utils.ts
 import moment from 'moment'
-import ical, { ICalEventStatus, ICalAlarmType } from 'ical-generator'
 import { v4 as uuidv4 } from 'uuid'
 import { CalendarEvent } from '../../../src/types/api/email'
 
@@ -152,6 +151,14 @@ export function createCalendarEvent(
   monthShort: string;
   year: number;
   formattedDate: string;
+  endDate: string;
+  googleStartDate: string;
+  googleEndDate: string;
+  appleStartDate: string;
+  appleEndDate: string;
+  displayStartTime: string;
+  displayEndTime: string;
+  displayTimeRange: string;
 } {
   
   // Parse date and time inputs
@@ -241,13 +248,13 @@ export function createCalendarEvent(
     .replace(/,\s*$/g, '')
     .trim()
   
-  // Format dates for various calendar systems
-  const googleStartDate = parsedStartTime.utc().format('YYYYMMDDTHHmmss') + 'Z'
-  const googleEndDate = parsedEndTime.utc().format('YYYYMMDDTHHmmss') + 'Z'
+  // Format dates for various calendar systems - ensure they match the interface types
+  const googleStartDate: string = parsedStartTime.utc().format('YYYYMMDDTHHmmss') + 'Z'
+  const googleEndDate: string = parsedEndTime.utc().format('YYYYMMDDTHHmmss') + 'Z'
   
   // Format for Apple Calendar deep link (used for webcal:// protocol)
-  const appleStartDate = parsedStartTime.utc().format('YYYYMMDDTHHmmss')
-  const appleEndDate = parsedEndTime.utc().format('YYYYMMDDTHHmmss')
+  const appleStartDate: string = parsedStartTime.utc().format('YYYYMMDDTHHmmss')
+  const appleEndDate: string = parsedEndTime.utc().format('YYYYMMDDTHHmmss')
   
   // Create formatted event description with highlighted day name in 24-hour format
   const eventDescription = `Your court booking at ${venueName}.
@@ -282,6 +289,14 @@ Booking ID: ${bookingId}`
     monthShort: string;
     year: number;
     formattedDate: string;
+    endDate: string;
+    googleStartDate: string;
+    googleEndDate: string;
+    appleStartDate: string;
+    appleEndDate: string;
+    displayStartTime: string;
+    displayEndTime: string;
+    displayTimeRange: string;
   } = {
     title: `Court Booking: ${courtName} - ${venueName}`,
     description: eventDescription,

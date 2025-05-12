@@ -347,7 +347,20 @@ export class CourtSelectStep extends $LitElement(css`
 			takeUntil(this.disconnecting),
 			filter(availability => !!availability && !!this.booking?.date),
 			filter(availability => availability.date === this.booking.date),
+			// Add additional checks for bookings changes
+			map(availability => ({
+				bookings: availability.bookings,
+				date: availability.date,
+				venueId: availability.venueId
+			})),
+			distinctUntilChanged((prev, curr) => 
+				// Deep compare the bookings arrays to detect changes
+				prev.date === curr.date &&
+				prev.venueId === curr.venueId &&
+				JSON.stringify(prev.bookings) === JSON.stringify(curr.bookings)
+			),
 		).subscribe(() => {
+			console.log('Availability context updated - refreshing court availability')
 			this.loadCourtsWithAvailability()
 		})
 

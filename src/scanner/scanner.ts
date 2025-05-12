@@ -27,7 +27,7 @@ export default class BookingScanner extends $LitElement(css`
     position: relative;
     overflow: hidden;
   }
-  /* Fullscreen video preview */
+  /* Fullscreen video preview with iOS-safe setup */
   video {
     position: fixed;
     top: 0;
@@ -36,6 +36,12 @@ export default class BookingScanner extends $LitElement(css`
     height: 100vh;
     object-fit: cover;
     z-index: -1;
+    /* iOS-specific fixes */
+    background-color: transparent;
+    width: 100% !important;
+    max-height: -webkit-fill-available;
+    max-height: -moz-available;
+    max-height: fill-available;
   }
   .splash {
     position: fixed;
@@ -48,11 +54,19 @@ export default class BookingScanner extends $LitElement(css`
     transition: opacity 0.5s ease-in-out, visibility 0s 0.5s;
     z-index: 9999;
     animation: splashAnimation 1s ease-in-out;
+    /* iOS specific fixes */
+    height: 100vh;
+    height: calc(var(--vh, 1vh) * 100);
+    max-height: -webkit-fill-available;
   }
   .splash.show {
     opacity: 1;
     visibility: visible;
     transition: opacity 0.5s ease-in-out;
+  }
+  /* Add script to handle viewport height on iOS */
+  :host {
+    --vh: 1vh;
   }
   .splash.green {
     background: radial-gradient(circle, rgba(0, 255, 0, 0.5) 20%, rgba(0, 128, 0, 0.7) 100%);
@@ -129,6 +143,23 @@ export default class BookingScanner extends $LitElement(css`
 
     // Mark the scanner as ready
     this.isReadyToScan = true
+    
+    // Set initial viewport height variable for iOS
+    this.setViewportHeight();
+    
+    // Listen for resize events to update viewport height
+    window.addEventListener('resize', this.setViewportHeight.bind(this));
+    window.addEventListener('orientationchange', this.setViewportHeight.bind(this));
+  }
+  
+  /**
+   * Sets CSS variable for viewport height to work around iOS issues
+   */
+  private setViewportHeight() {
+    // First, get the viewport height and multiply it by 1% to get a value for a vh unit
+    const vh = window.innerHeight * 0.01;
+    // Set the value in the --vh custom property to the root of the document
+    document.documentElement.style.setProperty('--vh', `${vh}px`);
   }
 
   firstUpdated() {
@@ -138,15 +169,50 @@ export default class BookingScanner extends $LitElement(css`
 
   async startCameraScan() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-      })
-      this.videoElement.srcObject = stream
-      await this.videoElement.play()
-      // Once the camera is playing, start the RxJS-based QR scan.
-      this.startQrScan()
+      // Check if running on iOS
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+      
+      let constraints;
+      if (isIOS) {
+        // iOS specific constraints with exact facing mode
+        constraints = {
+          audio: false,
+          video: {
+            facingMode: {exact: 'environment'},
+            width: { min: 640, ideal: 1280, max: 1920 },
+            height: { min: 480, ideal: 720, max: 1080 }
+          }
+        };
+      } else {
+        // Standard constraints for other platforms
+        constraints = {
+          video: { facingMode: 'environment' }
+        };
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      // Set srcObject
+      this.videoElement.srcObject = stream;
+      
+      // On iOS, ensure we wait for loadedmetadata event
+      if (isIOS) {
+        await new Promise<void>((resolve) => {
+          this.videoElement.onloadedmetadata = () => {
+            resolve();
+          };
+        });
+      }
+      
+      // Play the video
+      await this.videoElement.play();
+      
+      // Once the camera is playing, start the RxJS-based QR scan
+      this.startQrScan();
+      
+      console.log('Camera started successfully');
     } catch (error) {
-      console.error('Error accessing camera:', error)
+      console.error('Error accessing camera:', error);
     }
   }
 
@@ -349,6 +415,10 @@ export default class BookingScanner extends $LitElement(css`
     }
     // Unsubscribe from the QR scanning observable to avoid memory leaks.
     this.qrScanSubscription?.unsubscribe()
+    
+    // Remove event listeners
+    window.removeEventListener('resize', this.setViewportHeight.bind(this));
+    window.removeEventListener('orientationchange', this.setViewportHeight.bind(this));
   }
 
   render() {
@@ -358,8 +428,8 @@ export default class BookingScanner extends $LitElement(css`
     }
     
     return html`
-      <!-- Video element for camera preview -->
-      <video playsinline muted id="video"></video>
+      <!-- Video element for camera preview with iOS attributes -->
+      <video playsinline autoplay muted id="video" webkit-playsinline></video>
 
       <schmancy-grid ${fullHeight()} class="py-2 overscroll-none overflow-hidden" justify="center" align="center">
         ${this.venueId ? 
