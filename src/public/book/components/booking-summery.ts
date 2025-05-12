@@ -142,14 +142,14 @@ export class BookingSummary extends $LitElement(css`
 	}
 
 	/**
-	 * Format time from ISO string
+	 * Format time from ISO string in 24-hour format
 	 */
 	private formatTime(timeStr: string): string {
 		if (!timeStr) return 'TBD'
 
 		try {
 			const date = new Date(timeStr)
-			return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+			return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
 		} catch (e) {
 			return 'Invalid time'
 		}

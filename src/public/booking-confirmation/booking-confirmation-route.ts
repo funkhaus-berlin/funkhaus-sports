@@ -3,15 +3,14 @@ import { $notify, area, fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
-import { catchError, filter, map, of, retry, takeUntil, timeout, timer } from 'rxjs'
+import { catchError, filter, map, of, retry, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Court } from 'src/db/courts.collection'
 import { VenueLandingPage } from '../venues/venues'
 import './booking-confirmation'
 
-// Constants for timeouts and retries
-const BOOKING_TIMEOUT = 10000 // 10 seconds
+// Constants for retries
 const MAX_RETRIES = 3
 const RETRY_DELAY = 2000 // 2 seconds
 
@@ -27,13 +26,11 @@ export class BookingConfirmationRoute extends $LitElement() {
 	@state() error: string | null = null
 	@state() booking: any = null
 	@state() retryCount: number = 0
-	@state() timeoutError: boolean = false
 	@state() autoGenerateWallet: boolean = false
 	@state() walletPlatform: string = ''
 	@select(courtsContext) courts!: Map<string, Court>
 
 	private maxRetries = MAX_RETRIES
-	private loadingTimer: number | null = null
 
 	connectedCallback() {
 		super.connectedCallback()
@@ -70,14 +67,6 @@ export class BookingConfirmationRoute extends $LitElement() {
 			}
 			window.history.replaceState({ confirmation: true, bookingId: this.bookingId }, '', url.toString())
 		}
-		
-		// Set a timeout to show an error message if loading takes too long
-		this.loadingTimer = window.setTimeout(() => {
-			if (this.loading && !this.booking) {
-				this.timeoutError = true;
-				this.requestUpdate();
-			}
-		}, BOOKING_TIMEOUT);
 
 		if (this.bookingId) {
 			BookingsDB.subscribeToCollection([
@@ -88,27 +77,20 @@ export class BookingConfirmationRoute extends $LitElement() {
 				},
 			])
 				.pipe(
-					// Add timeout to prevent waiting indefinitely
-					timeout(BOOKING_TIMEOUT),
 					// Retry a few times to handle transient errors
 					retry({
 						count: this.maxRetries,
-						delay: (error, retryCount) => {
+						delay: (_, retryCount) => {
 							this.retryCount = retryCount;
 							console.log(`Retry ${retryCount} for booking ${this.bookingId}`);
-							return timer(RETRY_DELAY);
+							return of(RETRY_DELAY);
 						}
 					}),
 					filter(bookings => bookings.size > 0),
 					map(bookings => bookings.values().next().value),
 					catchError(error => {
 						console.error('Error loading booking:', error);
-						if (error.name === 'TimeoutError') {
-							this.timeoutError = true;
-							this.error = `Timeout while loading booking. Please try refreshing the page.`;
-						} else {
-							this.error = `Error loading booking: ${error.message}`;
-						}
+						this.error = `Error loading booking: ${error.message}`;
 						this.loading = false;
 						return of(null);
 					}),
@@ -116,12 +98,6 @@ export class BookingConfirmationRoute extends $LitElement() {
 				)
 				.subscribe({
 					next: booking => {
-						// Clear the timeout since we got a response
-						if (this.loadingTimer) {
-							clearTimeout(this.loadingTimer);
-							this.loadingTimer = null;
-						}
-						
 						console.log('Booking loaded:', booking)
 						if (booking) {
 							this.booking = booking
@@ -152,15 +128,6 @@ export class BookingConfirmationRoute extends $LitElement() {
 			this.loading = false
 		}
 	}
-	
-	disconnectedCallback() {
-		super.disconnectedCallback();
-		// Clean up timeout if component is unmounted
-		if (this.loadingTimer) {
-			clearTimeout(this.loadingTimer);
-			this.loadingTimer = null;
-		}
-	}
 
 	/**
 	 * Handle booking a new court
@@ -184,17 +151,6 @@ export class BookingConfirmationRoute extends $LitElement() {
 									<schmancy-typography type="body" token="sm" class="text-surface-on-variant">
 										Retry attempt ${this.retryCount} of ${this.maxRetries}...
 									</schmancy-typography>
-							  `
-							: ''}
-							
-						${this.timeoutError
-							? html`
-									<schmancy-typography type="body" token="sm" class="text-warning-default mt-4">
-										Taking longer than expected. Please wait or refresh the page.
-									</schmancy-typography>
-									<schmancy-button variant="outlined" class="mt-2" @click=${() => window.location.reload()}>
-										Refresh Page
-									</schmancy-button>
 							  `
 							: ''}
 					</div>

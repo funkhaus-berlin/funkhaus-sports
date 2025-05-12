@@ -27,11 +27,11 @@ export class BookingUtils {
 	}
 
 	/**
-	 * Format time from ISO string or any date string
+	 * Format time from ISO string or any date string in 24-hour format
 	 * @param timeStr - Time string in any format dayjs can parse
-	 * @param format - Optional format string
+	 * @param format - Optional format string (defaults to 24-hour format)
 	 */
-	static formatTime(timeStr: string, format: string = 'h:mm A'): string {
+	static formatTime(timeStr: string, format: string = 'HH:mm'): string {
 		if (!timeStr) return 'TBD'
 
 		try {
@@ -187,7 +187,7 @@ export class BookingUtils {
 		const startTime = dayjs(booking.startTime)
 		const text = `I've booked Court ${courtName || 'court'} at Funkhaus Berlin Sports on ${startTime.format(
 			'MMMM D',
-		)} at ${startTime.format('h:mm A')}. Join me!`
+		)} at ${startTime.format('HH:mm')}. Join me!`
 
 		if (navigator.share) {
 			navigator

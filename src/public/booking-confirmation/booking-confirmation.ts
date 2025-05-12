@@ -98,10 +98,10 @@ export class BookingConfirmation extends $LitElement() {
   }
 
   /**
-   * Format time for display
+   * Format time for display in 24-hour format
    */
   private formatTime(start: string, end: string): string {
-    return `${dayjs(start).format('h:mm A')} - ${dayjs(end).format('h:mm A')}`
+    return `${dayjs(start).format('HH:mm')} - ${dayjs(end).format('HH:mm')}`
   }
   
   /**
@@ -157,8 +157,8 @@ export class BookingConfirmation extends $LitElement() {
           },
           bookingDetails: {
             date: this.booking.date,
-            startTime: dayjs(this.booking.startTime).format('h:mm A'),
-            endTime: dayjs(this.booking.endTime).format('h:mm A'),
+            startTime: dayjs(this.booking.startTime).format('HH:mm'),
+            endTime: dayjs(this.booking.endTime).format('HH:mm'),
             price: this.booking.price.toString(),
             court: this.selectedCourt?.name || 'Court',
             venue: this.venue?.name || 'Venue'

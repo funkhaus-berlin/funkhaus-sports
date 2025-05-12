@@ -4,7 +4,7 @@ html(lang="en")
     meta(charset="UTF-8")
     meta(name="viewport" content="width=device-width, initial-scale=1.0")
     link(href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet")
-    title Court Booking Confirmation
+    title Funkhaus Sports - Court Booking Confirmation
     //- Enhanced JSON-LD for Gmail calendar integration
     script(type="application/ld+json").
       {
@@ -173,9 +173,7 @@ html(lang="en")
               
               //- Details cell
               td(style="padding:15px;vertical-align:middle;")
-                //- Time display
-                - var timeDisplay = calendarEvent && calendarEvent.displayTimeRange ? calendarEvent.displayTimeRange : `${booking.startTime} - ${booking.endTime}`
-                
+                //- Time display (formatted in backend)
                 p(style="font-size:20px;font-weight:600;margin:0 0 12px;color:#000;") #{timeDisplay}
                 p(style="font-size:15px;color:#333;margin:0 0 5px;font-weight:500;")
                   strong #{booking.court}
@@ -196,7 +194,7 @@ html(lang="en")
                     - addressText = parts.filter(Boolean).join(', ')
                   
                   //- Create map URL for Google Maps
-                  - mapUrl = 'https://maps.google.com/?q=' + encodeURIComponent(venue.name + ', ' + addressText)
+                  - mapUrl = 'https://maps.google.com/?q=' + encodeURIComponent(addressText)
                   
                   if addressText
                     a(href=mapUrl target="_blank" style="font-size:14px;color:#0066cc;margin:0 0 12px;display:block;text-decoration:underline;")
@@ -239,6 +237,7 @@ html(lang="en")
             if venueAddress
               - directionsUrl = 'https://maps.google.com/?q=' + encodeURIComponent(venue.name + ', ' + venueAddress)
           
+          //- Calendar section
           table(cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:25px 0;background-color:#f8f9fa;border-radius:8px;")
             tr
               td(align="center" style="padding:20px;")
@@ -263,6 +262,25 @@ html(lang="en")
                       td(align="center" style="padding:0 8px;")
                         a(href=directionsUrl target="_blank" style="display:inline-block;text-decoration:none;background-color:#ffffff;border-radius:6px;border:1px solid #e5e5e5;padding:10px 15px;")
                           span(style="font-size:13px;font-weight:500;color:#333;vertical-align:middle;") 📍 Directions
+          
+          //- Wallet section (matching official platform designs)
+          table(cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:25px 0;background-color:#f8f9fa;border-radius:8px;")
+            tr
+              td(align="center" style="padding:20px;")
+                p(style="font-size:14px;font-weight:600;color:#333;margin:0 0 15px;") Add to your wallet
+                p(style="font-size:13px;color:#555;margin:0 0 15px;") Save booking to your phone's wallet for easy check-in
+                
+                table(cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;")
+                  tr
+                    //- Apple Wallet button (matches official design)
+                    td(align="center" style="padding:8px;")
+                      a(href=appleWalletUrl style="display:inline-block;text-decoration:none;padding:0;")
+                        img(src=appleWalletIcon alt="Add to Apple Wallet" width="140" style="display:block;")
+                    
+                    //- Google Wallet button (matches official design)
+                    td(align="center" style="padding:8px;")
+                      a(href=googleWalletUrl style="display:inline-block;text-decoration:none;padding:0;")
+                        img(src=googleWalletIcon alt="Add to Google Wallet" width="140" style="display:block;")
       
       //- Footer
       tr

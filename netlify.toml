@@ -1,6 +1,15 @@
 [functions]
-  external_node_modules = ["react", "react/jsx-runtime", "react-dom/server"]
+  external_node_modules = ["react", "react/jsx-runtime", "react-dom/server", "google-auth-library", "googleapis", "jsonwebtoken", "firebase-admin"]
   included_files = ["netlify/functions/_shared/ticket.pug", "netlify/functions/_shared/assets/**", "netlify/functions/_shared/data/**"]
+
+[build.environment]
+  # Firebase configuration for serverless functions
+  FIREBASE_PROJECT_ID = "funkhaus-sports"
+  # Google Wallet configuration
+  GOOGLE_WALLET_ISSUER_ID = "3388000000022209405"
+  # Apple Wallet configuration
+  APPLE_TEAM_ID = "ABDCEFGHIJ"
+  APPLE_PASS_TYPE_ID = "pass.funkhaus.sports"
 
 [[redirects]]
   from = "/api/email-tickets"
@@ -36,6 +45,13 @@
 [[redirects]]
   from = "/api/payment-status"
   to = "/.netlify/functions/payment-status"
+  status = 200
+  force = true
+
+
+[[redirects]]
+  from = "/api/generate-wallet-pass"
+  to = "/.netlify/functions/generate-wallet-pass"
   status = 200
   force = true
 

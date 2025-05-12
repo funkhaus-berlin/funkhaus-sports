@@ -228,8 +228,78 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 				invoiceNumber = `${data.bookingId.substring(0, 6)}`
 			}
 		}
-
-		// Pass invoice number to the email template
+		
+		// Create wallet URLs (move logic outside the template)
+		const apiUrl = 'https://funkhaus-sports.netlify.app/api/generate-wallet-pass'
+		const appleWalletUrl = `${apiUrl}?platform=apple&bookingId=${data.bookingId}`
+		const googleWalletUrl = `${apiUrl}?platform=google&bookingId=${data.bookingId}`
+		
+		// Format time display for the template
+		let timeDisplay = '';
+		
+		// First try to use calendar event's display time
+		if (calendarEvent && calendarEvent.displayTimeRange) {
+			timeDisplay = calendarEvent.displayTimeRange;
+		} else {
+			// Otherwise format booking times
+			let startTime = data.bookingDetails.startTime;
+			let endTime = data.bookingDetails.endTime;
+			
+			// Process start time
+			if (startTime) {
+				if (startTime.includes('T')) {
+					// Handle ISO format
+					startTime = new Date(startTime).toLocaleTimeString('en-GB', {
+						hour: '2-digit',
+						minute: '2-digit',
+						hour12: false
+					});
+				} else {
+					// Handle string format with AM/PM
+					const startMatch = /(\d+):(\d+)\s*(am|pm|AM|PM)?/.exec(startTime);
+					if (startMatch) {
+						let hours = parseInt(startMatch[1]);
+						const mins = parseInt(startMatch[2]);
+						const ampm = startMatch[3]?.toLowerCase();
+						
+						if (ampm === 'pm' && hours < 12) hours += 12;
+						if (ampm === 'am' && hours === 12) hours = 0;
+						
+						startTime = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+					}
+				}
+			}
+			
+			// Process end time
+			if (endTime) {
+				if (endTime.includes('T')) {
+					// Handle ISO format
+					endTime = new Date(endTime).toLocaleTimeString('en-GB', {
+						hour: '2-digit',
+						minute: '2-digit',
+						hour12: false
+					});
+				} else {
+					// Handle string format with AM/PM
+					const endMatch = /(\d+):(\d+)\s*(am|pm|AM|PM)?/.exec(endTime);
+					if (endMatch) {
+						let hours = parseInt(endMatch[1]);
+						const mins = parseInt(endMatch[2]);
+						const ampm = endMatch[3]?.toLowerCase();
+						
+						if (ampm === 'pm' && hours < 12) hours += 12;
+						if (ampm === 'am' && hours === 12) hours = 0;
+						
+						endTime = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+					}
+				}
+			}
+			
+			// Format the time display
+			timeDisplay = `${startTime || ''} - ${endTime || ''}`;
+		}
+		
+		// Generate HTML for email
 		const html = await emailHtml({
 			booking: data.bookingDetails,
 			customer: {
@@ -241,29 +311,65 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			bookingId: data.bookingId,
 			invoiceNumber: invoiceNumber || '', // Add invoice number to template data with fallback
 			calendarEvent: calendarEvent, // Pass calendar event data to template
-			images: emailImages // Pass image URLs to template
+			images: emailImages, // Pass image URLs to template
+			timeDisplay, // Pass pre-formatted time display
+			appleWalletUrl, // Pass Apple Wallet URL
+			googleWalletUrl, // Pass Google Wallet URL
+			appleWalletIcon: `${baseUrl}/icons/wallet/apple-wallet-button.png`, // Official Apple button hosted locally
+			googleWalletIcon: `${baseUrl}/icons/wallet/google-wallet-button.png` // Official Google button hosted locally
 		})
 		
 		if (!html) {
 			throw new Error('Failed to generate email HTML content')
 		}
 		
-		// Format date and time in German style
+		// Format date and time in English style with 24-hour time
 		const bookingDate = new Date(data.bookingDetails.date)
-		const formattedDate = bookingDate.toLocaleDateString('de-DE', {
+		const formattedDate = bookingDate.toLocaleDateString('en-GB', {
 			weekday: 'long',
 			day: 'numeric',
-			month: 'long'
+			month: 'long',
+			year: 'numeric'
 		})
 		
-		// Extract time from booking details for email subject
-		const startTime = data.bookingDetails.startTime
+		// Extract time from booking details for email subject and format as 24-hour time
+		let startTime = data.bookingDetails.startTime
+		
+		// Convert to 24-hour format regardless of input format
+		try {
+		    if (startTime && startTime.includes('T')) {
+		        // If it's an ISO string, format as 24-hour time
+		        startTime = new Date(startTime).toLocaleTimeString('en-GB', {
+		            hour: '2-digit',
+		            minute: '2-digit',
+		            hour12: false
+		        });
+		    } else if (startTime) {
+		        // Handle non-ISO time strings (like "4:30 PM")
+		        const amPmMatch = /(\d+):(\d+)\s*(am|pm|AM|PM)?/.exec(startTime);
+		        if (amPmMatch) {
+		            let hours = parseInt(amPmMatch[1]);
+		            const minutes = parseInt(amPmMatch[2]);
+		            const ampm = amPmMatch[3]?.toLowerCase();
+		            
+		            // Convert to 24-hour format
+		            if (ampm === 'pm' && hours < 12) hours += 12;
+		            if (ampm === 'am' && hours === 12) hours = 0;
+		            
+		            // Format with leading zeros
+		            startTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+		        }
+		    }
+		} catch (error) {
+		    console.error('Error formatting time for email subject:', error);
+		    // If there's an error, use the original time string
+		}
 
 		// Send email with Resend
 		const response = await resend.emails.send({
 			from: `${emailConfig.fromName} <${emailConfig.from}>`,
 			to: data.customerEmail,
-			subject: `Funkhaus Sports - Court booking on ${formattedDate} at ${startTime}`,
+			subject: `Funkhaus Sports - Court Booking Confirmation - ${formattedDate} at ${startTime}`,
 			html: html,
 			attachments: [
 				{
@@ -357,7 +463,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	// invoice date
 	doc.font('Bold').text('Date of Issue:', 50, (y += 15))
 	doc.font('Regular').text(
-		new Date().toLocaleDateString('en-US', {
+		new Date().toLocaleDateString('en-GB', {
 			year: 'numeric',
 			month: 'long',
 			day: 'numeric',
@@ -466,7 +572,59 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 
 	// Format the description
 	const description = `${data.bookingDetails.court} - ${data.bookingDetails.venue}`
-	const duration = `${data.bookingDetails.startTime} - ${data.bookingDetails.endTime}`
+	
+	// Format duration with 24-hour time
+	let startTime = data.bookingDetails.startTime;
+	let endTime = data.bookingDetails.endTime;
+	
+	// Convert times to 24-hour format
+	if (startTime && startTime.includes('T')) {
+	    startTime = new Date(startTime).toLocaleTimeString('en-GB', {
+	        hour: '2-digit',
+	        minute: '2-digit',
+	        hour12: false
+	    });
+	} else if (startTime) {
+	    // Handle non-ISO time strings (like "4:30 PM")
+	    const amPmMatch = /(\d+):(\d+)\s*(am|pm|AM|PM)?/.exec(startTime);
+	    if (amPmMatch) {
+	        let hours = parseInt(amPmMatch[1]);
+	        const minutes = parseInt(amPmMatch[2]);
+	        const ampm = amPmMatch[3]?.toLowerCase();
+	        
+	        // Convert to 24-hour format
+	        if (ampm === 'pm' && hours < 12) hours += 12;
+	        if (ampm === 'am' && hours === 12) hours = 0;
+	        
+	        // Format with leading zeros
+	        startTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+	    }
+	}
+	
+	if (endTime && endTime.includes('T')) {
+	    endTime = new Date(endTime).toLocaleTimeString('en-GB', {
+	        hour: '2-digit',
+	        minute: '2-digit',
+	        hour12: false
+	    });
+	} else if (endTime) {
+	    // Handle non-ISO time strings
+	    const amPmMatch = /(\d+):(\d+)\s*(am|pm|AM|PM)?/.exec(endTime);
+	    if (amPmMatch) {
+	        let hours = parseInt(amPmMatch[1]);
+	        const minutes = parseInt(amPmMatch[2]);
+	        const ampm = amPmMatch[3]?.toLowerCase();
+	        
+	        // Convert to 24-hour format
+	        if (ampm === 'pm' && hours < 12) hours += 12;
+	        if (ampm === 'am' && hours === 12) hours = 0;
+	        
+	        // Format with leading zeros
+	        endTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+	    }
+	}
+	
+	const duration = `${startTime} - ${endTime}`;
 
 	// Invoice item
 	doc.font('Regular').fontSize(12)

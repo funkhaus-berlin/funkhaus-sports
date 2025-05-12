@@ -1,485 +1,155 @@
-# Wallet Pass Integration for Funkhaus Sports
+# Wallet Pass Integration Guide
 
-This document outlines a plan to integrate digital wallet passes (Apple Wallet and Google Wallet) with the Funkhaus Sports booking confirmation system.
+This document outlines the process for integrating Apple Wallet and Google Wallet passes into the Funkhaus Sports booking system.
 
 ## Overview
 
-Wallet passes will allow users to:
-- Add their booking to their mobile device wallet
-- Get quick access to booking information (date, time, court, etc.)
-- Present the QR code for check-in
-- Receive notifications for booking reminders
+The wallet pass integration allows users to add their booking tickets to their mobile device's digital wallet (Apple Wallet on iOS, Google Wallet on Android). The integration involves:
 
-## Technical Implementation
+1. Backend serverless functions that generate the passes
+2. Frontend components that trigger the pass generation
+3. Email templates that include wallet pass links
 
-### Libraries
+## Configuration
 
-Based on our research, the following libraries are recommended:
+### Google Wallet Setup
 
-1. **Apple Wallet (iOS)**:
-   - [passkit-generator](https://www.npmjs.com/package/passkit-generator) - Most actively maintained library for Node.js
-   - [@walletpass/pass-js](https://www.npmjs.com/package/@walletpass/pass-js) - Alternative with push notification support
+1. **Create a Google Cloud Project**
+   - Go to the [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or use an existing one
+   - Enable the Google Wallet API
 
-2. **Google Wallet (Android)**:
-   - [google-wallet](https://www.npmjs.com/package/google-wallet) - Node.js wrapper for Google Wallet API
-   - Google's official API via [googleapis](https://www.npmjs.com/package/googleapis)
+2. **Create a Service Account**
+   - In the Google Cloud Console, go to IAM & Admin > Service Accounts
+   - Create a new service account with the "Wallet Object Issuer" role
+   - Generate and download a JSON key file
 
-### Server-Side Implementation (Netlify Functions)
+3. **Register as a Wallet Developer**
+   - Go to the [Google Wallet Developer Console](https://pay.google.com/business/console/)
+   - Create an issuer account
+   - Note your issuer ID (used in the configuration)
 
-We'll create new Netlify functions to generate wallet passes:
+4. **Configure Environment Variables**
+   - Add the following to your Netlify environment variables or `.env` file:
+     ```
+     GOOGLE_WALLET_ISSUER_ID=your-issuer-id
+     GOOGLE_SERVICE_ACCOUNT_EMAIL=your-service-account-email
+     GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=your-service-account-private-key
+     ```
 
-1. **`generate-wallet-pass.ts`**: 
-   - Endpoint: `/api/generate-wallet-pass`
-   - Parameters: 
-     - `bookingId`: Booking ID to generate pass for
-     - `platform`: "apple" or "google"
-   - Returns: Pass file or URL to add pass
+### Apple Wallet Setup
 
-2. **Certificate Requirements**:
-   - For Apple Wallet: Developer certificate, private key, and pass type identifier
-   - For Google Wallet: Service account credentials
+1. **Register as an Apple Developer**
+   - Join the [Apple Developer Program](https://developer.apple.com/programs/)
+   - Create an App ID with Wallet pass functionality
 
-### Integration Points
+2. **Create Pass Type ID**
+   - In the Apple Developer portal, go to Certificates, Identifiers & Profiles
+   - Create a new Pass Type ID (e.g., pass.funkhaus.sports)
+   - Generate and download the Pass Type ID certificate
 
-1. **Booking Confirmation Screen**:
-   - Add "Add to Wallet" buttons (conditional on device type)
-   - Implement platform detection to show the appropriate button
+3. **Generate Pass Certificates**
+   - Generate a Pass Type ID certificate
+   - Generate a WWDR (Apple Worldwide Developer Relations) certificate
+   - Convert the certificates to PEM format for use with passkit-generator
 
-2. **Confirmation Email**:
-   - Include wallet pass as attachment or link in email
-   - Update email template to include wallet pass instructions
+4. **Configure Environment Variables**
+   - Add the following to your Netlify environment variables:
+     ```
+     APPLE_TEAM_ID=your-team-id
+     APPLE_PASS_TYPE_ID=your-pass-type-id
+     APPLE_WALLET_CERT=base64-encoded-certificate
+     APPLE_WALLET_KEY=base64-encoded-key
+     APPLE_WWDR_CERT=base64-encoded-wwdr-cert
+     ```
 
-## Pass Design
+## Implementation
 
-### Apple Wallet Pass
+### Backend Implementation
 
-```
-+----------------------------------+
-|                                  |
-|            VENUE LOGO            |
-|                                  |
-+----------------------------------+
-|                                  |
-|  Court Booking                   |
-|                                  |
-+----------------------------------+
-|                |                 |
-|  DATE          |  TIME           |
-|  May 15, 2025  |  14:00 - 15:00  |
-|                |                 |
-+----------------------------------+
-|                                  |
-|  COURT NAME                      |
-|  Court 3                         |
-|                                  |
-+----------------------------------+
-|                                  |
-|           QR CODE                |
-|                                  |
-+----------------------------------+
-|                                  |
-|  BOOKING ID                      |
-|  ABC123XYZ                       |
-|                                  |
-+----------------------------------+
-```
+The implementation consists of the following key components:
 
-### Google Wallet Pass
+1. **Wallet Pass Configuration** (`wallet-pass-config.ts`)
+   - Shared configuration for both wallet types
+   - Color schemes, asset URLs, and issuer IDs
 
-The Google Wallet pass will contain similar information but formatted according to Google's design guidelines.
+2. **Wallet Pass Data Formatting** (`wallet-pass-utils.ts`)
+   - Format booking data for wallet passes
+   - Convert booking data to wallet pass fields
 
-## Data Structure
+3. **Google Wallet Service** (`google-wallet-service.ts`)
+   - Authentication with Google API
+   - Creating pass classes and objects
+   - Generating save links for passes
 
-Each pass will contain:
+4. **API Endpoint** (`generate-wallet-pass.ts`)
+   - Serverless function that generates passes
+   - Handles both GET and POST requests
+   - Routes to the appropriate wallet type
 
-```json
-{
-  "bookingId": "ABC123XYZ",
-  "venueName": "City Sports Club",
-  "courtName": "Court 3",
-  "date": "2025-05-15",
-  "startTime": "14:00",
-  "endTime": "15:00",
-  "userName": "John Doe",
-  "userEmail": "john@example.com",
-  "qrCode": "data:image/png;base64,..." // QR code image data
-}
-```
+### Frontend Integration
 
-## Implementation Timeline
+1. **Wallet Button Component** (`wallet-button.ts`)
+   - Automatically detects the user's device platform
+   - Triggers the pass generation API
+   - Handles downloading/opening the pass
 
-1. **Phase 1: Apple Wallet Integration**
-   - Set up Apple Developer account and certificates
-   - Implement passkit-generator in Netlify function
-   - Add "Add to Apple Wallet" button on confirmation page
-   - Test on iOS devices
+2. **Booking Confirmation Integration**
+   - Add wallet button to confirmation page
+   - Auto-generate passes when requested via URL parameters
 
-2. **Phase 2: Google Wallet Integration**
-   - Set up Google Service Account for Wallet API
-   - Implement Google Wallet API integration
-   - Add "Add to Google Wallet" button on confirmation page
-   - Test on Android devices
+### Email Integration
 
-3. **Phase 3: Email Integration**
-   - Update email templates to include wallet pass links
-   - Test email delivery with wallet passes
+The email template includes wallet buttons that:
+1. Use the official wallet button designs
+2. Link to the wallet pass API with the appropriate parameters
+3. Redirect to the booking confirmation page on click
 
-## Technical Requirements
+## Wallet Pass Structure
 
-### Apple Wallet Requirements
+### Common Fields
 
-1. **Certificates and Keys**:
-   - Apple Developer Program membership
-   - Pass Type ID certificate
-   - Apple WWDR certificate
-   - Private key for signing passes
+Both wallet types include:
+- Booking ID (for verification)
+- Venue name and address
+- Court name
+- Date and time of booking
+- User name and email
+- QR code for check-in
 
-2. **Pass Structure**:
-   - `pass.json`: Main pass data
-   - `manifest.json`: SHA1 hashes of all files
-   - `signature`: PKCS #7 signature of the manifest
-   - Images: background, icon, logo (various sizes)
+### Platform-Specific Fields
 
-### Google Wallet Requirements
+- **Apple Wallet**: Strip image, logo, and structured fields
+- **Google Wallet**: Hero image, text modules, and links
 
-1. **Authentication**:
-   - Google Cloud project
-   - Service account with Google Wallet API enabled
-   - JSON key file for authentication
+## Testing
 
-2. **Pass Structure**:
-   - Event ticket class with proper fields
-   - Object creation with booking details
-   - JWT token for pass signing
+To test the integration:
 
-## Code Examples
+1. **Local Development**:
+   - Run `npm run dev:emulators`
+   - Use the booking confirmation page to test pass generation
+   - Test on both iOS and Android devices
 
-### Apple Wallet Pass Generation (Node.js)
+2. **Production Testing**:
+   - Deploy to a staging environment
+   - Test the complete flow from booking to pass generation
+   - Verify the pass appears correctly in both wallet apps
 
-```typescript
-// netlify/functions/generate-apple-pass.ts
-import { PKPass } from 'passkit-generator';
-import { BookingsDB } from '../../src/db/bookings.collection';
-import QRCode from 'qrcode';
-import fs from 'fs';
-import path from 'path';
+## Troubleshooting
 
-export async function handler(event) {
-  const { bookingId } = JSON.parse(event.body);
-  
-  // Get booking data
-  const booking = await BookingsDB.getById(bookingId);
-  if (!booking) {
-    return { 
-      statusCode: 404, 
-      body: JSON.stringify({ error: 'Booking not found' }) 
-    };
-  }
-  
-  // Generate QR code
-  const qrCodeData = await QRCode.toDataURL(bookingId);
-  
-  // Create pass
-  const pass = new PKPass({
-    model: './templates/pass.json',
-    certificates: {
-      wwdr: fs.readFileSync('./certificates/wwdr.pem'),
-      signerCert: fs.readFileSync('./certificates/signerCert.pem'),
-      signerKey: fs.readFileSync('./certificates/signerKey.pem'),
-      signerKeyPassphrase: 'your-passphrase'
-    }
-  });
-  
-  // Set pass data
-  pass.primaryFields.push({
-    key: 'event',
-    label: 'EVENT',
-    value: 'Court Booking'
-  });
-  
-  pass.secondaryFields.push(
-    {
-      key: 'date',
-      label: 'DATE',
-      value: booking.date
-    },
-    {
-      key: 'time',
-      label: 'TIME',
-      value: `${booking.startTime} - ${booking.endTime}`
-    }
-  );
-  
-  pass.auxiliaryFields.push({
-    key: 'court',
-    label: 'COURT',
-    value: booking.courtName
-  });
-  
-  // Add barcode
-  pass.barcodes = [{
-    message: bookingId,
-    format: 'PKBarcodeFormatQR',
-    messageEncoding: 'iso-8859-1'
-  }];
-  
-  // Generate pass file
-  const passBuffer = await pass.generate();
-  
-  return {
-    statusCode: 200,
-    headers: {
-      'Content-Type': 'application/vnd.apple.pkpass',
-      'Content-Disposition': `attachment; filename=booking-${bookingId}.pkpass`
-    },
-    body: passBuffer.toString('base64'),
-    isBase64Encoded: true
-  };
-}
-```
+Common issues and solutions:
 
-### Google Wallet Pass Generation (Node.js)
+- **Google API errors**: Check service account permissions and keys
+- **Apple certificate errors**: Verify certificate format and expiration
+- **Pass display issues**: Check pass fields and data formatting
+- **QR code scanning problems**: Ensure correct encoding and format
 
-```typescript
-// netlify/functions/generate-google-pass.ts
-import { google } from 'googleapis';
-import { JWT } from 'google-auth-library';
-import { BookingsDB } from '../../src/db/bookings.collection';
+## Future Improvements
 
-export async function handler(event) {
-  const { bookingId } = JSON.parse(event.body);
-  
-  // Get booking data
-  const booking = await BookingsDB.getById(bookingId);
-  if (!booking) {
-    return { 
-      statusCode: 404, 
-      body: JSON.stringify({ error: 'Booking not found' }) 
-    };
-  }
-  
-  // Set up Google auth
-  const auth = new JWT({
-    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
-    scopes: ['https://www.googleapis.com/auth/wallet_object.issuer']
-  });
-  
-  const walletObjects = google.walletobjects({
-    version: 'v1',
-    auth
-  });
-  
-  // Create event ticket class if not exists
-  const classId = `${process.env.GOOGLE_WALLET_ISSUER_ID}.funkhaus_sports_booking`;
-  
-  try {
-    // Create or update class
-    await walletObjects.eventticketclass.insert({
-      requestBody: {
-        id: classId,
-        issuerName: 'Funkhaus Sports',
-        eventName: {
-          defaultValue: {
-            language: 'en-US',
-            value: 'Court Booking'
-          }
-        },
-        // More class configuration...
-      }
-    });
-    
-    // Create ticket object
-    const objectId = `${classId}.${bookingId}`;
-    await walletObjects.eventticketobject.insert({
-      requestBody: {
-        id: objectId,
-        classId: classId,
-        state: 'ACTIVE',
-        barcode: {
-          type: 'QR_CODE',
-          value: bookingId
-        },
-        // More object configuration...
-      }
-    });
-    
-    // Generate JWT for pass link
-    const claims = {
-      iss: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      aud: 'google',
-      origins: [process.env.APP_ORIGIN],
-      typ: 'savetowallet',
-      payload: {
-        eventTicketObjects: [{ id: objectId }]
-      }
-    };
-    
-    const token = await auth.sign(claims);
-    const passLink = `https://pay.google.com/gp/v/save/${token}`;
-    
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ 
-        passLink 
-      })
-    };
-  } catch (error) {
-    console.error('Error creating Google Wallet pass:', error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: 'Failed to create wallet pass' })
-    };
-  }
-}
-```
+Potential enhancements to consider:
 
-### Front-end Integration
-
-```typescript
-// src/public/book/components/booking-success.ts
-import { html } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
-import { $LitElement } from '@mhmo91/schmancy/dist/mixins';
-import { Booking } from 'src/types/booking/models';
-
-@customElement('booking-success')
-export class BookingSuccess extends $LitElement() {
-  @property({ type: Object }) booking?: Booking;
-  @property({ type: Boolean }) isLoading = false;
-  @property({ type: String }) platform = this.detectPlatform();
-  
-  private detectPlatform(): string {
-    const userAgent = navigator.userAgent;
-    if (/iPhone|iPad|iPod/.test(userAgent)) {
-      return 'apple';
-    } else if (/Android/.test(userAgent)) {
-      return 'google';
-    }
-    return 'unknown';
-  }
-  
-  private async addToWallet() {
-    if (!this.booking) return;
-    
-    this.isLoading = true;
-    
-    try {
-      if (this.platform === 'apple') {
-        const response = await fetch('/api/generate-wallet-pass', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            bookingId: this.booking.id,
-            platform: 'apple'
-          })
-        });
-        
-        // Apple Wallet passes are downloaded as files
-        if (response.ok) {
-          const blob = await response.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          document.body.appendChild(a);
-          a.style.display = 'none';
-          a.href = url;
-          a.download = `booking-${this.booking.id}.pkpass`;
-          a.click();
-          window.URL.revokeObjectURL(url);
-        }
-      } else if (this.platform === 'google') {
-        const response = await fetch('/api/generate-wallet-pass', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            bookingId: this.booking.id,
-            platform: 'google'
-          })
-        });
-        
-        // Google Wallet uses links
-        if (response.ok) {
-          const { passLink } = await response.json();
-          window.location.href = passLink;
-        }
-      }
-    } catch (error) {
-      console.error('Error adding to wallet:', error);
-    } finally {
-      this.isLoading = false;
-    }
-  }
-  
-  render() {
-    if (!this.booking) {
-      return html`
-        <div class="p-4 text-center">
-          <schmancy-progress type="circular" size="md"></schmancy-progress>
-        </div>
-      `;
-    }
-    
-    return html`
-      <div class="p-4">
-        <div class="mb-4 p-4 bg-success-container rounded-lg text-center">
-          <schmancy-icon class="text-4xl mb-2">check_circle</schmancy-icon>
-          <schmancy-typography type="headline" token="lg">
-            Booking Confirmed!
-          </schmancy-typography>
-        </div>
-        
-        <!-- Booking details -->
-        <!-- ... existing booking details ... -->
-        
-        <!-- Add to Wallet button - only show on supported platforms -->
-        ${this.platform !== 'unknown' ? html`
-          <div class="mt-6">
-            <schmancy-button 
-              variant="outlined" 
-              class="w-full"
-              @click=${() => this.addToWallet()}
-              ?disabled=${this.isLoading}
-            >
-              <schmancy-icon>${this.platform === 'apple' ? 'wallet' : 'payments'}</schmancy-icon>
-              Add to ${this.platform === 'apple' ? 'Apple Wallet' : 'Google Wallet'}
-            </schmancy-button>
-          </div>
-        ` : ''}
-      </div>
-    `;
-  }
-}
-```
-
-## Security Considerations
-
-1. **Certificate Protection**:
-   - Store certificates and private keys securely
-   - Use environment variables for sensitive data
-   - Restrict access to pass generation endpoints
-
-2. **Validation**:
-   - Verify user authorization before generating passes
-   - Validate booking data before creating passes
-   - Implement rate limiting to prevent abuse
-
-## Testing Plan
-
-1. **Unit Tests**:
-   - Test pass generation functions
-   - Test platform detection
-   - Test error handling
-
-2. **Integration Tests**:
-   - Test pass generation endpoints
-   - Test wallet pass formatting
-   - Test QR code scanning from wallet passes
-
-3. **End-to-End Tests**:
-   - Test on real iOS and Android devices
-   - Test pass installation process
-   - Test scanning wallet pass QR codes with scanner
-
-## Conclusion
-
-Implementing digital wallet passes will enhance the user experience of Funkhaus Sports by providing easy access to booking information and streamlining the check-in process. The implementation will require server-side changes to generate the passes and front-end changes to offer them to users.
+1. **Pass Updates**: Implement push notifications for pass updates
+2. **Localization**: Add multiple language support for pass fields
+3. **Location-based Triggers**: Add geolocation for automatic display
+4. **Analytics**: Track pass usage and engagement metrics
