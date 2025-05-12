@@ -1,43 +1,123 @@
 // netlify/functions/_shared/google-wallet-service.ts
 
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { GoogleAuth } from 'google-auth-library';
-import { WALLET_CONFIG } from './wallet-pass-config';
 import * as jwt from 'jsonwebtoken';
-
-// Initialize Firebase Admin if not already initialized
-if (getApps().length === 0) {
-  initializeApp({
-    credential: cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-  });
-}
+import axios from 'axios';
+import { WALLET_CONFIG } from './wallet-pass-config';
 
 /**
  * Google Wallet service class
  * 
- * Handles authentication and interaction with the Google Wallet API
- * using Firebase Admin SDK for authentication
+ * Direct implementation without relying on Google Auth library
+ * Uses JWT and Axios for API calls
  */
 export class GoogleWalletService {
-  private auth: GoogleAuth;
   private baseUrl = 'https://walletobjects.googleapis.com/walletobjects/v1';
   private issuerId: string;
   private classPrefix: string;
+  private projectId: string;
+  private clientEmail: string;
+  private privateKey: string;
+  private accessToken: string | null = null;
+  private tokenExpiry: number = 0;
 
   constructor() {
-    // Get issuer ID from environment variables
-    this.issuerId = process.env.GOOGLE_WALLET_ISSUER_ID || '';
+    // Get service account details from environment variables
+    this.projectId = process.env.FIREBASE_PROJECT_ID || '';
+    this.clientEmail = process.env.FIREBASE_CLIENT_EMAIL || '';
+    this.privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+    
+    // Get issuer ID from environment variables (necessary for Google Wallet)
+    this.issuerId = process.env.GOOGLE_WALLET_ISSUER_ID || ''; 
     this.classPrefix = `${this.issuerId}.${WALLET_CONFIG.google.classId}`;
     
-    // Initialize auth client using Firebase Admin credentials
-    this.auth = new GoogleAuth({
-      scopes: ['https://www.googleapis.com/auth/wallet_object.issuer'],
-      projectId: process.env.FIREBASE_PROJECT_ID,
-    });
+    // Log credential info for debugging (without exposing private key)
+    console.log('GoogleWalletService initialized with:');
+    console.log('- Project ID:', this.projectId ? 'Found' : 'Missing');
+    console.log('- Client Email:', this.clientEmail ? 'Found' : 'Missing');
+    console.log('- Private Key:', this.privateKey ? 'Found (length: ' + (this.privateKey?.length || 0) + ')' : 'Missing');
+    console.log('- First 10 chars of private key:', this.privateKey?.substring(0, 10) || 'N/A');
+    console.log('- Issuer ID:', this.issuerId ? 'Found' : 'Missing');
+    
+    // Validate credentials
+    this.validateCredentials();
+  }
+
+  /**
+   * Validate that all required credentials are present
+   * @throws Error if any required credential is missing
+   */
+  private validateCredentials(): void {
+    const missingCredentials: string[] = [];
+    
+    if (!this.projectId) missingCredentials.push('FIREBASE_PROJECT_ID');
+    if (!this.clientEmail) missingCredentials.push('FIREBASE_CLIENT_EMAIL');
+    if (!this.privateKey) missingCredentials.push('FIREBASE_PRIVATE_KEY');
+    if (!this.issuerId) missingCredentials.push('GOOGLE_WALLET_ISSUER_ID');
+    
+    if (missingCredentials.length > 0) {
+      throw new Error(`Missing required credentials: ${missingCredentials.join(', ')}`);
+    }
+    
+    // Validate private key format
+    if (!this.privateKey.includes('BEGIN PRIVATE KEY') || !this.privateKey.includes('END PRIVATE KEY')) {
+      throw new Error('Invalid private key format. Must include BEGIN and END markers.');
+    }
+  }
+  
+  /**
+   * Get an access token for Google API requests
+   * Creates a JWT and exchanges it for an access token
+   * Caches the token until it expires
+   */
+  private async getAccessToken(): Promise<string> {
+    // Check if we have a valid token
+    const now = Math.floor(Date.now() / 1000);
+    if (this.accessToken && now < this.tokenExpiry - 60) {
+      return this.accessToken as string;
+    }
+    
+    try {
+      console.log('Generating new access token...');
+      
+      // Create a JWT to request an access token
+      const tokenJwt = jwt.sign(
+        {
+          iss: this.clientEmail,
+          scope: 'https://www.googleapis.com/auth/wallet_object.issuer',
+          aud: 'https://oauth2.googleapis.com/token',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000),
+        },
+        this.privateKey,
+        { algorithm: 'RS256' }
+      );
+      
+      // Exchange JWT for access token
+      const response = await axios.post(
+        'https://oauth2.googleapis.com/token',
+        new URLSearchParams({
+          grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+          assertion: tokenJwt,
+        }),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        }
+      );
+      
+      this.accessToken = response.data.access_token;
+      this.tokenExpiry = Math.floor(Date.now() / 1000) + response.data.expires_in;
+      
+      console.log('Access token generated successfully');
+      return this.accessToken as string;
+    } catch (error) {
+      console.error('Error getting access token:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+      }
+      throw new Error(`Failed to get access token: ${error.message}`);
+    }
   }
 
   /**
@@ -50,33 +130,70 @@ export class GoogleWalletService {
    */
   async createOrUpdateClass(classData: any): Promise<any> {
     try {
-      // Get an authenticated client
-      const client = await this.auth.getClient();
+      // Get access token
+      const token = await this.getAccessToken();
       const url = `${this.baseUrl}/eventTicketClass/${classData.id}`;
       
       try {
         // First try to get the class
-        const getResponse = await client.request({ url, method: 'GET' });
+        console.log('Checking if class exists:', classData.id);
+        const getResponse = await axios.get(url, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
         
         // If it exists, update it
-        return await client.request({
+        console.log('Class exists, updating it');
+        const updateResponse = await axios.put(
           url,
-          method: 'PUT',
-          data: classData
-        });
+          classData,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        
+        return updateResponse.data;
       } catch (error) {
         // If it doesn't exist (404), create it
         if (error.response && error.response.status === 404) {
-          return await client.request({
-            url: `${this.baseUrl}/eventTicketClass`,
-            method: 'POST',
-            data: classData
-          });
+          console.log('Class does not exist, creating it');
+          const createResponse = await axios.post(
+            `${this.baseUrl}/eventTicketClass`,
+            classData,
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+          
+          return createResponse.data;
         }
+        
+        // Check for API not enabled error
+        if (error.response && error.response.status === 403 && 
+            (error.response.data?.error?.message?.includes('API has not been used') || 
+             error.response.data?.error?.message?.includes('is disabled'))) {
+          const projectId = this.projectId;
+          const errorMsg = `Google Wallet API is not enabled for project ${projectId}. `
+            + `Please enable it at: https://console.developers.google.com/apis/api/walletobjects.googleapis.com/overview?project=${projectId}`;
+          console.error(errorMsg);
+          throw new Error(errorMsg);
+        }
+        
         throw error;
       }
     } catch (error) {
       console.error('Error creating or updating Google Wallet class:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+      }
       throw error;
     }
   }
@@ -89,18 +206,29 @@ export class GoogleWalletService {
    */
   async createPassObject(objectData: any): Promise<any> {
     try {
-      // Get an authenticated client
-      const client = await this.auth.getClient();
+      // Get access token
+      const token = await this.getAccessToken();
       const url = `${this.baseUrl}/eventTicketObject`;
       
       // Create the pass object
-      return await client.request({
+      console.log('Creating pass object:', objectData.id);
+      const response = await axios.post(
         url,
-        method: 'POST',
-        data: objectData
-      });
+        objectData,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      
+      return response.data;
     } catch (error) {
       console.error('Error creating Google Wallet pass object:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+      }
       throw error;
     }
   }
@@ -115,24 +243,9 @@ export class GoogleWalletService {
    */
   async generatePassJwt(classId: string, objectId: string): Promise<string> {
     try {
-      // Get an authenticated client using Firebase credentials
-      const client = await this.auth.getClient();
-      // Get the client email from credentials
-      const clientEmail = await this.auth.getCredentials()
-        .then(creds => creds.client_email);
-      
-      // Get private key from client if available (for JWT signing)
-      let privateKey;
-      if ('key' in client && client.key) {
-        privateKey = client.key;
-      } else {
-        // Fallback to environment variable if client key is not available
-        privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n') || '';
-      }
-      
-      // Create the JWT payload
+      // Create the JWT payload for Google Wallet
       const payload = {
-        iss: clientEmail,
+        iss: this.clientEmail,
         aud: 'google',
         typ: 'savetoandroidpay',
         iat: Math.floor(Date.now() / 1000),
@@ -146,7 +259,11 @@ export class GoogleWalletService {
       };
 
       // Sign with the private key using the JWT library
-      const token = jwt.sign(payload, privateKey, { algorithm: 'RS256' });
+      console.log('Signing JWT for classId:', classId, 'objectId:', objectId);
+      const token = jwt.sign(payload, this.privateKey, { algorithm: 'RS256' });
+      
+      // Log success but not the actual token
+      console.log('JWT generated successfully');
       return token;
     } catch (error) {
       console.error('Error generating Google Wallet JWT:', error);
@@ -162,23 +279,40 @@ export class GoogleWalletService {
    */
   async createPass(passData: any): Promise<string> {
     try {
+      // Validate credentials first
+      this.validateCredentials();
+      
       // Extract class and object data
       const { eventTicketClass, eventTicketObject } = passData;
       
-      // Create or update the class (template)
-      await this.createOrUpdateClass(eventTicketClass);
+      console.log('Creating Google Wallet pass:');
+      console.log('- Class ID:', eventTicketClass.id);
+      console.log('- Object ID:', eventTicketObject.id);
       
-      // Create the object (specific pass instance)
-      await this.createPassObject(eventTicketObject);
-      
-      // Generate JWT for the save link
-      const jwt = await this.generatePassJwt(
-        eventTicketObject.classId,
-        eventTicketObject.id
-      );
-      
-      // Return the Google Wallet save link
-      return `https://pay.google.com/gp/v/save/${jwt}`;
+      try {
+        // Create or update the class (template)
+        console.log('Creating/updating ticket class...');
+        await this.createOrUpdateClass(eventTicketClass);
+        
+        // Create the object (specific pass instance)
+        console.log('Creating ticket object...');
+        await this.createPassObject(eventTicketObject);
+        
+        // Generate JWT for the save link
+        console.log('Generating JWT...');
+        const jwt = await this.generatePassJwt(
+          eventTicketObject.classId,
+          eventTicketObject.id
+        );
+        
+        // Return the Google Wallet save link
+        const saveUrl = `https://pay.google.com/gp/v/save/${jwt}`;
+        console.log('Generated Google Wallet save URL successfully');
+        return saveUrl;
+      } catch (apiError) {
+        console.error('API error during pass creation:', apiError);
+        throw new Error(`Google Wallet API error: ${apiError.message || 'Unknown API error'}`);
+      }
     } catch (error) {
       console.error('Error creating Google Wallet pass:', error);
       throw error;

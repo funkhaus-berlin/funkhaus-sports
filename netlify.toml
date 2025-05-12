@@ -4,9 +4,15 @@
 
 [build.environment]
   # Firebase configuration for serverless functions
+  # NOTE: For production, set these in the Netlify dashboard, not here!
   FIREBASE_PROJECT_ID = "funkhaus-sports"
+  # These credentials MUST be set in the Netlify dashboard
+  # FIREBASE_CLIENT_EMAIL = "firebase-adminsdk-xxxxx@funkhaus-sports.iam.gserviceaccount.com"
+  # FIREBASE_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\nXXXXX\n-----END PRIVATE KEY-----\n"
+  
   # Google Wallet configuration
   GOOGLE_WALLET_ISSUER_ID = "3388000000022209405"
+  
   # Apple Wallet configuration
   APPLE_TEAM_ID = "ABDCEFGHIJ"
   APPLE_PASS_TYPE_ID = "pass.funkhaus.sports"

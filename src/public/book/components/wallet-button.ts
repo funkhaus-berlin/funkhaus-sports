@@ -74,7 +74,20 @@ export class WalletButton extends $LitElement() {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to generate wallet pass');
+        // Parse error details if available
+        let errorMessage = 'Failed to generate wallet pass';
+        try {
+          const errorData = await response.json();
+          if (errorData.details) {
+            errorMessage = errorData.details;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (e) {
+          // If we can't parse the JSON, use the status text
+          errorMessage = `Failed to generate wallet pass: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
       
       if (this.platform === 'apple') {
