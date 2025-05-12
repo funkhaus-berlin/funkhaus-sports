@@ -166,34 +166,8 @@ export class PaymentService {
 			}),
 			catchError(error => {
 				console.error('Payment or booking error:', error)
-
-				// Only update error if component is still mounted
-				if (this._processingLock === lockFlag) {
-					// Use internationalized error handling
-					if (error.message && error.message.includes('network')) {
-						BookingErrorService.setErrorI18n(
-							ErrorMessageKey.NETWORK_CONNECTION,
-							ErrorCategory.NETWORK,
-							{},
-							{ recoverySuggestionKey: ErrorMessageKey.RECOVERY_CHECK_CONNECTION },
-						)
-					} else if (error.type === 'card_error') {
-						BookingErrorService.handleStripeErrorI18n(error)
-					} else if (error.type === 'validation_error') {
-						BookingErrorService.setErrorI18n(
-							ErrorMessageKey.VALIDATION_REQUIRED_FIELDS,
-							ErrorCategory.VALIDATION,
-							{},
-							{ recoverySuggestionKey: ErrorMessageKey.RECOVERY_CHECK_INPUTS },
-						)
-					} else if (error.message && error.message.includes('Missing required booking fields')) {
-						BookingErrorService.setErrorI18n(ErrorMessageKey.VALIDATION_REQUIRED_FIELDS, ErrorCategory.VALIDATION)
-					} else {
-						// Handle general errors with appropriate message keys
-						BookingErrorService.handleErrorI18n(error)
-					}
-				}
-
+				// Let Stripe handle payment errors directly in its UI
+				// We won't use our custom error service here
 				return of({ success: false, booking: bookingData, error })
 			}),
 			finalize(() => {

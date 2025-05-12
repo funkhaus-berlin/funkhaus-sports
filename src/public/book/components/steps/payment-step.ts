@@ -28,7 +28,6 @@ export class CheckoutForm extends $LitElement() {
 	@property({ attribute: false }) onBookingComplete?: (booking: Booking) => void
 
 	@state() processing = false
-	@state() error: string | null = null
 	@state() formValidity: Record<string, boolean> = {}
 	@state() isActive = false
 	@state() isTransitioning = false
@@ -162,18 +161,19 @@ export class CheckoutForm extends $LitElement() {
 
 		// Check if Stripe is ready
 		if (!this.stripe || !this.elements) {
-			this.error = 'Payment processing is not available. Please try again later.'
+			$notify.error('Payment processing is not available. Please try again later.')
 			return
 		}
 
 		// Validate Stripe elements
 		const { error } = await this.elements.submit()
 		if (error) {
-			this.handleValidationError(error)
+			// Let Stripe handle validation errors directly
+			console.error('Stripe validation error:', error)
 			return
 		}
 
-		// Process payment
+		// Process payment (let Stripe handle any payment errors)
 		this.paymentService.processPayment(this.booking, this.stripe, this.elements).subscribe((result: any) => {
 			if (result.success) {
 				// Transition to the next step (from Payment to completion)
@@ -187,23 +187,7 @@ export class CheckoutForm extends $LitElement() {
 					}),
 				)
 			}
-			// Error handling is done by the service
 		})
-	}
-
-	/**
-	 * Handle validation errors from Stripe
-	 */
-	private handleValidationError(error: any): void {
-		this.processing = false
-
-		if (error.type === 'card_error' || error.type === 'validation_error') {
-			this.error = error.message || 'Card validation failed'
-		} else {
-			this.error = 'Something went wrong with the payment form, please try again.'
-		}
-
-		$notify.error(this.error ?? '')
 	}
 
 	/**

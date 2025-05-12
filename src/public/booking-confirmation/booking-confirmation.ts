@@ -10,7 +10,7 @@ import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { VenueLandingPage } from 'src/public/venues/venues'
 import { BookingUtils } from '../book/booking-utils'
-import '../book/components/wallet-button'
+// import '../book/components/wallet-button' // Temporarily disabled
 import { resendBookingEmail } from '../book/components/services'
 import { Booking, bookingContext, BookingProgressContext } from '../book/context'
 
@@ -21,8 +21,9 @@ export class BookingConfirmation extends $LitElement() {
   @property({ type: String }) customerEmail: string = ''
   @property({ type: String }) customerName: string = ''
   @property({ type: String }) bookingId: string = ''
-  @property({ type: Boolean }) autoGenerateWallet: boolean = false
-  @property({ type: String }) walletPlatform: string = ''
+  // Wallet properties temporarily disabled
+  // @property({ type: Boolean }) autoGenerateWallet: boolean = false
+  // @property({ type: String }) walletPlatform: string = ''
   @property({ attribute: false }) onNewBooking?: () => void
 
   // Utilities for booking data formatting and operations
@@ -382,13 +383,15 @@ export class BookingConfirmation extends $LitElement() {
                 </schmancy-button>
               </sch-flex>
               
-              <!-- Wallet Button Component -->
+              <!-- Wallet Button Component (temporarily disabled) -->
+              <!-- 
               <wallet-button
                 .booking=${this.booking}
                 .bookingId=${this.bookingId}
                 .autoGenerate=${this.autoGenerateWallet}
                 .overridePlatform=${this.walletPlatform}
               ></wallet-button>
+              -->
               
               <sch-flex gap="2">
                 <schmancy-button 
