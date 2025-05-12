@@ -68,9 +68,5 @@
 		"typescript": "^5.8.3",
 		"vite": "^6.3.5",
 		"vite-plugin-pwa": "^1.0.0"
-	},
-	"packageManager": "npm@10.8.2",
-	"engines": {
-		"npm": "^10.8.2"
 	}
 }
