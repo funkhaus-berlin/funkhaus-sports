@@ -17,6 +17,7 @@ import { BookingConfirmationRoute } from './public/booking-confirmation/booking-
 import './public/shared'
 import { VenueLandingPage } from './public/venues/venues'
 import './schmancy'
+import BookingScanner from './scanner/scanner'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -118,6 +119,11 @@ export class AppIndex extends $LitElement() {
 			// Check for admin route
 			if (path.startsWith('/admin')) {
 				return FunkhausAdmin
+			}
+			
+			// Check for scanner route
+			if (path.startsWith('/scanner')) {
+				return document.createElement('booking-scanner')
 			}
 
 			// Default to landing page

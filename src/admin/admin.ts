@@ -9,6 +9,7 @@ import { User, userContext } from 'src/user.context'
 import '@mhmo91/schmancy'
 import FunkhausSportsSignin from './signin'
 import { VenueManagement } from './venues/venues'
+import './venues/scanner/scanner-view'
 
 @customElement('funkhaus-sports-admin')
 export default class FunkhausAdmin extends $LitElement() {
@@ -83,6 +84,15 @@ export default class FunkhausAdmin extends $LitElement() {
 		})
 		this.activeTab = 'venues'
 	}
+	
+	private navigateToScanner(): void {
+		area.push({
+			component: document.createElement('scanner-view'),
+			area: 'admin',
+			params: { view: 'scanner' } 
+		})
+		this.activeTab = 'scanner'
+	}
 
 	private setupFullscreenListeners(): void {
 		// Listen for fullscreen events
@@ -118,7 +128,12 @@ export default class FunkhausAdmin extends $LitElement() {
 				takeUntil(this.disconnecting),
 			)
 			.subscribe(r => {
-				this.activeTab = r.component.toLowerCase()
+				// Get activeTab from component name or params.view
+				if (r.params?.view) {
+					this.activeTab = r.params.view
+				} else {
+					this.activeTab = r.component.toLowerCase()
+				}
 			})
 	}
 
@@ -143,6 +158,21 @@ export default class FunkhausAdmin extends $LitElement() {
 							<schmancy-flex gap="md">
 								<schmancy-icon>location_on</schmancy-icon>
 								Venues
+							</schmancy-flex>
+						</schmancy-list-item>
+						
+						<schmancy-list-item
+							.selected=${this.activeTab === 'scanner'}
+							@click=${() => {
+								this.navigateToScanner()
+								schmancyNavDrawer.close()
+							}}
+							rounded
+							variant="container"
+						>
+							<schmancy-flex gap="md">
+								<schmancy-icon>qr_code_scanner</schmancy-icon>
+								Scanner
 							</schmancy-flex>
 						</schmancy-list-item>
 
