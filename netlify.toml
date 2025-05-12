@@ -1,5 +1,6 @@
 [functions]
-  external_node_modules = ["react", "react/jsx-runtime", "react-dom/server", "firebase-admin"]
+  external_node_modules = ["react", "react/jsx-runtime", "react-dom/server", "firebase-admin", "stripe", "pdfkit", "qrcode", "resend", "moment", "uuid", "pug", "ical-generator", "nodemailer", "pdf-lib"]
+  node_bundler = "esbuild"
   included_files = ["netlify/functions/_shared/ticket.pug", "netlify/functions/_shared/assets/**", "netlify/functions/_shared/data/**"]
 
 [[redirects]]

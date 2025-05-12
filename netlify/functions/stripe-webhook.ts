@@ -1,7 +1,7 @@
 // netlify/functions/stripe-webhook.ts
 import { Handler } from '@netlify/functions'
 import admin from 'firebase-admin'
-import Stripe from 'stripe'
+import type { Stripe } from 'stripe'
 import { corsHeaders } from './_shared/cors'
 import stripe from './_shared/stripe'
 
