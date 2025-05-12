@@ -510,18 +510,17 @@ export class CourtSelectStep extends $LitElement(css`
 
 			this.courtAvailability = availabilityMap
 
-			// Load venue courts
+			// Load venue courts - maintain original order from database
 			const venueCourts = Array.from(this.allCourts.values()).filter(
 				court => court.status === 'active' && court.venueId === this.booking.venueId,
 			)
 
-			// Apply filters and sort
+			// Apply filters without sorting
 			const filteredCourts = this.applyCourtPreferenceFilters(venueCourts)
-			const sortedCourts = this.sortCourtsByAvailability(filteredCourts)
 
-			// Update state
-			this.selectedVenueCourts = sortedCourts
-			this.lastSuccessfulData = { courts: sortedCourts }
+			// Update state - no sorting
+			this.selectedVenueCourts = filteredCourts
+			this.lastSuccessfulData = { courts: filteredCourts }
 			this.loading = false
 			this.error = null
 			this.requestUpdate()
