@@ -13,7 +13,7 @@ export const $stripe = new BehaviorSubject<number>(100)
 export function createPaymentIntent(body: any) {
 	return from(
 		fetch(
-			((import.meta.env.DEV && import.meta.env.VITE_BASE_URL) ?? '') + '/api/create-payment-intent',
+			((import.meta.env.DEV ? import.meta.env.VITE_BASE_URL : '/')) + 'api/create-payment-intent',
 
 			{
 				method: 'POST',
