@@ -4,7 +4,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, PropertyValues } from 'lit'
 import { customElement, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { distinctUntilChanged, filter, map, take, takeUntil } from 'rxjs'
+import { debounceTime, distinctUntilChanged, filter, map, shareReplay, take, takeUntil, tap } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 import {
@@ -65,7 +65,6 @@ export class CourtBookingSystem extends $LitElement() {
 		// This allows time for both the URL parameters and context to be properly loaded
 
 		// Initialize Stripe
-		this.initializeStripe()
 	}
 
 	disconnectedCallback() {
@@ -74,24 +73,35 @@ export class CourtBookingSystem extends $LitElement() {
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
-		// Check if venueId is missing and redirect if necessary
-		this.checkVenueIdAndRedirect()
-		
-		// Check for returning payment status
-		this.checkPaymentStatus()
+		courtsContext.$.pipe(
+			filter(() => courtsContext.ready && courtsContext.value.size > 0),
+			take(1),
+			debounceTime(100),
+		)
 
-		// Initialize step based on URL parameters
-		this.initializeStepFromUrl()
+			.subscribe({
+				next: () => {
+					this.initializeStripe()
+					// Check if venueId is missing and redirect if necessary
+					this.checkVenueIdAndRedirect()
+
+					// Check for returning payment status
+					this.checkPaymentStatus()
+
+					// Initialize step based on URL parameters
+					this.initializeStepFromUrl()
+				},
+			})
 
 		// Initialize history state if needed
 		if (!window.history.state) {
 			this.updateUrlForStep(this.bookingProgress.currentStep)
 		}
 	}
-	
+
 	// Variable to store the state of the booking context
-	private hasCheckedContext = false;
-	
+	private hasCheckedContext = false
+
 	/**
 	 * Check if a valid venueId exists in the booking context
 	 * If not, redirect to the venues landing page
@@ -100,30 +110,35 @@ export class CourtBookingSystem extends $LitElement() {
 	private checkVenueIdAndRedirect(): void {
 		// Only check once to prevent redirect loops
 		if (this.hasCheckedContext) {
-			return;
+			return
 		}
-		
+
 		// Mark as checked to avoid multiple checks
-		this.hasCheckedContext = true;
-		
+		this.hasCheckedContext = true
+
 		// Defer the check to allow context to be hydrated
 		// This is the key to solving the race condition
 		setTimeout(() => {
 			// Check for empty venueId after timeout
 			if (!this.booking.venueId || this.booking.venueId.trim() === '') {
-				console.warn('No venueId found in booking context. Redirecting to venues page.');
+				console.warn('No venueId found in booking context. Redirecting to venues page.')
 				// Redirect to venues landing page
-				const baseUrl = window.location.origin;
-				const venuesUrl = `${baseUrl.replace(/\/$/, '')}/`;
-				window.location.href = venuesUrl;
-			}else {
-        // ensure venucontext is hydrated if theere is a booking venue id
-        venuesContext.$.pipe( map(vs=> vs.get(this.booking.venueId)),take(1)).subscribe({next:()=>{
-              venueContext.set(venuesContext.value.get(this.booking.venueId)!)
-              this.requestUpdate()
-          }})
-      }
-		}, 250); // Small timeout to allow context hydration
+				const baseUrl = window.location.origin
+				const venuesUrl = `${baseUrl.replace(/\/$/, '')}/`
+				window.location.href = venuesUrl
+			} else {
+				// ensure venucontext is hydrated if theere is a booking venue id
+				venuesContext.$.pipe(
+					map(vs => vs.get(this.booking.venueId)),
+					take(1),
+				).subscribe({
+					next: () => {
+						venueContext.set(venuesContext.value.get(this.booking.venueId)!)
+						this.requestUpdate()
+					},
+				})
+			}
+		}, 250) // Small timeout to allow context hydration
 	}
 
 	// SETUP METHODS
@@ -139,11 +154,16 @@ export class CourtBookingSystem extends $LitElement() {
 		// Subscribe to booking context changes to update stripe amount
 		bookingContext.$.pipe(
 			filter(() => !!this.booking),
+
 			filter(booking => !!booking.startTime && !!booking.endTime && !!booking.courtId),
-      filter(b=> !!this.availableCourts.get(b.courtId)),
+
+			filter(b => !!this.availableCourts.get(b.courtId)),
+
 			distinctUntilChanged((prev, curr) => {
 				return prev.startTime === curr.startTime && prev.endTime === curr.endTime && prev.courtId === curr.courtId
 			}),
+			tap(v => console.log('.....', v)),
+
 			map(booking => {
 				bookingContext.set({
 					price: pricingService.calculatePrice(
@@ -157,7 +177,9 @@ export class CourtBookingSystem extends $LitElement() {
 			}),
 			distinctUntilChanged((prev, curr) => prev === curr),
 			takeUntil(this.disconnecting),
+			shareReplay(1),
 		).subscribe(price => {
+			console.log('priceeee', price)
 			if (price) {
 				$stripe.next(price)
 			}
@@ -384,43 +406,42 @@ export class CourtBookingSystem extends $LitElement() {
 		`
 	}
 
+	/**
+	 * Determine if a step should be shown based on current booking flow and progress
+	 * Modified to implement sequential step display with expanded steps tracking
+	 * Further modified to hide Duration step if no time is selected
+	 */
+	private shouldShowStep(step: BookingFlowStep): boolean {
+		if (!this.availability?.bookingFlowType) return true
 
-/**
- * Determine if a step should be shown based on current booking flow and progress
- * Modified to implement sequential step display with expanded steps tracking
- * Further modified to hide Duration step if no time is selected
- */
-private shouldShowStep(step: BookingFlowStep): boolean {
-  if (!this.availability?.bookingFlowType) return true
+		const flowSteps = getBookingFlowSteps()
+		const stepIndex = flowSteps.indexOf(step)
+		const isExpanded = this.bookingProgress.expandedSteps.includes(step.step)
+		const currentStepIndex = flowSteps.findIndex(s => s.step === this.bookingProgress.currentStep)
 
-  const flowSteps = getBookingFlowSteps()
-  const stepIndex = flowSteps.indexOf(step)
-  const isExpanded = this.bookingProgress.expandedSteps.includes(step.step)
-  const currentStepIndex = flowSteps.findIndex(s => s.step === this.bookingProgress.currentStep)
+		// If Date step is current and expanded, only show Date step
+		const dateStep = flowSteps.find(s => s.label === 'Date')
+		if (
+			dateStep &&
+			this.bookingProgress.currentStep === dateStep.step &&
+			this.bookingProgress.expandedSteps.includes(dateStep.step)
+		) {
+			return step.step === dateStep.step
+		}
 
-  // If Date step is current and expanded, only show Date step
-  const dateStep = flowSteps.find(s => s.label === 'Date')
-  if (
-    dateStep &&
-    this.bookingProgress.currentStep === dateStep.step &&
-    this.bookingProgress.expandedSteps.includes(dateStep.step) 
-  ) {
-    return step.step === dateStep.step
-  }
+		if (currentStepIndex > this.bookingProgress.maxStepReached) {
+			BookingProgressContext.set({
+				maxStepReached: currentStepIndex,
+			})
+		}
 
-  if (currentStepIndex > this.bookingProgress.maxStepReached) {
-    BookingProgressContext.set({
-      maxStepReached: currentStepIndex,
-    })
-  }
+		// Special case for Duration step - only show if time is selected
+		if (step.label === 'Duration' && !this.booking.startTime) {
+			return false
+		}
 
-  // Special case for Duration step - only show if time is selected
-  if (step.label === 'Duration' && !this.booking.startTime) {
-    return false
-  }
-
-  return stepIndex !== -1 && isExpanded
-}
+		return stepIndex !== -1 && isExpanded
+	}
 	/**
 	 * Render a step component based on step number
 	 */
@@ -471,16 +492,16 @@ private shouldShowStep(step: BookingFlowStep): boolean {
 						.venue=${venueContext.value as Venue}
 						@click=${() => {
 							// Reset booking context when venue card is clicked
-							bookingContext.clear();
+							bookingContext.clear()
 							bookingContext.set({
 								venueId: (venueContext.value as Venue).id,
-							});
+							})
 							// Reset booking progress context
 							BookingProgressContext.set({
 								currentStep: BookingStep.Date,
-							});
+							})
 							// Request update to refresh the UI
-							this.requestUpdate();
+							this.requestUpdate()
 						}}
 						.theme=${(venueContext.value as Venue).theme!}
 					></funkhaus-venue-card>
