@@ -144,8 +144,7 @@ export class BookingConfirmationRoute extends $LitElement() {
 			return html`
 				<schmancy-surface ${fullHeight()} type="containerLow" rounded="all" elevation="1">
 					<div class="flex justify-center items-center h-full flex-col gap-4">
-						<schmancy-spinner size="48px"></schmancy-spinner>
-						<schmancy-typography type="title" token="md">Loading your booking confirmation...</schmancy-typography>
+						<schmancy-spinner class="size-24" size="48px"></schmancy-spinner>
 						${this.retryCount > 0
 							? html`
 									<schmancy-typography type="body" token="sm" class="text-surface-on-variant">
@@ -158,7 +157,7 @@ export class BookingConfirmationRoute extends $LitElement() {
 			`
 		}
 
-		if (this.error || !this.booking) {
+		if (this.error) {
 			return html`
 				<schmancy-surface ${fullHeight()} type="containerLow" rounded="all" elevation="1">
 					<div class="flex justify-center items-center h-full flex-col gap-4 p-8">
@@ -208,8 +207,6 @@ export class BookingConfirmationRoute extends $LitElement() {
 				.customerName=${this.booking.userName || ''}
 				.bookingId=${this.booking.id || ''}
 				.onNewBooking=${() => this.handleNewBooking()}
-				.autoGenerateWallet=${this.autoGenerateWallet}
-				.walletPlatform=${this.walletPlatform}
 			></booking-confirmation>
 		`
 	}

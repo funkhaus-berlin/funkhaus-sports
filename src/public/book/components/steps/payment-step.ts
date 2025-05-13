@@ -113,10 +113,8 @@ export class CheckoutForm extends $LitElement() {
 			bookingContext.set(
 				{
 					customerAddress: {
-						street: this.booking.customerAddress && typeof this.booking.customerAddress.street === 'string' ? this.booking.customerAddress.street : '',
-						city: this.booking.customerAddress && typeof this.booking.customerAddress.city === 'string' ? this.booking.customerAddress.city : '',
-						postalCode: this.booking.customerAddress && typeof this.booking.customerAddress.postalCode === 'string' ? this.booking.customerAddress.postalCode : '',
-						country: this.booking.customerAddress && typeof this.booking.customerAddress.country === 'string' ? this.booking.customerAddress.country : 'DE', // Default to Germany
+						...this.booking.customerAddress!,
+						country: 'DE', // Default to Germany
 					},
 				},
 				true,
@@ -128,6 +126,10 @@ export class CheckoutForm extends $LitElement() {
 		try {
 			// Initialize Stripe instance
 			this.stripe = await stripePromise
+
+			if (!this.stripe) {
+				return
+			}
 
 			// Subscribe to Stripe elements
 			this._elementsSubscription = $stripeElements.subscribe(elements => {
@@ -245,6 +247,7 @@ export class CheckoutForm extends $LitElement() {
 				`,
 			)}
 			<!-- Error display -->
+			
 			<div
 				class="
 					w-full bg-surface-low rounded-lg transition-all duration-300 p-2

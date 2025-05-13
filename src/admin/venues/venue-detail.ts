@@ -7,13 +7,11 @@ import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { VenuBookingsList } from './bookings/bookings'
 import './components'
-import { VenueCourtsPreview } from './components'
 import { selectMyCourts } from './courts/context'
 import { VenueCourts } from './courts/courts'
 import { ScannerView } from './scanner'
 import { venueContext, venuesContext } from './venue-context'
 import { VenueManagement } from './venues'
-import { PermissionService } from 'src/firebase/permission.service'
 
 @customElement('venue-detail-view')
 export class VenueDetailView extends $LitElement(css`
@@ -232,9 +230,7 @@ export class VenueDetailView extends $LitElement(css`
 							</schmancy-list-item>
 
 							<!-- Scanner Item - Only shown if user has permission -->
-							${PermissionService.hasVenueRole(this.venueId, 'staff') ? 
-								html`
-									<schmancy-list-item
+						<schmancy-list-item
 										.selected=${this.activeTab === 'scanner-view'}
 										@click=${() => {
 											// Ensure venue context is properly set before navigating
@@ -269,7 +265,6 @@ export class VenueDetailView extends $LitElement(css`
 											Check-in 
 										</schmancy-flex>
 									</schmancy-list-item>
-								` : ''}
 							
 						</schmancy-list>
 
