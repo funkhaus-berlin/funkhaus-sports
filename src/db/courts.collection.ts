@@ -113,7 +113,7 @@ class CourtsService extends FirestoreService<Court> {
 
 	// Get courts by venue
 	getByVenue(venueId: string): Observable<Map<string, Court>> {
-		return this.getCollection([
+		return this.query([
 			{
 				key: 'venueId',
 				value: venueId,

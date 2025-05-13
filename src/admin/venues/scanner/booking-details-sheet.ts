@@ -10,7 +10,7 @@ import { catchError, finalize, take, tap } from 'rxjs/operators'
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Court } from 'src/db/courts.collection'
 import { Booking, BookingStatus } from 'src/types/booking/models'
-import { courtsContext } from 'src/admin/venues/courts/context'
+import { courtsContext } from '../courts/context'
 
 /**
  * Booking details sheet for the scanner
@@ -54,10 +54,10 @@ export class BookingDetailsSheet extends $LitElement() {
     courtsContext.$.pipe(
       take(1),
       tap(() => {
-        if (!courtsContext.ready) return
+        if (!courtsContext.ready || !this.booking?.courtId) return
         
-        const court = this.courts.get(this.booking?.courtId || '')
-        this.courtName = court?.name || `Court ${this.booking?.courtId.substring(0, 4)}...`
+        const court = this.courts.get(this.booking.courtId)
+        this.courtName = court?.name || (this.booking.courtId ? `Court ${this.booking.courtId.substring(0, 4)}...` : 'Unknown')
       })
     ).subscribe()
   }
@@ -122,7 +122,7 @@ export class BookingDetailsSheet extends $LitElement() {
             
             <div class="p-2 bg-surface-variant rounded-lg text-center">
               <schmancy-typography type="label" token="sm">Court Assignment</schmancy-typography>
-              <schmancy-typography type="headline" token="sm">${this.courtName || `Court ${this.booking.courtId.substring(0, 4)}...`}</schmancy-typography>
+              <schmancy-typography type="headline" token="sm">${this.courtName || (this.booking.courtId ? `Court ${this.booking.courtId.substring(0, 4)}...` : 'Unknown')}</schmancy-typography>
             </div>
             
             <div class="mt-2 text-center">

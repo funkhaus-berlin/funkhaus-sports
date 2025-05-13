@@ -1,26 +1,71 @@
 import { createContext } from '@mhmo91/schmancy'
 
-export class User {
-	email: string | null
-	name: string
-	emailVerified: boolean
-	organizationID?: string | null
-	apps: Record<string, { roles: string[] }> = {}
-	id: string
-	photoURL?: string | null
-	onboarded?: boolean
+export type UserRole = 'super_admin' | 'venue_owner' | 'venue_manager' | 'staff';
 
-	createdAt?: any
-	updatedAt?: any
-	constructor() {
-		this.name = ''
-		this.email = ''
-		this.id = ''
-		this.organizationID = null
-		this.photoURL = null
-		this.onboarded = false
-		this.emailVerified = false
-	}
+export interface VenueAccess {
+  venueId: string;
+  role: UserRole;
 }
 
-export const userContext = createContext<User>(new User(), 'local', 'user')
+/**
+ * Base user properties interface
+ */
+export interface IUserBase {
+  email: string;
+  displayName: string;
+  admin: boolean; // Legacy field, kept for backwards compatibility
+  uid: string;
+  role: UserRole;
+  venueAccess: VenueAccess[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * User interface with required password for new user creation
+ */
+export interface IUserCreate extends IUserBase {
+  password: string;
+}
+
+/**
+ * User interface with optional password for user updates
+ */
+export interface IUserUpdate extends IUserBase {
+  password?: string;
+}
+
+/**
+ * Type alias for backward compatibility
+ */
+export type TUser = IUserCreate;
+
+/**
+ * User class implementation
+ */
+export class User implements IUserUpdate {
+  email: string;
+  password?: string;
+  displayName: string;
+  admin: boolean;
+  uid: string;
+  role: UserRole;
+  venueAccess: VenueAccess[];
+  createdAt?: string;
+  updatedAt?: string;
+
+  constructor() {
+    this.email = '';
+    this.password = '';
+    this.displayName = '';
+    this.admin = false;
+    this.uid = '';
+    this.role = 'staff';
+    this.venueAccess = [];
+  }
+}
+
+/**
+ * User context for application-wide state
+ */
+export const userContext = createContext<User>(new User(), 'local', 'user');

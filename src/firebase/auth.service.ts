@@ -4,6 +4,10 @@ import { Observable, from, of, throwError } from 'rxjs'
 import { catchError, map, switchMap, tap } from 'rxjs/operators'
 import { FirestoreService } from 'src/firebase/firestore.service'
 
+// Import actual user model
+import { IUserBase, User as AppUser, UserRole, VenueAccess } from 'src/user.context'
+
+// Legacy user interface for backward compatibility 
 export interface User {
 	id: string
 	email: string

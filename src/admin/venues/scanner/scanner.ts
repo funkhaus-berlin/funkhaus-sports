@@ -1,4 +1,4 @@
-import { fullHeight, sheet } from '@mhmo91/schmancy'
+import { fullHeight, select, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
@@ -10,8 +10,9 @@ import { animationFrames, of, Subscription, timer } from 'rxjs'
 import { catchError, filter, finalize, map, throttleTime, timeout } from 'rxjs/operators'
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Booking } from 'src/types/booking/models'
+import { venueContext } from '../venue-context'
+import { PermissionService } from 'src/firebase/permission.service'
 import './booking-details-sheet'
-import { venuesContext } from 'src/admin/venues/venue-context'
 
 // Initialize dayjs plugins
 dayjs.extend(relativeTime)
@@ -117,6 +118,7 @@ export default class BookingScanner extends $LitElement(css`
   @state() qrCode: string = ''
   @state() reason: string | undefined
   @state() checkedIn = false
+  @state() hasPermission = false
 
   // Query the video element in the template
   @query('#video')
@@ -125,25 +127,62 @@ export default class BookingScanner extends $LitElement(css`
   // Subscription for the QR scanning observable – used for cleanup
   private qrScanSubscription?: Subscription
 
+  @select(venueContext)
+  venue!: Partial<Venue>
+
   connectedCallback() {
     super.connectedCallback()
     
-    // Get venueId from URL if provided
-    const urlParams = new URLSearchParams(window.location.search)
-    const urlVenueId = urlParams.get('v')
-    if (urlVenueId) {
-      this.venueId = urlVenueId
-      localStorage.setItem('selectedVenue', urlVenueId)
-    } else {
-      // Try to get from localStorage
-      const storedVenueId = localStorage.getItem('selectedVenue')
-      if (storedVenueId) {
-        this.venueId = storedVenueId
+    // Primary source: Use the venue ID passed as a property
+    if (this.venueId) {
+      console.log('Scanner using venue ID from property:', this.venueId)
+    } 
+    // Secondary source: Check venue context
+    else if (this.venue?.id) {
+      this.venueId = this.venue.id
+      console.log('Scanner using venue ID from context:', this.venueId)
+    }
+    // Tertiary source: Check URL parameters
+    else {
+      // First check for v param (old style)
+      const urlParams = new URLSearchParams(window.location.search)
+      const urlVenueId = urlParams.get('v')
+      
+      // Then check for venueId param (new style from navigation)
+      const urlVenueIdNew = urlParams.get('venueId')
+      
+      if (urlVenueIdNew) {
+        this.venueId = urlVenueIdNew
+        console.log('Scanner using venue ID from URL venueId param:', this.venueId)
+      } else if (urlVenueId) {
+        this.venueId = urlVenueId
+        console.log('Scanner using venue ID from URL v param:', this.venueId)
+      } else {
+        // Last resort: Try localStorage
+        const storedVenueId = localStorage.getItem('selectedVenue')
+        if (storedVenueId) {
+          this.venueId = storedVenueId
+          console.log('Scanner using venue ID from localStorage:', this.venueId)
+        } else {
+          console.warn('Scanner initialized without a venue ID')
+        }
       }
     }
 
-    // Mark the scanner as ready
-    this.isReadyToScan = true
+    // Save the current venue ID for future reference
+    if (this.venueId) {
+      localStorage.setItem('selectedVenue', this.venueId)
+      
+      // Check if user has permission to access this venue
+      this.hasPermission = PermissionService.hasVenueRole(this.venueId, 'staff')
+      
+      if (!this.hasPermission) {
+        console.error('User does not have permission to access venue scanner:', this.venueId)
+      }
+    }
+
+    // Mark the scanner as ready if we have permission
+    this.isReadyToScan = this.hasPermission
     
     // Set initial viewport height variable for iOS
     this.setViewportHeight();
@@ -164,8 +203,10 @@ export default class BookingScanner extends $LitElement(css`
   }
 
   firstUpdated() {
-    // Start the camera once the component is rendered
-    this.startCameraScan()
+    // Only start the camera if we have permission
+    if (this.hasPermission) {
+      this.startCameraScan()
+    }
   }
 
   async startCameraScan() {
@@ -309,8 +350,13 @@ export default class BookingScanner extends $LitElement(css`
           this.isBusy = false
 
           if (booking) {
-            // Check if booking is for this venue, if venueId is specified
+            // Always check if booking is for this venue - it's now required
+            if (!this.venueId) {
+              console.warn('No venue ID available for validation - using less secure validation')
+            }
+            
             if (this.venueId && booking.venueId !== this.venueId) {
+              console.error(`Booking venue mismatch: Booking is for venue ${booking.venueId}, but scanner is for venue ${this.venueId}`)
               this.validBooking = false
               this.splashColor = 'red'
               this.reason = 'Booking is for a different venue'
@@ -423,6 +469,27 @@ export default class BookingScanner extends $LitElement(css`
   }
 
   render() {
+    // Show permission error if user doesn't have access
+    if (!this.hasPermission) {
+      return html`
+        <schmancy-grid ${fullHeight()} class="py-2 overscroll-none overflow-hidden" justify="center" align="center">
+          <schmancy-surface type="container" rounded="all" class="p-8 max-w-md">
+            <schmancy-grid gap="lg" justify="center" align="center">
+              <schmancy-icon class="text-6xl text-error-default">error_outline</schmancy-icon>
+              <schmancy-typography type="headline" class="text-center">
+                Permission Denied
+              </schmancy-typography>
+              <schmancy-typography class="text-center">
+                You don't have permission to access the scanner for this venue. 
+                Please contact an administrator if you think this is a mistake.
+              </schmancy-typography>
+            </schmancy-grid>
+          </schmancy-surface>
+        </schmancy-grid>
+      `;
+    }
+    
+    // Normal scanner UI when user has permission
     let statusMessage = 'Ready to Scan'
     if (this.checkedIn) {
       statusMessage = 'Already Checked In'
@@ -433,8 +500,6 @@ export default class BookingScanner extends $LitElement(css`
       <video playsinline autoplay muted id="video" webkit-playsinline></video>
 
       <schmancy-grid ${fullHeight()} class="py-2 overscroll-none overflow-hidden" justify="center" align="center">
-       
-        
         ${this.isBusy ? html`<div class="status">Processing...</div>` : ''}
         ${this.isReadyToScan
           ? html`<div class="status">${statusMessage}</div>`

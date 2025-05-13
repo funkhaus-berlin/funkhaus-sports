@@ -540,6 +540,7 @@ export class CourtForm extends $LitElement() {
 		const isNewCourt = this.isCloning || !this.editingCourt
 
 		// Save to database
+		// If creating a new court, just use the court object without an ID
 		const saveOperation = isNewCourt ? CourtsDB.upsert(court) : CourtsDB.upsert(court, this.editingCourt!.id)
 
 		saveOperation.pipe(takeUntil(this.disconnecting)).subscribe({

@@ -229,7 +229,13 @@ export class CourtBookingSystem extends $LitElement() {
 	}
 
 	private checkPaymentStatus(): void {
-		this.paymentStatusHandler.checkUrlForPaymentStatus().subscribe(result => {
+		this.paymentStatusHandler.checkUrlForPaymentStatus()
+    .pipe(
+      takeUntil(this.disconnecting),
+      debounceTime(1000),
+    )
+    
+    .subscribe(result => {
 			if (result.processed && result.success && result.bookingId) {
 				// Redirect to confirmation page instead of showing it inline
 				this.redirectToConfirmation(result.bookingId)

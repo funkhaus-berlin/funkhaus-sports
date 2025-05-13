@@ -7,11 +7,13 @@ import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { VenuBookingsList } from './bookings/bookings'
 import './components'
-import { VenueAnalytics, VenueCourtsPreview } from './components'
+import { VenueCourtsPreview } from './components'
 import { selectMyCourts } from './courts/context'
 import { VenueCourts } from './courts/courts'
+import { ScannerView } from './scanner'
 import { venueContext, venuesContext } from './venue-context'
 import { VenueManagement } from './venues'
+import { PermissionService } from 'src/firebase/permission.service'
 
 @customElement('venue-detail-view')
 export class VenueDetailView extends $LitElement(css`
@@ -52,20 +54,16 @@ export class VenueDetailView extends $LitElement(css`
 	@state() loading: boolean = true
 	@state() error: string | null = null
 	@state() courts!: Map<string, Court>
-	@state() activeTab: string = 'venue-courts-preview'
+	@state() activeTab: string = 'funkhaus-venue-courts'
 	@state() fullScreen = false
 	@state() venueId: string = ''
 
 	// Add a select for venue context to ensure data is properly loaded
-	@select(venueContext, undefined, {
-		required: true,
-	})
+	@select(venueContext)
 	venueData!: Partial<Venue>
 
 	// Add a select for venues context to retrieve venue by ID if needed
-	@select(venuesContext, undefined, {
-		required: true,
-	})
+	@select(venuesContext)
 	venues!: Map<string, Venue>
 
 	constructor(venue?: Venue) {
@@ -232,42 +230,47 @@ export class VenueDetailView extends $LitElement(css`
 									Bookings
 								</schmancy-flex>
 							</schmancy-list-item>
-							<!-- Analytics Item -->
-							<schmancy-list-item
-								.selected=${this.activeTab === VenueCourtsPreview.name.toLowerCase()}
-								@click=${() => {
-									// Ensure venue context is properly set before navigating
-									if (this.venue) {
-										console.log('Setting venue context before navigating to analytics:', this.venue)
-										venueContext.set(this.venue)
-									} else {
-										console.warn('No venue object available when navigating to analytics')
-									}
 
-									// Add the venueId to URL for consistency
-									setTimeout(() => {
-										const state = { venueId: this.venueId }
-										const url = new URL(window.location.href)
-										url.searchParams.set('venueId', this.venueId)
+							<!-- Scanner Item - Only shown if user has permission -->
+							${PermissionService.hasVenueRole(this.venueId, 'staff') ? 
+								html`
+									<schmancy-list-item
+										.selected=${this.activeTab === 'scanner-view'}
+										@click=${() => {
+											// Ensure venue context is properly set before navigating
+											if (this.venue) {
+												console.log('Setting venue context before navigating to scanner:', this.venue)
+												venueContext.set(this.venue)
+											} else {
+												console.warn('No venue object available when navigating to scanner')
+											}
 
-										// Update URL without navigating
-										window.history.replaceState(state, '', url.toString())
+											// Add the venueId to URL for consistency
+											setTimeout(() => {
+												const state = { venueId: this.venueId }
+												const url = new URL(window.location.href)
+												url.searchParams.set('venueId', this.venueId)
 
-										area.push({
-											component: VenueAnalytics,
-											area: 'venue',
-											state: state,
-										})
-									}, 100)
-								}}
-								rounded
-								variant="container"
-							>
-								<schmancy-flex gap="md">
-									<schmancy-icon>insights</schmancy-icon>
-									Analytics
-								</schmancy-flex>
-							</schmancy-list-item>
+												// Update URL without navigating
+												window.history.replaceState(state, '', url.toString())
+
+												area.push({
+													component: ScannerView,
+													area: 'venue',
+													state: state,
+												})
+											}, 100)
+										}}
+										rounded
+										variant="container"
+									>
+										<schmancy-flex gap="md">
+											<schmancy-icon>qr_code_scanner</schmancy-icon>
+											Check-in 
+										</schmancy-flex>
+									</schmancy-list-item>
+								` : ''}
+							
 						</schmancy-list>
 
 						<schmancy-button

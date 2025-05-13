@@ -113,8 +113,10 @@ export class CheckoutForm extends $LitElement() {
 			bookingContext.set(
 				{
 					customerAddress: {
-						...this.booking.customerAddress,
-						country: 'DE', // Default to Germany
+						street: this.booking.customerAddress && typeof this.booking.customerAddress.street === 'string' ? this.booking.customerAddress.street : '',
+						city: this.booking.customerAddress && typeof this.booking.customerAddress.city === 'string' ? this.booking.customerAddress.city : '',
+						postalCode: this.booking.customerAddress && typeof this.booking.customerAddress.postalCode === 'string' ? this.booking.customerAddress.postalCode : '',
+						country: this.booking.customerAddress && typeof this.booking.customerAddress.country === 'string' ? this.booking.customerAddress.country : 'DE', // Default to Germany
 					},
 				},
 				true,
@@ -126,11 +128,6 @@ export class CheckoutForm extends $LitElement() {
 		try {
 			// Initialize Stripe instance
 			this.stripe = await stripePromise
-
-			if (!this.stripe) {
-				this.error = 'Unable to initialize payment system'
-				return
-			}
 
 			// Subscribe to Stripe elements
 			this._elementsSubscription = $stripeElements.subscribe(elements => {
@@ -202,7 +199,7 @@ export class CheckoutForm extends $LitElement() {
 				bookingContext.set(
 					{
 						customerAddress: {
-							...this.booking.customerAddress,
+							...this.booking.customerAddress!,
 							[prop]: value,
 						},
 					},
@@ -248,17 +245,6 @@ export class CheckoutForm extends $LitElement() {
 				`,
 			)}
 			<!-- Error display -->
-			${when(
-				this.error,
-				() => html`
-					<div class="bg-error-container text-error-onContainer rounded-lg p-4 mb-4">
-						<schmancy-flex align="center" gap="sm">
-							<schmancy-icon>error</schmancy-icon>
-							<schmancy-typography>${this.error}</schmancy-typography>
-						</schmancy-flex>
-					</div>
-				`,
-			)}
 			<div
 				class="
 					w-full bg-surface-low rounded-lg transition-all duration-300 p-2

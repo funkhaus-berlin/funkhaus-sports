@@ -1,237 +1,230 @@
-// services/firebase.service.ts
+import dayjs from 'dayjs'
 import {
-	collection,
-	deleteDoc,
-	doc,
-	DocumentData,
-	Firestore,
-	getDoc,
-	getDocs,
-	limit,
-	onSnapshot,
-	query,
-	QueryConstraint,
-	runTransaction,
-	setDoc,
-	where,
-	WhereFilterOp,
+  collection,
+  CollectionReference,
+  deleteDoc,
+  doc,
+  DocumentData,
+  Firestore,
+  getDoc,
+  getDocs,
+  limit,
+  onSnapshot,
+  query,
+  QueryConstraint,
+  setDoc,
+  where,
+  WhereFilterOp,
+  runTransaction,
+  Transaction,
+  DocumentReference,
 } from 'firebase/firestore'
-import { from, Observable, throwError } from 'rxjs'
-import { catchError, map, take } from 'rxjs/operators'
+import { parse, stringify } from 'flatted'
+import { from, map, Observable, take, lastValueFrom } from 'rxjs'
 import { v4 as uuidv4 } from 'uuid'
 import { db } from './firebase'
 
-export interface FirebaseServiceQuery {
-	key: string
-	value: any
-	operator: WhereFilterOp
+export type firebaseServiceQuery = {
+  key: string
+  value: any
+  operator: WhereFilterOp
 }
 
-/**
- * Generic Firestore service for handling database operations
- */
+export type TransactionCallback<T> = (
+  transaction: Transaction,
+  collectionRef: CollectionReference<DocumentData>,
+) => Promise<T>
+
 export class FirestoreService<T extends DocumentData> {
-	protected collectionName: string
-	public db: Firestore
+  private collectionName: string
+  private db: Firestore
 
-	constructor(collectionName: string, firestoreDB?: Firestore) {
-		this.collectionName = collectionName
-		this.db = firestoreDB ?? db
-	}
+  constructor(collectionName: string, firestoreDB?: Firestore) {
+    this.collectionName = collectionName
+    this.db = firestoreDB ?? db
+  }
 
-	/**
-	 * Get a document by ID
-	 */
-	get(id: string): Observable<T | undefined> {
-		const docRef = doc(this.db, this.collectionName, id)
-		return from(getDoc(docRef)).pipe(
-			map(docSnap => (docSnap.exists() ? ({ id: docSnap.id, ...docSnap.data() } as any as T) : undefined)),
-			catchError(error => {
-				console.error(`Error getting document from ${this.collectionName}:`, error)
-				return throwError(() => error)
-			}),
-			take(1),
-		)
-	}
+  /**
+   * Run a transaction with atomic guarantees
+   *
+   * @param callback Function that takes a transaction object and returns a Promise with the result
+   * @returns Observable with the result of the transaction
+   */
+  public runTransaction<R>(callback: TransactionCallback<R>): Observable<R> {
+    const collectionRef = collection(this.db, this.collectionName)
 
-	/**
-	 * Get collection with query
-	 */
-	getCollection(queries?: FirebaseServiceQuery[]): Observable<Map<string, T>> {
-		const collectionRef = collection(this.db, this.collectionName)
+    return from(
+      runTransaction(this.db, async transaction => {
+        return await callback(transaction, collectionRef)
+      }),
+    )
+  }
 
-		let queryRef = collectionRef
-		if (queries && queries.length > 0) {
-			const queryConstraints: QueryConstraint[] = queries.map(q => where(q.key, q.operator, q.value))
-			queryRef = query(collectionRef, ...queryConstraints) as any
-		}
+  /**
+   * Helper function to create a document reference in a transaction
+   *
+   * @param id Document ID
+   * @returns Document reference that can be used in transactions
+   */
+  public docRef(id: string): DocumentReference<DocumentData> {
+    return doc(this.db, this.collectionName, id)
+  }
 
-		return from(getDocs(query(queryRef))).pipe(
-			map(snapshot => {
-				const dataMap = new Map<string, T>()
-				snapshot.forEach(docSnap => {
-					dataMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as any as T)
-				})
-				return dataMap
-			}),
-			catchError(error => {
-				console.error(`Error getting collection ${this.collectionName}:`, error)
-				return throwError(() => error)
-			}),
-		)
-	}
+  /**
+   * Convert to Promise for easier async/await usage with transactions
+   *
+   * @param callback Function that takes a transaction object and returns a Promise with the result
+   * @returns Promise with the transaction result
+   */
+  public async transactionAsync<R>(callback: TransactionCallback<R>): Promise<R> {
+    return lastValueFrom(this.runTransaction(callback))
+  }
 
-	/**
-	 * Get collection with real-time updates
-	 */
-	subscribeToCollection(queries?: FirebaseServiceQuery[]): Observable<Map<string, T>> {
-		const collectionRef = collection(this.db, this.collectionName)
+  public query(queryFilters: firebaseServiceQuery[]): Observable<Map<string, T>> {
+    const collectionRef = collection(this.db, this.collectionName)
+    const queryConstraints: QueryConstraint[] = queryFilters.map(qf => where(qf.key, qf.operator, qf.value))
+    const queryRef = query(collectionRef, ...queryConstraints)
 
-		let queryRef = collectionRef
-		if (queries && queries.length > 0) {
-			const queryConstraints: QueryConstraint[] = queries.map(q => where(q.key, q.operator, q.value))
-			queryRef = query(collectionRef, ...queryConstraints) as any
-		}
+    return from(getDocs(queryRef)).pipe(
+      map(querySnapshot => {
+        const resultMap = new Map<string, T>()
+        querySnapshot.forEach(docSnap => {
+          resultMap.set(docSnap.id, docSnap.data() as T)
+        })
+        return resultMap
+      }),
+    )
+  }
 
-		return new Observable<Map<string, T>>(subscriber => {
-			const unsubscribe = onSnapshot(
-				queryRef,
-				snapshot => {
-					const dataMap = new Map<string, T>()
-					snapshot.forEach(docSnap => {
-						dataMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as any as T)
-					})
-					subscriber.next(dataMap)
-				},
-				error => {
-					console.error(`Error subscribing to ${this.collectionName}:`, error)
-					subscriber.error(error)
-				},
-			)
+  public upsert(data: Partial<T> | T, uid: string): Observable<Partial<T> | T> {
+    if (!data['createdAt'])
+      // @ts-ignore
+      data['createdAt'] = dayjs().toISOString()
+    if (!data['updatedAt'])
+      // @ts-ignore
+      data['updatedAt'] = dayjs().toISOString()
+    const docRef = doc(this.db, this.collectionName, uid)
+    return from(setDoc(docRef, parse(stringify(data)), { merge: true })).pipe(map(() => data))
+  }
 
-			// Return the unsubscribe function for cleanup
-			return { unsubscribe }
-		})
-	}
+  public set(uid: string, data: T): Observable<void> {
+    const docRef = doc(this.db, this.collectionName, uid)
+    return from(setDoc(docRef, data))
+  }
 
-	/**
-	 * Subscribe to a single document
-	 */
-	subscribe(id: string): Observable<T | undefined> {
-		const docRef = doc(this.db, this.collectionName, id)
+  public get(uid: string): Observable<T | undefined> {
+    const docRef = doc(this.db, this.collectionName, uid)
+    return from(getDoc(docRef)).pipe(
+      map(docSnap => (docSnap.exists() ? (docSnap.data() as T) : undefined)),
+      take(1),
+    )
+  }
 
-		return new Observable<T | undefined>(subscriber => {
-			const unsubscribe = onSnapshot(
-				docRef,
-				docSnap => {
-					if (docSnap.exists()) {
-						subscriber.next({ id: docSnap.id, ...docSnap.data() } as any as T)
-					} else {
-						subscriber.next(undefined)
-					}
-				},
-				error => subscriber.error(error),
-			)
+  public delete(uid: string): Observable<void> {
+    const docRef = doc(this.db, this.collectionName, uid)
+    return from(deleteDoc(docRef))
+  }
 
-			return { unsubscribe }
-		})
-	}
+  public subscribe(uid: string): Observable<T | undefined> {
+    const docRef = doc(this.db, this.collectionName, uid)
+    return new Observable<T | undefined>(subscriber => {
+      const unsubscribe = onSnapshot(
+        docRef,
+        docSnap => {
+          if (docSnap.exists()) {
+            subscriber.next(docSnap.data() as T)
+          } else {
+            subscriber.next(undefined)
+          }
+        },
+        subscriber.error.bind(subscriber),
+      )
 
-	/**
-	 * Create or update a document
-	 */
-	upsert(data: Partial<T>, id?: string, merge: boolean = true): Observable<T> {
-		// Generate a document ID if not provided
-		let documentId = id
-		if (!id) {
-			documentId = uuidv4()
-			console.log(`Generated new ID for ${this.collectionName} document:`, documentId)
-		} else {
-			// Ensure the ID is a string
-			documentId = String(id)
-		}
-		
-		// Log operation for debugging
-		console.log(`${data.id ? 'Updating' : 'Creating'} ${this.collectionName} document:`, {
-			documentId, 
-			dataId: data.id,
-			collection: this.collectionName
-		})
-		
-		// Create document reference
-		const docRef = doc(this.db, this.collectionName, documentId)
+      return { unsubscribe }
+    })
+  }
 
-		// Prepare document data, ensuring the ID is correctly set
-		const timestamp = new Date().toISOString()
-		const docData = {
-			// Remove any existing ID from data to prevent conflicts
-			...Object.fromEntries(Object.entries(data).filter(([key]) => key !== 'id')),
-			// Always set the correct document ID
-			id: documentId,
-			updatedAt: timestamp,
-		} as any
-		
-		console.log(`Saving ${this.collectionName} document:`, { path: `${this.collectionName}/${documentId}`, data: docData })
+  /**
+   * Subscribes to a document's changes and returns an Observable.
+   * Alias of subscribe() with naming consistent with subscribeToCollection.
+   */
+  public subscribeToDocument(uid: string): Observable<T | undefined> {
+    return this.subscribe(uid)
+  }
 
-		// Perform the database operation
-		return from(setDoc(docRef, docData, { merge: merge })).pipe(
-			map(() => {
-				console.log(`Successfully saved ${this.collectionName} document:`, documentId)
-				return ({ id: documentId, ...docData } as any as T)
-			}),
-			catchError(error => {
-				console.error(`Error upserting document in ${this.collectionName}:`, error)
-				return throwError(() => error)
-			}),
-		)
-	}
+  /**
+   * Updates a document with the given data and merges it with existing data.
+   * Adds an updatedAt timestamp if not provided.
+   */
+  public updateDocument(uid: string, data: Partial<T>): Observable<void> {
+    // Add an updatedAt timestamp if it's not already provided
+    if (!data['updatedAt']) {
+      // @ts-ignore
+      data['updatedAt'] = dayjs().toISOString()
+    }
 
-	/**
-	 * Delete a document
-	 */
-	delete(id: string): Observable<void> {
-		if (!id || typeof id !== 'string' || id.trim() === '') {
-			console.error(`Invalid ID provided for deletion: "${id}" (${typeof id})`);
-			return throwError(() => new Error(`Invalid document ID: "${id}"`));
-		}
-		
-		console.log(`Deleting document: ${this.collectionName}/${id}`);
-		const docRef = doc(this.db, this.collectionName, id);
-		
-		return from(deleteDoc(docRef)).pipe(
-			catchError(error => {
-				console.error(`Error deleting document from ${this.collectionName}:`, error);
-				return throwError(() => error);
-			}),
-		)
-	}
+    const docRef = doc(this.db, this.collectionName, uid)
+    return from(setDoc(docRef, data, { merge: true }))
+  }
 
-	/**
-	 * Check if documents exist matching query
-	 */
-	exists(queries: FirebaseServiceQuery[]): Observable<boolean> {
-		const collectionRef = collection(this.db, this.collectionName)
-		const queryConstraints: QueryConstraint[] = queries.map(q => where(q.key, q.operator, q.value))
-		const queryRef = query(collectionRef, ...queryConstraints, limit(1))
+  public subscribeToCollection(
+    queryFilters?: { key: string; value: any; operator: WhereFilterOp }[],
+  ): Observable<Map<string, T>> {
+    // Get a reference to the collection.
+    const collectionRef = collection(this.db, this.collectionName)
 
-		return from(getDocs(queryRef)).pipe(
-			map(snapshot => !snapshot.empty),
-			catchError(error => {
-				console.error(`Error checking existence in ${this.collectionName}:`, error)
-				return throwError(() => error)
-			}),
-		)
-	}
+    // If query filters are provided, apply them.
+    const q =
+      queryFilters && queryFilters.length > 0
+        ? query(collectionRef, ...queryFilters.map(qf => where(qf.key, qf.operator, qf.value)))
+        : query(collectionRef)
 
-	/**
-	 * Run a transaction
-	 */
-	runTransaction<R>(updateFunction: (transaction: any) => Promise<R>): Observable<R> {
-		return from(runTransaction(this.db, updateFunction)).pipe(
-			catchError(error => {
-				console.error('Transaction failed:', error)
-				return throwError(() => error)
-			}),
-		)
-	}
+    // Create an Observable that emits a new Map of document IDs to data
+    // every time the collection changes.
+    return new Observable<Map<string, T>>(subscriber => {
+      const unsubscribe = onSnapshot(
+        q,
+        querySnapshot => {
+          const resultMap = new Map<string, T>()
+          querySnapshot.forEach(docSnap => {
+            resultMap.set(docSnap.id, docSnap.data() as T)
+          })
+          subscriber.next(resultMap)
+        },
+        error => subscriber.error(error),
+      )
+
+      // Return the unsubscribe function to clean up the listener when unsubscribed.
+      return { unsubscribe }
+    })
+  }
+
+  /**
+   * Check if there exists at least one document that matches the query filters.
+   * @param queryFilters An array of filter conditions for the query.
+   * @returns Observable<boolean> - True if at least one document matches, false otherwise.
+   */
+  public exists(
+    queryFilters: {
+      key: string
+      value: any
+      operator: WhereFilterOp
+    }[],
+  ): Observable<boolean> {
+    const collectionRef = collection(this.db, this.collectionName)
+    const queryConstraints: QueryConstraint[] = queryFilters.map(qf => where(qf.key, qf.operator, qf.value))
+    const queryRef = query(collectionRef, ...queryConstraints, limit(1)) // Limit to 1 to check existence only
+
+    return from(getDocs(queryRef)).pipe(
+      map(querySnapshot => !querySnapshot.empty), // Returns true if at least one document exists
+    )
+  }
+
+  public collectionRef(): CollectionReference<DocumentData, DocumentData> {
+    return collection(this.db, this.collectionName)
+  }
+
+  public ref(uid: string = uuidv4()): any {
+    return doc(this.db, this.collectionName, uid)
+  }
 }

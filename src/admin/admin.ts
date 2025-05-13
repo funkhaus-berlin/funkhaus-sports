@@ -1,15 +1,16 @@
 // src/admin/admin.ts
-import { ActiveRoute, area, fullHeight, schmancyNavDrawer, select } from '@mhmo91/schmancy'
+import '@mhmo91/schmancy'
+import { area, fullHeight, schmancyNavDrawer, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
-import { filter, from, fromEvent, map, takeUntil, tap } from 'rxjs'
+import { from, fromEvent, takeUntil, tap } from 'rxjs'
 import { auth } from 'src/firebase/firebase'
 import { User, userContext } from 'src/user.context'
-import '@mhmo91/schmancy'
 import FunkhausSportsSignin from './signin'
-import { VenueManagement } from './venues/venues'
+import Users from './users/users'
 import './venues/scanner/scanner-view'
+import { VenueManagement } from './venues/venues'
 
 @customElement('funkhaus-sports-admin')
 export default class FunkhausAdmin extends $LitElement() {
@@ -32,7 +33,7 @@ export default class FunkhausAdmin extends $LitElement() {
 			})
 
 		// Also set up a listener for auth state changes
-		auth.onAuthStateChanged((user) => {
+		auth.onAuthStateChanged(user => {
 			if (!user) {
 				this.redirectToLogin()
 			} else {
@@ -54,13 +55,13 @@ export default class FunkhausAdmin extends $LitElement() {
 	private checkUserAuth(): void {
 		const user = auth.currentUser
 		console.log('Current user:', user)
-		
+
 		if (!user) {
 			this.redirectToLogin()
 		} else {
 			// User is logged in
 			userContext.set(JSON.parse(JSON.stringify(user)))
-			
+
 			// Initialize with venues as default if no area is set
 			if (!area.current.get('admin')) {
 				this.navigateToVenues()
@@ -84,57 +85,33 @@ export default class FunkhausAdmin extends $LitElement() {
 		})
 		this.activeTab = 'venues'
 	}
-	
-	private navigateToScanner(): void {
-		area.push({
-			component: document.createElement('scanner-view'),
-			area: 'admin',
-			params: { view: 'scanner' } 
-		})
-		this.activeTab = 'scanner'
-	}
 
 	private setupFullscreenListeners(): void {
-		// Listen for fullscreen events
+		// Listen for fullscreen events from child components
 		fromEvent<CustomEvent<boolean>>(this, 'fullscreen')
 			.pipe(takeUntil(this.disconnecting))
 			.subscribe(event => {
 				this.fullScreen = event.detail
 				this.requestUpdate()
 			})
-
-		// Exit fullscreen automatically when user navigates away
-		area.$current
-			.pipe(
-				takeUntil(this.disconnecting),
-				filter(r => r.has('admin')),
-				tap(r => {
-					console.log('Route', r.get('admin'))
-					if (r.get('admin')?.component.toLowerCase() === 'venue-management') {
-						this.fullScreen = false
-					} else if (r.get('admin')?.component.toLowerCase() === 'venue-detail-view') {
-						this.fullScreen = true
-					}
-				}),
-			)
-			.subscribe()
 	}
 
 	private setupRouteListeners(): void {
-		area.$current
+		// Combined route listener for both fullscreen state and active tab
+		area
+			.on('admin')
 			.pipe(
-				filter(r => r.has('admin')),
-				map(r => r.get('admin') as ActiveRoute),
 				takeUntil(this.disconnecting),
+				tap(route => {
+					// Handle fullscreen state based on component type
+					const componentName = route.component.toLowerCase()
+
+					// Set fullscreen mode for specific views
+					this.fullScreen = componentName === 'venue-detail-view'
+					this.activeTab = componentName
+				}),
 			)
-			.subscribe(r => {
-				// Get activeTab from component name or params.view
-				if (r.params?.view) {
-					this.activeTab = r.params.view
-				} else {
-					this.activeTab = r.component.toLowerCase()
-				}
-			})
+			.subscribe()
 	}
 
 	protected render() {
@@ -160,19 +137,24 @@ export default class FunkhausAdmin extends $LitElement() {
 								Venues
 							</schmancy-flex>
 						</schmancy-list-item>
-						
+
 						<schmancy-list-item
-							.selected=${this.activeTab === 'scanner'}
+							.selected=${this.activeTab === 'users'}
 							@click=${() => {
-								this.navigateToScanner()
-								schmancyNavDrawer.close()
+								this.activeTab = 'users';
+								schmancyNavDrawer.close();
+								area.push({
+									area: 'admin',
+									component: Users,
+									params: { view: 'users' },
+								});
 							}}
 							rounded
 							variant="container"
 						>
 							<schmancy-flex gap="md">
-								<schmancy-icon>qr_code_scanner</schmancy-icon>
-								Scanner
+								<schmancy-icon>people</schmancy-icon>
+								Users
 							</schmancy-flex>
 						</schmancy-list-item>
 

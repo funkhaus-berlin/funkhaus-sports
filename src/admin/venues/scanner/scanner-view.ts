@@ -4,7 +4,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { select } from '@mhmo91/schmancy'
-import { venueContext } from '../../venues/venue-context'
+import { venueContext } from '../venue-context'
 import './scanner'
 
 /**
@@ -24,6 +24,20 @@ export class ScannerView extends $LitElement() {
     // Get venue ID from context
     if (this.venue?.id) {
       this.currentVenueId = this.venue.id
+      console.log('Scanner initialized with venue ID from context:', this.currentVenueId)
+    } else {
+      // Try to get venue ID from URL
+      const urlParams = new URLSearchParams(window.location.search)
+      const paramVenueId = urlParams.get('venueId')
+      if (paramVenueId) {
+        this.currentVenueId = paramVenueId
+        console.log('Scanner initialized with venue ID from URL:', this.currentVenueId)
+      }
+    }
+
+    // If we still don't have a venue ID, show a warning
+    if (!this.currentVenueId) {
+      console.warn('Scanner initialized without a venue ID')
     }
   }
 

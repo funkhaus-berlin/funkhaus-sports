@@ -4,7 +4,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth'
 import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { auth } from 'src/firebase/firebase'
-import { userContext } from 'src/user.context'
+import { userContext, User, UserRole } from 'src/user.context'
 import FunkhausAdmin from './admin'
 import { VenueManagement } from './venues/venues'
 
@@ -35,7 +35,15 @@ export default class FunkhausSportsSignin extends $LitElement() {
 			.then(auth => {
 				this.busy = false
 				console.log('logged in')
-				userContext.set(auth.user)
+									// Create a new User instance with the necessary properties
+					const user = new User();
+					user.email = auth.user.email || '';
+					user.displayName = auth.user.displayName || '';
+					user.uid = auth.user.uid;
+					user.role = 'staff' as UserRole;
+					user.admin = false;
+					user.venueAccess = [];
+					userContext.set(user)
 				area.push({
 					component: FunkhausAdmin,
 					area: 'root',

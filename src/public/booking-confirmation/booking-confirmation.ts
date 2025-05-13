@@ -240,13 +240,10 @@ export class BookingConfirmation extends $LitElement() {
 
     return html`
       <schmancy-surface ${fullHeight()} type="container" rounded="all">
-        <section class="mx-auto max-w-md">
+        <section class="mx-auto max-w-md pt-4">
           <schmancy-grid gap="sm" justify="center" class="h-full mx-auto max-w-md">
             <!-- Header/Logo Section -->
-            <div class="pt-4 md:pt-8 lg:pt-12 xl:pt-16 flex items-center justify-center">
-              <schmancy-icon size="56px" class="text-primary-default">check_circle</schmancy-icon>
-            </div>
-
+          
             <schmancy-grid gap="md" justify="stretch" class="px-6 py-2 md:py-6 max-w-4xl mx-auto w-full">
               <!-- Booking Info & QR Code -->
               <div class="grid md:grid-cols-1 gap-2">
@@ -383,15 +380,7 @@ export class BookingConfirmation extends $LitElement() {
                 </schmancy-button>
               </sch-flex>
               
-              <!-- Wallet Button Component (temporarily disabled) -->
-              <!-- 
-              <wallet-button
-                .booking=${this.booking}
-                .bookingId=${this.bookingId}
-                .autoGenerate=${this.autoGenerateWallet}
-                .overridePlatform=${this.walletPlatform}
-              ></wallet-button>
-              -->
+             
               
               <sch-flex gap="2">
                 <schmancy-button 

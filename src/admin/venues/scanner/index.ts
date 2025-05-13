@@ -1,1 +1,2 @@
-export * from './scanner'
+// Export scanner components
+export { ScannerView } from './scanner-view'
