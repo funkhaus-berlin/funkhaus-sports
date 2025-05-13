@@ -11,6 +11,7 @@ import { catchError, filter, finalize, map, throttleTime, timeout } from 'rxjs/o
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Booking } from 'src/types/booking/models'
 import './booking-details-sheet'
+import { venuesContext } from 'src/admin/venues/venue-context'
 
 // Initialize dayjs plugins
 dayjs.extend(relativeTime)
@@ -432,18 +433,7 @@ export default class BookingScanner extends $LitElement(css`
       <video playsinline autoplay muted id="video" webkit-playsinline></video>
 
       <schmancy-grid ${fullHeight()} class="py-2 overscroll-none overflow-hidden" justify="center" align="center">
-        ${this.venueId ? 
-          html`
-            <schmancy-typography type="headline">
-              Venue: ${this.venueId}
-            </schmancy-typography>
-          ` : 
-          html`
-            <schmancy-typography type="headline">
-              Scan QR Code to Check In
-            </schmancy-typography>
-          `
-        }
+       
         
         ${this.isBusy ? html`<div class="status">Processing...</div>` : ''}
         ${this.isReadyToScan

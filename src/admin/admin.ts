@@ -139,7 +139,7 @@ export default class FunkhausAdmin extends $LitElement() {
 
 	protected render() {
 		const contentDrawerClasses = {
-			'rounded-lg px-4 sm:px-6 md:px-8': this.fullScreen === false,
+			'rounded-lg': this.fullScreen === false,
 		}
 
 		return html`

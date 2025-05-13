@@ -5,7 +5,7 @@ import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { select } from '@mhmo91/schmancy'
 import { venueContext } from '../../venues/venue-context'
-import '../../../scanner/scanner'
+import './scanner'
 
 /**
  * Scanner view integration for the admin panel
@@ -29,20 +29,19 @@ export class ScannerView extends $LitElement() {
 
   render() {
     return html`
-      <div ${fullHeight()} class="w-full flex flex-col">
-        ${this.currentVenueId ? 
-          html`
-            <div class="bg-primary-container text-on-primary-container py-2 px-4 mb-4">
-              <schmancy-typography type="headline" token="sm">
-                Scanner for venue: ${this.venue?.name || this.currentVenueId}
-              </schmancy-typography>
-            </div>
-          ` : ''
-        }
-        
-        <div class="flex-1 relative">
-          <booking-scanner venueId="${this.currentVenueId}"></booking-scanner>
+      <div ${fullHeight()} class="relative inset-0">
+      ${this.currentVenueId ? 
+        html`
+        <div
+          class="absolute top-0 inset-x-0 bg-white/30 backdrop-blur-md shadow-md text-surface-on p-2 mb-4"
+        >
+          <schmancy-typography type="headline" token="sm">
+          Scanner for venue: ${this.venue?.name || this.currentVenueId}
+          </schmancy-typography>
         </div>
+        ` : ''
+      }
+      <booking-scanner venueId="${this.currentVenueId}"></booking-scanner>
       </div>
     `
   }
