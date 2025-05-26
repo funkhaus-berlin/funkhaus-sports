@@ -1,4 +1,4 @@
-import { area, mutationObserver } from '@mhmo91/schmancy'
+import { mutationObserver } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { css, html, nothing } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
@@ -6,10 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js'
 import { when } from 'lit/directives/when.js'
 import { delay, fromEvent, merge, startWith, takeUntil } from 'rxjs'
 import { Venue } from 'src/db/venue-collection'
-import { CourtBookingSystem } from '../../book/book'
 import '../../venues/logo'
-import { bookingContext, BookingProgressContext } from 'src/public/book/context'
-import { BookingStep } from 'src/types'
 
 // Define golden ratio constant
 const GOLDEN_RATIO = 1.618
@@ -21,6 +18,7 @@ export default class FunkhausVenueCard extends $LitElement(css`
 	}
 `) {
 	@query('section') card!: HTMLElement
+  @property({ type: Boolean }) readonly :boolean = false
 	@property({ type: Object }) venue!: Venue
 	@property({ type: Object }) theme: { logo?: string; primary?: string; text?: string } = {}
 
@@ -137,23 +135,7 @@ export default class FunkhausVenueCard extends $LitElement(css`
 		return html`
 			<schmancy-theme .color="${primaryColor}">
 				<section
-					@click=${() => {
-						// Reset existing booking data
-						bookingContext.clear()
-						// Set the venue ID only
-						bookingContext.set({
-							venueId: this.venue.id,
-						})
-						// Reset to first step (Date)
-						BookingProgressContext.set({
-							currentStep: BookingStep.Date,
-						})
-						// Navigate to booking system
-						area.push({
-							component: new CourtBookingSystem(),
-							area: 'root',
-						})
-					}}
+				
 					@mouseenter=${() => (this.isHovered = true)}
 					@mouseleave=${() => (this.isHovered = false)}
 					hidden
@@ -164,7 +146,8 @@ export default class FunkhausVenueCard extends $LitElement(css`
 					<div style=${this.styleMap(overlayStyle)}></div>
 
 					<!-- Booking badge that appears on hover -->
-					<schmancy-button
+					<schmancy-button  
+          .hidden=${this.readonly}
 						variant="filled tonal"
 						class="absolute bottom-3 right-3 font-bold py-1 px-3 rounded-full opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out group-hover:opacity-100 group-hover:translate-y-0 z-10"
 					>

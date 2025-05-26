@@ -5,7 +5,7 @@ import dayjs from 'dayjs'
 import isBetween from 'dayjs/plugin/isBetween'
 import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
-import { combineLatest, debounceTime, filter, map, of, startWith, switchMap, take, takeUntil, tap } from 'rxjs'
+import { combineLatest, debounceTime, distinctUntilChanged, filter, map, of, startWith, switchMap, take, takeUntil, tap } from 'rxjs'
 
 // Import our components directly
 import './bookings-filter'
@@ -79,9 +79,16 @@ export class VenuBookingsList extends $LitElement() {
 				}),
 				switchMap(() => {
 					// Combine filter changes with initial fetch
-					return combineLatest([bookingFilterContext.$.pipe(startWith(bookingFilterContext.value), debounceTime(300))])
+					return bookingFilterContext.$.pipe(
+						startWith(bookingFilterContext.value), 
+						distinctUntilChanged((prev, curr) => {
+							// Only trigger update if filter actually changed
+							return JSON.stringify(prev) === JSON.stringify(curr)
+						}),
+						debounceTime(300)
+					)
 				}),
-				switchMap(([filter]) => {
+				switchMap((filter) => {
 					this.loading = true
 					this.error = null
 

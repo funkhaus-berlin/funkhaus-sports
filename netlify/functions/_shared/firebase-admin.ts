@@ -1,33 +1,53 @@
-import * as admin from 'firebase-admin'
+import admin from 'firebase-admin'
 
-/**
- * Get or initialize the Firebase Admin app instance
- * This ensures we only initialize the app once
- */
-export const getFirebaseAdminApp = (): admin.app.App => {
-  // Check if Firebase Admin is already initialized
-  try {
-    return admin.app()
-  } catch (error) {
-    // Initialize Firebase Admin with credentials
-    if (
-      !process.env.FIREBASE_PROJECT_ID ||
-      !process.env.FIREBASE_PRIVATE_KEY ||
-      !process.env.FIREBASE_CLIENT_EMAIL
-    ) {
-      throw new Error('Missing Firebase Admin credentials in environment variables')
-    }
+// Check if Firebase Admin is already initialized
+let app: admin.app.App
 
-    // Replace escaped newlines with actual newlines in private key
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-
-    return admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        privateKey: privateKey,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      }),
-      databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`,
-    })
-  }
+try {
+	// Try to get the default app
+	app = admin.app()
+	console.log('Firebase Admin already initialized')
+} catch (error) {
+	// App doesn't exist, initialize it
+	console.log('Initializing Firebase Admin...')
+	app = admin.initializeApp({
+		credential: admin.credential.cert({
+			projectId: process.env.FIREBASE_PROJECT_ID,
+			clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+			privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+		}),
+	})
+	console.log('Firebase Admin initialized successfully')
 }
+
+const db = app.firestore()
+const adminAuth = app.auth()
+const adminStorage = app.storage()
+const adminAppCheck = app.appCheck()
+const adminMessaging = app.messaging()
+// Don't initialize Realtime Database - this project uses Firestore
+// const adminDatabase = app.database()
+const adminInstanceId = app.instanceId()
+const adminMachineLearning = app.machineLearning()
+const adminRemoteConfig = app.remoteConfig()
+const adminSecurityRules = app.securityRules()
+const adminProjectManagement = app.projectManagement()
+const adminInstallations = app.installations()
+
+export {
+	adminAppCheck,
+	adminAuth,
+	// adminDatabase,
+	adminInstallations,
+	adminInstanceId,
+	adminMachineLearning,
+	adminMessaging,
+	adminProjectManagement,
+	adminRemoteConfig,
+	adminSecurityRules,
+	adminStorage,
+	db,
+}
+
+// Export admin as default for backward compatibility
+export default admin

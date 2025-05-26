@@ -3,6 +3,11 @@
   node_bundler = "esbuild"
   included_files = ["netlify/functions/_shared/ticket.pug", "netlify/functions/_shared/assets/**", "netlify/functions/_shared/data/**"]
 
+# Scheduled function to cleanup abandoned bookings
+# Runs every minute
+[functions.cleanup-abandoned-bookings]
+  schedule = "* * * * *"
+
 [[redirects]]
   from = "/api/email-tickets"
   to = "/.netlify/functions/email-tickets-background"
@@ -69,6 +74,12 @@
 [[redirects]]
   from = "/api/create-user"
   to = "/.netlify/functions/create-user"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/cleanup-abandoned-bookings"
+  to = "/.netlify/functions/cleanup-abandoned-bookings"
   status = 200
   force = true
 

@@ -11,11 +11,11 @@ import { repeat } from 'lit/directives/repeat.js'
 import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import {
-	availabilityContext,
-	BookingFlowType,
-	CourtAvailabilityStatus,
-	CourtPreferences,
-	getAllCourtsAvailability,
+  availabilityContext,
+  BookingFlowType,
+  CourtAvailabilityStatus,
+  CourtPreferences,
+  getAllCourtsAvailability,
 } from 'src/availability-context'
 import { Court, CourtTypeEnum, SportTypeEnum } from 'src/db/courts.collection'
 import { transitionToNextStep } from '../../booking-steps-utils'
@@ -178,16 +178,16 @@ export class CourtSelectStep extends $LitElement(css`
 	//#region Context and State
 
 	// Context selections
-	@select(courtsContext, undefined, { required: true })
+	@select(courtsContext)
 	allCourts!: Map<string, Court>
 
-	@select(bookingContext, undefined, { required: true })
+	@select(bookingContext)
 	booking!: Booking
 
-	@select(BookingProgressContext, undefined, { required: true })
+	@select(BookingProgressContext)
 	bookingProgress!: BookingProgress
 
-	@select(availabilityContext, undefined, { required: true })
+	@select(availabilityContext)
 	availability!: {
 		timeSlots: Array<{
 			timeValue: number
@@ -364,6 +364,16 @@ export class CourtSelectStep extends $LitElement(css`
 			this.loadCourtsWithAvailability()
 		})
 
+		// Subscribe to courts context to reload when it becomes available
+		courtsContext.$.pipe(
+			takeUntil(this.disconnecting),
+			filter(courts => courts && courts.size > 0),
+			distinctUntilChanged((prev, curr) => prev?.size === curr?.size)
+		).subscribe(() => {
+			console.log('Courts context updated - loading courts')
+			this.loadCourtsWithAvailability()
+		})
+
 		// Initial load
 		this.loadCourtsWithAvailability()
 	}
@@ -510,6 +520,26 @@ export class CourtSelectStep extends $LitElement(css`
 		this.error = null
 		this.resetAvailabilityCache()
 		this.autoScrollAttempted = false
+
+		// Check if courts context is ready
+		if (!this.allCourts || this.allCourts.size === 0) {
+			console.log('Courts context not ready yet, waiting...')
+			this.selectedVenueCourts = []
+			this.loading = true
+			this.error = null
+			this.requestUpdate()
+			return
+		}
+
+		// Check if we have the required data
+		if (!this.booking?.venueId) {
+			console.warn('Missing venueId for court selection')
+			this.selectedVenueCourts = []
+			this.loading = false
+			this.error = 'Unable to load courts. Please select a venue.'
+			this.requestUpdate()
+			return
+		}
 
 		try {
 			// Get court availabilities based on current booking time and duration
@@ -1265,7 +1295,7 @@ export class CourtSelectStep extends $LitElement(css`
 					</div>
 
 					<!-- View mode toggles - only show when active -->
-					<div class="flex gap-1 shrink-0 ml-auto">
+					<!-- <div class="flex gap-1 shrink-0 ml-auto">
 						<schmancy-icon-button
 							size="sm"
 							variant="${this.viewMode === ViewMode.LIST ? 'filled tonal' : 'text'}"
@@ -1282,7 +1312,7 @@ export class CourtSelectStep extends $LitElement(css`
 							aria-label="Map view"
 							>map</schmancy-icon-button
 						>
-					</div>
+					</div> -->
 				</div>
 			</div>
 		`

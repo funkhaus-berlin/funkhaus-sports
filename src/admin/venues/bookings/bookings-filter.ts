@@ -54,7 +54,7 @@ export class BookingsFilter extends $LitElement(css`
   @select(BookingsContext) bookings!: Map<string, Booking>
   @select(bookingFilterContext) filter!: { status?: string, search?: string }
   
-  @state() statusList = ['all', 'confirmed', 'pending', 'completed', 'cancelled']
+  @state() statusList = ['all', 'confirmed', 'holding', 'completed', 'cancelled']
   
   // Search query behavior subject for debouncing
   private searchSubject = new BehaviorSubject<string>('')

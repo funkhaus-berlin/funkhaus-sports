@@ -58,6 +58,12 @@ export class BookingDayView extends $LitElement() {
   currentDate: Dayjs = dayjs()
   
   /**
+   * Booking filter from context
+   */
+  @select(bookingFilterContext)
+  bookingFilter!: { dateFrom?: string; dateTo?: string; status?: string; search?: string }
+  
+  /**
    * Bookings for the current day
    */
   @state() 
@@ -86,6 +92,7 @@ export class BookingDayView extends $LitElement() {
   connectedCallback(): void {
     super.connectedCallback()
     this.initializeWithVenueAndCourts()
+    this.initializeDateFromFilter()
     this.checkIfToday()
     this.subscribeToBookingChanges()
   }
@@ -119,13 +126,34 @@ export class BookingDayView extends $LitElement() {
             .map(court => [court.id, court])
         )
         
-        // Update filter context with the current date
-        this.updateFilterDate()
+        // Don't update filter context during initialization
+        // Let the parent component manage the filter
       }),
       takeUntil(this.disconnecting)
     ).subscribe()
   }
   
+  /**
+   * Initialize date from filter context
+   */
+  private initializeDateFromFilter(): void {
+    // Subscribe to filter changes to sync date
+    bookingFilterContext.$.pipe(
+      map(() => {
+        const filter = bookingFilterContext.value
+        if (filter?.dateFrom) {
+          // Only update if the date is different to avoid loops
+          const filterDate = dayjs(filter.dateFrom).startOf('day')
+          if (!filterDate.isSame(this.currentDate, 'day')) {
+            this.currentDate = filterDate
+            this.checkIfToday()
+          }
+        }
+      }),
+      takeUntil(this.disconnecting)
+    ).subscribe()
+  }
+
   /**
    * Update the filter context with current date
    */

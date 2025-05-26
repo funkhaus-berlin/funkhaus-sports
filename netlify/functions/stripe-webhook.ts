@@ -4,19 +4,119 @@ import admin from 'firebase-admin'
 import type { Stripe } from 'stripe'
 import { corsHeaders } from './_shared/cors'
 import stripe from './_shared/stripe'
+import { db } from './_shared/firebase-admin'
 
-// Initialize Firebase Admin if not already initialized
-if (!admin.apps.length) {
-	admin.initializeApp({
-		credential: admin.credential.cert({
-			projectId: process.env.FIREBASE_PROJECT_ID,
-			clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-			privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-		}),
-	})
+
+
+/**
+ * Reserve time slots for a booking that's transitioning from holding to confirmed
+ * 
+ * @param booking The booking data
+ * @param bookingId The booking ID
+ */
+async function reserveSlotsForBooking(booking: any, bookingId: string): Promise<void> {
+	try {
+		// Parse date to get month document ID
+		const [year, month] = booking.date.split('-')
+		const monthDocId = `${year}-${month}`
+		
+		// Create a transaction to ensure atomicity
+		await db.runTransaction(async (transaction) => {
+			// Get availability document
+			const availabilityRef = db.collection('availability').doc(monthDocId)
+			const availabilityDoc = await transaction.get(availabilityRef)
+
+			if (!availabilityDoc.exists) {
+				console.log(`No availability document for ${monthDocId}, skipping slot reservation`)
+				return
+			}
+
+			const availabilityData = availabilityDoc.data()
+
+			// Check if slots exist for this court and date
+			if (!availabilityData?.courts?.[booking.courtId]?.[booking.date]?.slots) {
+				console.log(`No slots data for court ${booking.courtId} on ${booking.date}, skipping slot reservation`)
+				return
+			}
+
+			// Get the slots for this court and date
+			const slots = availabilityData.courts[booking.courtId][booking.date].slots
+
+			// Calculate time slots to reserve
+			const startDate = new Date(booking.startTime)
+			const endDate = new Date(booking.endTime)
+			const startHour = startDate.getHours()
+			const startMinute = startDate.getMinutes()
+			const endHour = endDate.getHours()
+			const endMinute = endDate.getMinutes()
+			const adjustedEndHour = endMinute === 0 ? endHour : endHour + 1
+
+			// Check if all slots are available (they should be for a holding booking)
+			for (let hour = startHour; hour < adjustedEndHour; hour++) {
+				// Check full hour slot
+				const timeSlot = `${hour.toString().padStart(2, '0')}:00`
+
+				if (slots[timeSlot] && !slots[timeSlot].isAvailable) {
+					console.warn(`Time slot ${timeSlot} is already booked when trying to reserve for booking ${bookingId}`)
+					// Don't throw error, just log warning - the payment is already successful
+				}
+
+				// Skip half-hour check for start/end hours if needed
+				if ((hour === startHour && startMinute === 30) || (hour === endHour - 1 && endMinute === 0)) {
+					continue
+				}
+
+				// Check half-hour slot
+				const halfHourSlot = `${hour.toString().padStart(2, '0')}:30`
+				if (slots[halfHourSlot] && !slots[halfHourSlot].isAvailable) {
+					console.warn(`Time slot ${halfHourSlot} is already booked when trying to reserve for booking ${bookingId}`)
+					// Don't throw error, just log warning - the payment is already successful
+				}
+			}
+
+			// Mark slots as unavailable
+			const updates: Record<string, any> = {}
+			for (let hour = startHour; hour < adjustedEndHour; hour++) {
+				// Update full hour slot
+				const timeSlot = `${hour.toString().padStart(2, '0')}:00`
+				const slotPath = `courts.${booking.courtId}.${booking.date}.slots.${timeSlot}`
+
+				updates[`${slotPath}.isAvailable`] = false
+				updates[`${slotPath}.bookedBy`] = booking.userId || null
+				updates[`${slotPath}.bookingId`] = bookingId
+
+				// Skip half-hour update for start/end hours if needed
+				if ((hour === startHour && startMinute === 30) || (hour === endHour - 1 && endMinute === 0)) {
+					continue
+				}
+
+				// Update half-hour slot
+				const halfHourSlot = `${hour.toString().padStart(2, '0')}:30`
+				const halfSlotPath = `courts.${booking.courtId}.${booking.date}.slots.${halfHourSlot}`
+
+				updates[`${halfSlotPath}.isAvailable`] = false
+				updates[`${halfSlotPath}.bookedBy`] = booking.userId || null
+				updates[`${halfSlotPath}.bookingId`] = bookingId
+			}
+
+			// Update availability and timestamp
+			updates.updatedAt = admin.firestore.FieldValue.serverTimestamp()
+			transaction.update(availabilityRef, updates)
+
+			console.log(`Reserved slots for booking ${bookingId}`)
+		})
+	} catch (error) {
+		console.error('Error reserving slots for booking:', error)
+		// Don't fail the payment confirmation - the payment is already successful
+		// We'll log this for manual intervention if needed
+		await db.collection('bookingSlotReservationErrors').add({
+			bookingId,
+			error: error.message || 'Unknown error',
+			timestamp: admin.firestore.FieldValue.serverTimestamp(),
+			bookingData: booking
+		})
+	}
 }
-
-const db = admin.firestore()
 
 /**
  * Generate an invoice number for a booking
@@ -96,21 +196,21 @@ async function generateInvoiceNumber(db: FirebaseFirestore.Firestore, bookingId:
  */
 async function cleanupAbandonedBookings() {
 	try {
-		// Calculate cutoff time (30 minutes ago)
+		// Calculate cutoff time (5 minutes ago)
 		const cutoffTime = new Date()
-		cutoffTime.setMinutes(cutoffTime.getMinutes() - 30)
+		cutoffTime.setMinutes(cutoffTime.getMinutes() - 5)
 		const cutoffTimeString = cutoffTime.toISOString()
 		
-		// Query for abandoned temporary bookings
+		// Query for abandoned holding bookings based on lastActive
 		const bookingsRef = db.collection('bookings')
 		const query = bookingsRef
-			.where('status', '==', 'temporary')
-			.where('createdAt', '<', cutoffTimeString)
+			.where('status', '==', 'holding')
+			.where('lastActive', '<', cutoffTimeString)
 			.where('paymentStatus', '==', 'pending')
 			.limit(50) // Process in batches
 			
 		const snapshot = await query.get()
-		console.log(`Found ${snapshot.size} abandoned temporary bookings to clean up`)
+		console.log(`Found ${snapshot.size} abandoned holding bookings to clean up`)
 		
 		if (snapshot.empty) {
 			return
@@ -354,15 +454,25 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 		const bookingDoc = await bookingRef.get()
 
 		if (bookingDoc.exists) {
+			const bookingData = bookingDoc.data()
+			
 			// Generate invoice number if one doesn't exist already (during payment confirmation)
 			// This is the primary place where invoice numbers should be created
 			let invoiceNumber: string | undefined = undefined
-			if (!bookingDoc.data()?.invoiceNumber) {
+			if (!bookingData?.invoiceNumber) {
 				invoiceNumber = await generateInvoiceNumber(db, bookingId)
 				console.log(`Generated invoice number ${invoiceNumber} for booking ${bookingId} during payment confirmation`)
 			} else {
-				invoiceNumber = bookingDoc.data()?.invoiceNumber
+				invoiceNumber = bookingData?.invoiceNumber
 				console.log(`Using existing invoice number ${invoiceNumber} for booking ${bookingId}`)
+			}
+
+			// If booking is in holding status, we need to reserve slots
+			if (bookingData?.status === 'holding') {
+				console.log(`Booking ${bookingId} is in holding status, will reserve slots`)
+				
+				// Reserve slots for the booking
+				await reserveSlotsForBooking(bookingData, bookingId)
 			}
 
 			// Booking exists, update its payment status (and include invoice number if just generated)
@@ -374,7 +484,7 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 			}
 
 			// Only include invoiceNumber field if we just generated one
-			if (invoiceNumber && !bookingDoc.data()?.invoiceNumber) {
+			if (invoiceNumber && !bookingData?.invoiceNumber) {
 				updateData.invoiceNumber = invoiceNumber
 			}
 
@@ -384,16 +494,16 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 
 			// Now fetch the complete booking data to prepare for email
 			const updatedBookingDoc = await bookingRef.get()
-			const bookingData = updatedBookingDoc.data() as any
+			const updatedBookingData = updatedBookingDoc.data() as any
 
 			// Only send email if it hasn't been sent already
-			if (!bookingData.emailSent) {
+			if (!updatedBookingData.emailSent) {
 				// Fetch related court and venue data needed for the email
 				let courtData: any | null = null
 				let venueData: any | null = null
 
-				if (bookingData.courtId) {
-					const courtDoc = await db.collection('courts').doc(bookingData.courtId).get()
+				if (updatedBookingData.courtId) {
+					const courtDoc = await db.collection('courts').doc(updatedBookingData.courtId).get()
 					if (courtDoc.exists) {
 						courtData = courtDoc.data()
 
@@ -408,7 +518,7 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 				}
 
 				// Prepare email data
-				const emailData = prepareEmailData(bookingData, courtData, venueData, paymentIntent)
+				const emailData = prepareEmailData(updatedBookingData, courtData, venueData, paymentIntent)
 
 				// Call the email sending function
 				try {

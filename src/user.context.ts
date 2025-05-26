@@ -1,4 +1,4 @@
-import { createContext } from '@mhmo91/schmancy'
+import { createContext } from '@mhmo91/schmancy';
 
 export type UserRole = 'super_admin' | 'venue_owner' | 'venue_manager' | 'staff';
 
@@ -59,7 +59,7 @@ export class User implements IUserUpdate {
     this.password = '';
     this.displayName = '';
     this.admin = false;
-    this.uid = '';
+    this.uid ="";
     this.role = 'staff';
     this.venueAccess = [];
   }

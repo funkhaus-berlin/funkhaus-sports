@@ -7,15 +7,17 @@ import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import { distinctUntilChanged, filter, map, Subscription, takeUntil } from 'rxjs'
+import { distinctUntilChanged, filter, interval, map, Subscription, takeUntil } from 'rxjs'
 import countries from 'src/assets/countries'
 import { Court } from 'src/db/courts.collection'
 import stripePromise, { $stripeElements } from 'src/public/stripe'
 import { FunkhausSportsTermsAndConditions } from '../../../shared/components/terms-and-conditions'
+import { BookingService } from 'src/bookingServices/booking.service'
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgressContext, BookingStep } from '../../context'
 import { FormValidator } from '../../form-validator'
 import { PaymentService } from '../../payment-service'
+import '../booking-timer' // Import timer component
 
 /**
  * Checkout form component with Stripe integration
@@ -35,12 +37,14 @@ export class CheckoutForm extends $LitElement() {
 	// Services
 	private formValidator = new FormValidator()
 	private paymentService = new PaymentService()
+	private bookingService = new BookingService()
 
 	// Stripe integration
 	private stripe: Stripe | null = null
 	private elements?: StripeElements
 	private _elementsSubscription?: Subscription
 	private _processingSubscription?: Subscription
+	private _lastActiveSubscription?: Subscription
 
 	// Lifecycle methods
 
@@ -66,6 +70,21 @@ export class CheckoutForm extends $LitElement() {
 			
 			// Update active state
 			this.isActive = isActive
+			
+			// Start or stop lastActive updates based on active state
+			if (isActive && this.booking?.id && this.booking?.status === 'holding') {
+				// Update lastActive every 2 minutes while on payment page
+				this._lastActiveSubscription = interval(120000) // 2 minutes
+					.pipe(takeUntil(this.disconnecting))
+					.subscribe(() => {
+						if (this.booking?.id) {
+							this.bookingService.updateLastActive(this.booking.id).subscribe()
+						}
+					})
+			} else {
+				// Stop updating when not active
+				this._lastActiveSubscription?.unsubscribe()
+			}
 			
 			// Reset transitioning flag after animation time
 			setTimeout(() => {
@@ -100,6 +119,10 @@ export class CheckoutForm extends $LitElement() {
 
 		if (this._processingSubscription) {
 			this._processingSubscription.unsubscribe()
+		}
+
+		if (this._lastActiveSubscription) {
+			this._lastActiveSubscription.unsubscribe()
 		}
 
 		// Cancel any ongoing payment processing
@@ -175,7 +198,7 @@ export class CheckoutForm extends $LitElement() {
 		// Process payment (let Stripe handle any payment errors)
 		this.paymentService.processPayment(this.booking, this.stripe, this.elements).subscribe((result: any) => {
 			if (result.success) {
-				// Transition to the next step (from Payment to completion)
+					// Transition to the next step (from Payment to completion)
 				transitionToNextStep('Payment')
 				
 				// Also dispatch the booking-complete event for backward compatibility
@@ -268,6 +291,11 @@ export class CheckoutForm extends $LitElement() {
 						</div>
 					`,
 				)}
+				
+				<!-- Timer display -->
+				${when(this.isActive, () => html`
+					<booking-timer></booking-timer>
+				`)}
 
 				<schmancy-form @submit=${this.processPayment} .inert=${this.processing}>
 					<schmancy-grid class="w-full py-2 md:py-4 px-2" gap="sm">

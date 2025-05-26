@@ -7,21 +7,8 @@ import PDFDocument from 'pdfkit'
 import QRCode from 'qrcode'
 import { createCalendarEvent, generateICSFile } from './_shared/calendar-utils'
 import { corsHeaders } from './_shared/cors'
-import { emailConfig } from './_shared/email-config'
 import resend, { emailHtml } from './_shared/resend'
 
-// Initialize Firebase Admin if not already initialized
-if (!admin.apps.length) {
-	admin.initializeApp({
-		credential: admin.credential.cert({
-			projectId: process.env.FIREBASE_PROJECT_ID,
-			clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-			privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-		}),
-	})
-}
-
-const db = admin.firestore()
 
 /**
  * Email handler for sending booking confirmations
@@ -29,6 +16,7 @@ const db = admin.firestore()
 import {
   BookingEmailRequest as EmailBookingData
 } from './types/shared-types'
+import { db } from './_shared/firebase-admin'
 const handler: Handler = async (event, context) => {
 	// Handle preflight request for CORS
 	if (event.httpMethod === 'OPTIONS') {
@@ -367,7 +355,7 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 
 		// Send email with Resend
 		const response = await resend.emails.send({
-			from: `${emailConfig.fromName} <${emailConfig.from}>`,
+			from: `Funkhaus Sports <ticket@funkhaus-berlin.net>`,
 			to: data.customerEmail,
 			subject: `Funkhaus Sports - Court Booking Confirmation - ${formattedDate} at ${startTime}`,
 			html: html,

@@ -15,6 +15,9 @@ import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { Duration } from '../../types'
 import { $notify } from '@mhmo91/schmancy'
+import { BookingsDB } from 'src/db/bookings.collection'
+import { doc, collection } from 'firebase/firestore'
+import { db } from 'src/firebase/firebase'
 
 const DURATION_LABELS: Record<number, { full: string; compact: string }> = {
 	30: { full: '30 minutes', compact: '30m' },
@@ -47,6 +50,7 @@ export class DurationSelectionStep extends $LitElement(css`
 	@state() private error: string | null = null
 	@state() private isExpanded = false
 	@state() private isCompact = false
+	@state() private isCreatingBooking = false
 	
 	private scrollContainerRef = createRef<HTMLElement>()
 	private durationRefs = new Map<number, HTMLElement>()
@@ -227,11 +231,86 @@ export class DurationSelectionStep extends $LitElement(css`
 			return
 		}
 		
-		// Show notification about reservation
-		$notify.success('Your booking has been reserved for 5 minutes', { duration: 3000 })
+		// Prevent multiple clicks
+		if (this.isCreatingBooking) {
+			return
+		}
 		
-		// Transition to payment step
-		transitionToNextStep('Duration')
+		this.isCreatingBooking = true
+		
+		// Debug: Log current booking data
+		console.log('Current booking data before creating temporary booking:', {
+			courtId: this.booking.courtId,
+			date: this.booking.date,
+			startTime: this.booking.startTime,
+			endTime: this.booking.endTime,
+			price: this.booking.price,
+			venueId: this.booking.venueId,
+			userId: this.booking.userId,
+			userName: this.booking.userName,
+			fullBookingObject: this.booking
+		})
+		
+		// Validate we have all required fields before proceeding
+		if (!this.booking.courtId || !this.booking.date || !this.booking.startTime || !this.booking.endTime || !this.booking.price || this.booking.price <= 0) {
+			console.error('Missing or invalid required fields:', {
+				courtId: this.booking.courtId,
+				date: this.booking.date,
+				startTime: this.booking.startTime,
+				endTime: this.booking.endTime,
+				price: this.booking.price,
+				priceValid: this.booking.price > 0
+			})
+			$notify.error('Please complete all booking details before proceeding')
+			this.isCreatingBooking = false
+			return
+		}
+		
+		// Prepare booking data with holding status
+		const bookingData: Booking = {
+			...this.booking,
+			status: 'holding',
+			paymentStatus: 'pending',
+			createdAt: new Date().toISOString(),
+			lastActive: new Date().toISOString()
+		}
+		
+		// Debug: Log booking data being sent
+		console.log('Booking data being sent to createBooking:', bookingData)
+		
+		// Generate a new booking ID
+		const bookingsRef = collection(db, 'bookings')
+		const newBookingRef = doc(bookingsRef)
+		const bookingId = newBookingRef.id
+		
+		// Add the ID to booking data
+		const bookingWithId = { ...bookingData, id: bookingId }
+		
+		// Create temporary booking directly in Firebase
+		BookingsDB.upsert(bookingWithId, bookingId)
+			.pipe(
+				catchError(error => {
+					console.error('Failed to create temporary booking:', error)
+					$notify.error('Failed to reserve booking. Please try again.')
+					this.isCreatingBooking = false
+					return of(null)
+				})
+			)
+			.subscribe(success => {
+				if (success) {
+					// Update booking context with the created booking ID
+					bookingContext.set({
+						id: bookingId
+					}, true)
+					
+					// Show notification about reservation
+					$notify.success('Your booking has been reserved for 5 minutes', { duration: 3000 })
+					
+					// Transition to payment step
+					transitionToNextStep('Duration')
+				}
+				this.isCreatingBooking = false
+			})
 	}
 
 	private renderDurationOption(duration: Duration) {
@@ -329,9 +408,17 @@ export class DurationSelectionStep extends $LitElement(css`
 							variant="filled" 
 							@click=${() => this.proceedToPayment()}
 							class="min-w-[200px]"
+							?disabled=${this.isCreatingBooking}
 						>
+							${this.isCreatingBooking ? html`
+								<span class="flex items-center gap-2">
+									<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+									<span>Reserving...</span>
+								</span>
+							` : html`
 								<schmancy-icon>payment</schmancy-icon>
 								<span>Proceed to Payment</span>
+							`}
 						</schmancy-button>
 					</div>
 				`)}

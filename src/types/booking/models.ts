@@ -17,17 +17,16 @@ export interface FirestoreTimestamp {
 
 /**
  * Booking status types
+ * - holding: Temporary hold while user completes payment (prevents double-booking)
+ * - confirmed: Payment successful, booking is active
+ * - completed: User checked in / court session finished
+ * - cancelled: Booking cancelled (payment failed, timeout, or user cancelled)
  */
 export type BookingStatus =
-	| 'temporary'
-	| 'pending'
+	| 'holding'
 	| 'confirmed'
-	| 'cancelled'
 	| 'completed'
-	| 'no-show'
-	| 'refunded'
-	| 'failed'
-	| 'processing'
+	| 'cancelled'
 
 /**
  * Address interface used across the application
@@ -72,6 +71,7 @@ export interface Booking {
 	customerAddress?: Address // Made optional for consistency
 	createdAt?: string
 	updatedAt?: string
+	lastActive?: string // ISO string - tracks last user activity for holding status
 	emailSent?: boolean
 	emailSentAt?: string
 	courtPreference?: 'indoor' | 'outdoor'

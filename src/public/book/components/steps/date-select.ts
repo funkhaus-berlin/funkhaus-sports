@@ -502,7 +502,6 @@ export class DateSelectionStep extends $LitElement(css`
 
 		// Update value and dispatch event
 		const dateString = clickedDay.format('YYYY-MM-DD')
-		const newValue = date.toISOString()
 
 		// Add pulse animation to the selected date element
 		setTimeout(() => {
@@ -513,9 +512,10 @@ export class DateSelectionStep extends $LitElement(css`
 		}, 50)
 
 		// Only update the date, preserving other user selections
+		// Use YYYY-MM-DD format as expected by backend
 		bookingContext.set(
 			{
-				date: newValue,
+				date: dateString,
 			},
 			true,
 		)

@@ -197,12 +197,8 @@ export class BookingDetailsSheet extends $LitElement() {
         return 'success'
       case 'cancelled':
         return 'error'
-      case 'no-show':
-        return 'error'
-      case 'pending':
+      case 'holding':
         return 'warning'
-      case 'processing':
-        return 'info'
       default:
         return 'default'
     }

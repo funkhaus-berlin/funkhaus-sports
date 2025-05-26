@@ -1,18 +1,9 @@
 // netlify/functions/_shared/db-service.ts
-import admin from 'firebase-admin';
 
-// Initialize Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-  });
-}
+import { db } from "./firebase-admin";
 
-const db = admin.firestore();
+
+
 
 // Set TS compiler to ignore 'any' types in this file 
 // @ts-ignore
@@ -94,4 +85,4 @@ export const DBService = {
 };
 
 // Export db for direct access
-export { db, admin };
+export { db };

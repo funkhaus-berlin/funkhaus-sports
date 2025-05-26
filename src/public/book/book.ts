@@ -172,7 +172,7 @@ export class CourtBookingSystem extends $LitElement() {
 						booking.endTime,
 						booking.userId,
 					),
-				})
+				}, true)
 				return booking.price
 			}),
 			distinctUntilChanged((prev, curr) => prev === curr),
@@ -379,7 +379,7 @@ export class CourtBookingSystem extends $LitElement() {
 		if (currentStep === 5) {
 			// Using numeric values now instead of enum
 			return html`
-				<booking-summary .booking=${this.booking} .selectedCourt=${this.selectedCourt}></booking-summary>
+				<booking-summary .selectedCourt=${this.selectedCourt}></booking-summary>
 
 				<funkhaus-checkout-form
 					.booking=${this.booking}
@@ -496,20 +496,8 @@ export class CourtBookingSystem extends $LitElement() {
 					<funkhaus-venue-card
 						class="hidden md:block col-auto justify-self-start mt-4"
 						.venue=${venueContext.value as Venue}
-						@click=${() => {
-							// Reset booking context when venue card is clicked
-							bookingContext.clear()
-							bookingContext.set({
-								venueId: (venueContext.value as Venue).id,
-							})
-							// Reset booking progress context
-							BookingProgressContext.set({
-								currentStep: BookingStep.Date,
-							})
-							// Request update to refresh the UI
-							this.requestUpdate()
-						}}
 						.theme=${(venueContext.value as Venue).theme!}
+            readonly
 					></funkhaus-venue-card>
 				</schmancy-grid>
 				${when(this.bookingInProgress, () => this.renderProcessingOverlay())}

@@ -1,15 +1,14 @@
 // src/public/book/payment-service.ts
 
 import { Stripe, StripeElements } from '@stripe/stripe-js'
+import dayjs from 'dayjs'
+import { collection, doc, updateDoc } from 'firebase/firestore'
 import { BehaviorSubject, from, Observable, of } from 'rxjs'
 import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators'
 import { BookingService } from 'src/bookingServices/booking.service'
-import { auth } from 'src/firebase/firebase'
+import { auth, db } from 'src/firebase/firebase'
 import { createPaymentIntent } from '../stripe'
-import { Booking, ErrorCategory } from './context'
-import dayjs from 'dayjs'
-import { BookingErrorService } from './components/errors/booking-error-service'
-import { ErrorMessageKey } from './components/errors/i18n/error-messages'
+import { Booking } from './context'
 
 /**
  * Handles payment processing and Stripe integration
@@ -45,8 +44,9 @@ export class PaymentService {
 	 * @returns The prepared booking with any needed defaults
 	 */
 	prepareBookingForPayment(booking: Booking): Booking {
-		// Generate ID if needed
-		const bookingId = booking.id || `booking-${this.generateUUID()}`
+		// Use existing booking ID (created in duration-select) or generate new one
+		// This ensures consistency with the booking already created in Firebase
+		const bookingId = booking.id || doc(collection(db, 'bookings')).id
 
 		// Use existing user ID or generate guest ID
 		const userId = auth.currentUser?.uid || `guest-${this.generateUUID()}`
@@ -66,14 +66,18 @@ export class PaymentService {
 		return {
 			...booking,
 			id: bookingId,
-			userId: userId || booking.userId,
+			userId: userId || booking.userId || '',
 			userName: booking.userName || 'Guest User',
+			userEmail: booking.customerEmail || booking.userEmail || '', // Add userEmail field
+			userPhone: booking.customerPhone || booking.userPhone || '', // Add userPhone field
 			customerPhone: booking.customerPhone || '',
 			customerEmail: booking.customerEmail || '',
 			date: formattedDate,
 			paymentStatus: 'pending',
-			status: 'temporary', // Mark as temporary until payment is confirmed
+			status: 'holding', // Mark as holding until payment is confirmed
 			customerAddress,
+			venueId: booking.venueId || '', // Ensure venueId is included
+			courtId: booking.courtId || '', // Ensure courtId is included
 		}
 	}
 
@@ -133,6 +137,34 @@ export class PaymentService {
 		// Payment data for Stripe
 		const paymentData = this.preparePaymentData(bookingData)
 
+		// If booking already exists, update it with user info first
+		if (bookingData.id && bookingData.status === 'holding') {
+			// Update the existing booking with user information
+			const bookingUpdate = {
+				userName: bookingData.userName,
+				userEmail: bookingData.userEmail,
+				userPhone: bookingData.userPhone,
+				customerEmail: bookingData.customerEmail,
+				customerPhone: bookingData.customerPhone,
+				customerAddress: bookingData.customerAddress,
+				userId: bookingData.userId,
+				updatedAt: new Date().toISOString(),
+				lastActive: new Date().toISOString()
+			}
+			
+			// Update booking in Firestore
+			from(updateDoc(doc(db, 'bookings', bookingData.id), bookingUpdate))
+				.pipe(
+					tap(() => console.log('Updated booking with user info before payment')),
+					catchError(error => {
+						console.error('Error updating booking with user info:', error)
+						// Continue anyway - payment is more important
+						return of(null)
+					})
+				)
+				.subscribe()
+		}
+
 		// First create payment intent, then create a temporary booking
 		return from(createPaymentIntent(paymentData)).pipe(
 			tap(response => console.log('Payment intent created:', response)),
@@ -144,25 +176,45 @@ export class PaymentService {
 				
 				const clientSecret = response.clientSecret
 				
-				// Create temporary booking record
-				return from(this.bookingService.createBooking(bookingData)).pipe(
-					tap(createdBooking => console.log('Temporary booking created:', createdBooking)),
-					switchMap(createdBooking => {
-						if (!stripe || !elements) {
-							throw new Error('Payment system not available')
-						}
-						
-						// Now process the payment with Stripe
-						return this.confirmPayment(stripe, elements, clientSecret, createdBooking)
-					}),
-					map(stripeResult => {
-						if (stripeResult.error) {
-							throw stripeResult.error
-						}
-						
-						return { success: true, booking: bookingData }
-					})
-				)
+				// Check if booking already exists (created during duration selection)
+				if (bookingData.id) {
+					console.log('Using existing booking:', bookingData.id)
+					
+					if (!stripe || !elements) {
+						throw new Error('Payment system not available')
+					}
+					
+					// Process payment with existing booking
+					return from(this.confirmPayment(stripe, elements, clientSecret, bookingData)).pipe(
+						map(stripeResult => {
+							if (stripeResult.error) {
+								throw stripeResult.error
+							}
+							
+							return { success: true, booking: bookingData }
+						})
+					)
+				} else {
+					// Create temporary booking record if it doesn't exist
+					return from(this.bookingService.createBooking(bookingData)).pipe(
+						tap(createdBooking => console.log('Temporary booking created:', createdBooking)),
+						switchMap(createdBooking => {
+							if (!stripe || !elements) {
+								throw new Error('Payment system not available')
+							}
+							
+							// Now process the payment with Stripe
+							return this.confirmPayment(stripe, elements, clientSecret, createdBooking)
+						}),
+						map(stripeResult => {
+							if (stripeResult.error) {
+								throw stripeResult.error
+							}
+							
+							return { success: true, booking: bookingData }
+						})
+					)
+				}
 			}),
 			catchError(error => {
 				console.error('Payment or booking error:', error)

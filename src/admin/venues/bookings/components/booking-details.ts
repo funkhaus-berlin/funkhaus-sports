@@ -90,7 +90,7 @@ export class BookingDetails extends $LitElement() {
         return { color: 'text-green-800', bgColor: 'bg-green-100', icon: 'check_circle' }
       case 'cancelled':
         return { color: 'text-gray-600', bgColor: 'bg-gray-100', icon: 'cancel' }
-      case 'pending':
+      case 'holding':
         return { color: 'text-yellow-800', bgColor: 'bg-yellow-100', icon: 'pending' }
       default:
         return { color: 'text-blue-800', bgColor: 'bg-blue-100', icon: 'event_available' }

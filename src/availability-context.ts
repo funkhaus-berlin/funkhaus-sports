@@ -330,7 +330,7 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 				// Fetch bookings for this date and venue
 				return BookingsDB.subscribeToCollection([
 					{ key: 'date', operator: '==', value: dayjs(date).format('YYYY-MM-DD') },
-					{ key: 'status', operator: 'in', value: ['confirmed', 'pending','temporary'] },
+					{ key: 'status', operator: 'in', value: ['confirmed', 'holding'] },
 					{ key: 'venueId', operator: '==', value: venueId }, // Filter by venue ID
 				]).pipe(
 					map(bookingsMap => {

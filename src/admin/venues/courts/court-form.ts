@@ -8,6 +8,7 @@ import { takeUntil } from 'rxjs'
 import { Court, CourtsDB, CourtTypeEnum, Pricing, SportTypeEnum } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { confirm } from 'src/schmancy'
+import { v4 as uuidv4 } from 'uuid'
 import '../components/court-map-editor'
 import { venueContext, venuesContext } from '../venue-context'
 import { selectedCourtContext } from './context'
@@ -541,7 +542,10 @@ export class CourtForm extends $LitElement() {
 
 		// Save to database
 		// If creating a new court, just use the court object without an ID
-		const saveOperation = isNewCourt ? CourtsDB.upsert(court) : CourtsDB.upsert(court, this.editingCourt!.id)
+    if (isNewCourt && !court.id) {
+      court.id = uuidv4()
+    }
+		const saveOperation = isNewCourt ? CourtsDB.upsert(court, court.id!) : CourtsDB.upsert(court, this.editingCourt!.id)
 
 		saveOperation.pipe(takeUntil(this.disconnecting)).subscribe({
 			next: (savedCourt) => {
