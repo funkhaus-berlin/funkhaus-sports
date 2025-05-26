@@ -411,7 +411,8 @@ export class DateSelectionStep extends $LitElement(css`
 	}
 
 	/**
-	 * Generate dates for the calendar (28 days from today)
+	 * Generate dates for the calendar (exactly 28 days - 4 rows)
+	 * Includes past dates to fill complete weeks
 	 */
 	private getNext28Days(): Date[] {
 		// Use cached value if available
@@ -420,9 +421,21 @@ export class DateSelectionStep extends $LitElement(css`
 		}
 
 		const today = new Date()
+		today.setHours(0, 0, 0, 0) // Normalize to start of day
+		
+		// Find the start of the week containing today
+		const dayOfWeek = today.getDay()
+		const daysToSubtract = this._firstDayOfWeek === 1 
+			? (dayOfWeek === 0 ? 6 : dayOfWeek - 1) // Monday as first day
+			: dayOfWeek // Sunday as first day
+		
+		const startDate = new Date(today)
+		startDate.setDate(today.getDate() - daysToSubtract)
+		
+		// Always generate exactly 28 days (4 rows of 7 days)
 		this._cachedDates = Array.from({ length: 28 }, (_, i) => {
-			const date = new Date(today)
-			date.setDate(date.getDate() + i)
+			const date = new Date(startDate)
+			date.setDate(startDate.getDate() + i)
 			return date
 		})
 
@@ -431,7 +444,8 @@ export class DateSelectionStep extends $LitElement(css`
 
 	/**
 	 * Group days into weeks for the calendar
-	 * Adjusted to start from Monday (or locale first day)
+	 * Since we always have exactly 28 days starting from the beginning of a week,
+	 * we can simply group them into 4 weeks of 7 days each
 	 */
 	private groupIntoWeeks(dates: Date[]): Date[][] {
 		// Use cached value if available
@@ -439,58 +453,12 @@ export class DateSelectionStep extends $LitElement(css`
 			return this._cachedWeeks
 		}
 
-		// Start with the first date
-		const startDate = new Date(dates[0])
-		// Adjust day of week - in JS, 0 = Sunday, 1 = Monday, etc.
-		// If _firstDayOfWeek is 1 (Monday), we need to adjust our calculations
-		let startDayOfWeek = startDate.getDay()
-
-		// Adjust for Monday as first day of week (or locale setting)
-		if (this._firstDayOfWeek === 1) {
-			// Convert Sunday from 0 to 7
-			startDayOfWeek = startDayOfWeek === 0 ? 7 : startDayOfWeek
-			// Subtract 1 to make Monday = 1, Tuesday = 2, etc.
-			startDayOfWeek -= 1
-		}
-
-		// Create week groups
+		// Since we always have exactly 28 days starting from the first day of the week,
+		// we can simply chunk them into groups of 7
 		const weeks: Date[][] = []
-		let currentWeek: Date[] = []
-
-		// Fill the first week with placeholder days if needed
-		if (startDayOfWeek !== 0) {
-			// If not starting on first day of week
-			for (let i = 0; i < startDayOfWeek; i++) {
-				const placeholderDate = new Date(startDate)
-				placeholderDate.setDate(startDate.getDate() - (startDayOfWeek - i))
-				currentWeek.push(placeholderDate)
-			}
-		}
-
-		// Add all dates to appropriate weeks
-		for (const date of dates) {
-			let dayOfWeek = date.getDay()
-
-			// Adjust for Monday as first day of week (or locale setting)
-			if (this._firstDayOfWeek === 1) {
-				// Convert Sunday from 0 to 7
-				dayOfWeek = dayOfWeek === 0 ? 7 : dayOfWeek
-				// Subtract 1 to make Monday = 1, Tuesday = 2, etc. and Sunday = 7
-				dayOfWeek -= 1
-			}
-
-			currentWeek.push(date)
-
-			// If we've reached the end of the week (6 = Saturday or Sunday depending on firstDayOfWeek)
-			if (dayOfWeek === 6) {
-				weeks.push([...currentWeek])
-				currentWeek = []
-			}
-		}
-
-		// Add any remaining dates in the last week
-		if (currentWeek.length > 0) {
-			weeks.push([...currentWeek])
+		
+		for (let i = 0; i < dates.length; i += 7) {
+			weeks.push(dates.slice(i, i + 7))
 		}
 
 		this._cachedWeeks = weeks

@@ -14,6 +14,7 @@ import { toUserTimezone } from 'src/utils/timezone'
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { Duration } from '../../types'
+import { $notify } from '@mhmo91/schmancy'
 
 const DURATION_LABELS: Record<number, { full: string; compact: string }> = {
 	30: { full: '30 minutes', compact: '30m' },
@@ -160,7 +161,6 @@ export class DurationSelectionStep extends $LitElement(css`
 		
 		this.animateElement(this.durationRefs.get(duration.value))
 		setTimeout(() => this.scrollToSelectedDuration(), 150)
-		transitionToNextStep('Duration')
 		
 		const label = DURATION_LABELS[duration.value]?.full || `${duration.value} minutes`
 		this.announceForScreenReader(`Selected ${label} for €${duration.price.toFixed(2)}`)
@@ -215,6 +215,23 @@ export class DurationSelectionStep extends $LitElement(css`
 			: dayjs(this.booking.date).hour(22).minute(0)
 		
 		return endTime.isAfter(closingTime)
+	}
+	
+	private hasValidSelection(): boolean {
+		return !!this.booking?.endTime && !!this.booking?.price && this.getCurrentDuration() > 0
+	}
+	
+	private proceedToPayment(): void {
+		if (!this.hasValidSelection()) {
+			this.announceForScreenReader('Please select a duration before proceeding')
+			return
+		}
+		
+		// Show notification about reservation
+		$notify.success('Your booking has been reserved for 5 minutes', { duration: 3000 })
+		
+		// Transition to payment step
+		transitionToNextStep('Duration')
 	}
 
 	private renderDurationOption(duration: Duration) {
@@ -303,6 +320,19 @@ export class DurationSelectionStep extends $LitElement(css`
 								Estimated prices. Actual price may vary.
 							</p>
 						`)}
+					</div>
+				`)}
+				
+				${when(this.hasValidSelection(), () => html`
+					<div class="mt-4 flex justify-center">
+						<schmancy-button 
+							variant="filled" 
+							@click=${() => this.proceedToPayment()}
+							class="min-w-[200px]"
+						>
+								<schmancy-icon>payment</schmancy-icon>
+								<span>Proceed to Payment</span>
+						</schmancy-button>
 					</div>
 				`)}
 			</div>
