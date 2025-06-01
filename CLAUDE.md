@@ -42,6 +42,39 @@ This file provides comprehensive instructions for Claude when working with the F
    - Component documentation is located at: `node_modules/@mhmo91/schmancy/ai`
    - Always check documentation before using Schmancy components
    - Follow established patterns for component usage throughout the codebase
+   - NEVER assume how Schmancy components work! Always check existing usage in the codebase or look for documentation in node_modules/@mhmo91/schmancy/ai folder that contains all .md docs for the Schmancy components
+
+8. **STYLING - NO CUSTOM CSS**:
+   - USE ONLY TAILWIND CSS UTILITY CLASSES
+   - NO custom CSS except for minimal :host { display: block; }
+   - ALL styling must be done with Tailwind classes
+   - NO @keyframes, NO custom CSS animations - use Tailwind's animation utilities
+   - NO CSS-in-JS, NO styled components, NO CSS modules
+   - If you need complex styling, compose multiple Tailwind classes
+
+9. **RxJS Best Practices - CRITICAL**:
+   - **Minimal Functions**: Components should have only 2-3 functions maximum:
+     - `connectedCallback()` - Setup RxJS pipelines
+     - One action handler (e.g., `handleUpdate()`, `handleSave()`) - Process user actions
+     - `render()` - All UI logic must be here
+   - **RxJS Pipeline Pattern**:
+     ```typescript
+     of(initialData).pipe(
+       tap(() => { /* side effects like loading state */ }),
+       switchMap(data => /* async operations */),
+       map(result => /* transformations */),
+       tap(() => { /* update state */ }),
+       catchError(err => { /* handle errors */ return EMPTY }),
+       finalize(() => { /* cleanup like loading = false */ }),
+       takeUntil(this.disconnecting)
+     ).subscribe()
+     ```
+   - **State Updates**: Always update state within `tap()` operators in the pipeline
+   - **Error Handling**: Use `catchError()` returning `EMPTY` for non-fatal errors
+   - **Cleanup**: Always use `takeUntil(this.disconnecting)` for automatic unsubscription
+   - **No Scattered Logic**: Never create separate helper functions for UI formatting or calculations - use inline expressions or IIFEs in render()
+   - **Event Handling in Pipelines**: Use `fromEvent()` for reactive event handling
+   - **Avoid Imperative Code**: Replace try/catch blocks with RxJS error operators
 
 ## Project Overview
 
