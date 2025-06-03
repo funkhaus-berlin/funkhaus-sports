@@ -10,7 +10,10 @@ module.exports = {
 	],
 	theme: {
 		extend: {
-			// your custom theme settings here
+			// Custom background gradients
+			backgroundImage: {
+				'gradient-radial': 'radial-gradient(ellipse at center, var(--tw-gradient-stops))',
+			},
 		},
 	},
 	plugins: [],

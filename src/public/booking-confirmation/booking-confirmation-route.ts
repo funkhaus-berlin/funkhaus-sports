@@ -9,7 +9,7 @@ import { courtsContext } from 'src/admin/venues/courts/context'
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Court } from 'src/db/courts.collection'
 import { Booking } from 'src/types/booking/models'
-import { VenueLandingPage } from '../venues/venues'
+import { VenuesLandingPage } from '../venues/venues'
 import './booking-confirmation'
 
 /**
@@ -96,7 +96,7 @@ export class BookingConfirmationRoute extends $LitElement() {
 								<schmancy-typography type="body" token="md" class="text-center mb-4">
 									${this.error}
 								</schmancy-typography>
-								<schmancy-button variant="filled" @click=${() => area.push({ component: VenueLandingPage, area: 'root' })}>
+								<schmancy-button variant="filled" @click=${() => area.push({ component: VenuesLandingPage, area: 'root' })}>
 									Return to Home
 								</schmancy-button>
 							</div>
@@ -114,7 +114,7 @@ export class BookingConfirmationRoute extends $LitElement() {
 									<schmancy-typography type="label" token="sm" class="text-surface-on-variant mb-4">
 										Booking ID: ${this.booking?.id}
 									</schmancy-typography>
-									<schmancy-button variant="filled" @click=${() => area.push({ component: VenueLandingPage, area: 'root' })}>
+									<schmancy-button variant="filled" @click=${() => area.push({ component: VenuesLandingPage, area: 'root' })}>
 										Book Another Court
 									</schmancy-button>
 								</div>
@@ -128,7 +128,7 @@ export class BookingConfirmationRoute extends $LitElement() {
 									.customerEmail=${this.booking!.customerEmail || ''}
 									.customerName=${this.booking!.userName || ''}
 									.bookingId=${this.booking!.id || ''}
-									.onNewBooking=${() => area.push({ component: VenueLandingPage, area: 'root' })}
+									.onNewBooking=${() => area.push({ component: VenuesLandingPage, area: 'root' })}
 								></booking-confirmation>
 							`
 						)

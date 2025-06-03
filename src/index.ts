@@ -15,7 +15,7 @@ import { VenuesDB } from './db/venue-collection'
 import './map'
 import { BookingConfirmationRoute } from './public/booking-confirmation/booking-confirmation-route'
 import './public/shared'
-import { VenueLandingPage } from './public/venues/venues'
+import { VenuesLandingPage } from './public/venues/venues'
 import './schmancy'
 
 dayjs.extend(utc)
@@ -126,7 +126,7 @@ export class AppIndex extends $LitElement() {
 			}
 
 			// Default to landing page
-			return VenueLandingPage
+			return VenuesLandingPage
 		}
 		return html`
 			<schmancy-theme color="#008080" root>

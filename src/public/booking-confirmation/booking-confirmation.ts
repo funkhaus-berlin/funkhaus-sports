@@ -8,7 +8,7 @@ import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
-import { VenueLandingPage } from 'src/public/venues/venues'
+import { VenuesLandingPage } from 'src/public/venues/venues'
 import { BookingUtils } from '../book/booking-utils'
 import { resendBookingEmail } from '../book/components/services'
 import { Booking, bookingContext, BookingProgressContext } from '../book/context'
@@ -81,7 +81,7 @@ export class BookingConfirmation extends $LitElement() {
       this.onNewBooking()
     } else {
       area.push({
-        component: VenueLandingPage,
+        component: VenuesLandingPage,
         area: 'root',
       })
     }
@@ -235,27 +235,39 @@ export class BookingConfirmation extends $LitElement() {
     const venueName = this.venue?.name || 'Venue'
 
     return html`
-      <div class="h-screen overflow-hidden bg-surface-default flex items-center justify-center p-4">
-        <div class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-4 h-full">
-          <!-- Left Column - QR Code and Success Message -->
-          <div class="flex flex-col justify-center items-center gap-4 lg:gap-6">
+      <schmancy-scroll class="h-screen bg-surface-default">
+        <div class="min-h-screen flex items-center justify-center p-4">
+          <div class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-8">
+            <!-- Left Column - QR Code and Success Message -->
+            <div class="flex flex-col justify-center items-center gap-2 lg:gap-4 py-4 lg:py-0">
+            <!-- Logo -->
+            <funkhaus-logo 
+              reverse 
+              src="/logo.svg" 
+              alt="Funkhaus Sports Logo" 
+              width="80px" 
+              class="mx-auto mb-2 lg:mb-4 cursor-pointer lg:w-[120px]" 
+              @click=${() => this.returnToHome()}
+            ></funkhaus-logo>
+
             <!-- Title -->
             <schmancy-grid gap="xs" class="text-center">
-              <schmancy-typography type="display" token="sm">Booking Confirmed!</schmancy-typography>
-              <schmancy-typography type="body" token="md" class="text-surface-onVariant">
+              <schmancy-typography type="title" token="lg" class="lg:hidden">Booking Confirmed!</schmancy-typography>
+              <schmancy-typography type="display" token="sm" class="hidden lg:block">Booking Confirmed!</schmancy-typography>
+              <schmancy-typography type="body" token="sm" class="text-surface-onVariant lg:text-base">
                 Check-in with QR code • Email sent to ${this.customerEmail}
               </schmancy-typography>
             </schmancy-grid>
 
             <!-- QR Code -->
-            <schmancy-surface type="containerLow" rounded="all" class="p-6">
+            <schmancy-surface type="containerLow" rounded="all" class="p-4 lg:p-6">
               <schmancy-grid gap="sm" align="center">
                 <img
                   src=${BookingUtils.generateQRCodeDataUrl(this.booking, this.selectedCourt)}
                   alt="Booking QR Code"
-                  width="180"
-                  height="180"
-                  class="block"
+                  width="140"
+                  height="140"
+                  class="block lg:w-[180px] lg:h-[180px]"
                 />
                 <schmancy-button
                   variant="text"
@@ -297,14 +309,14 @@ export class BookingConfirmation extends $LitElement() {
           </div>
 
           <!-- Right Column - Booking Details and Actions -->
-          <div class="flex flex-col gap-4 justify-center">
+          <div class="flex flex-col gap-3 lg:gap-4 justify-center pb-4 lg:pb-0 max-w-md mx-auto">
             <!-- Booking Details Card -->
             <schmancy-card>
-              <schmancy-grid gap="sm" class="p-4">
+              <schmancy-grid gap="xs" class="p-3 lg:p-4">
                 <!-- Venue & Court -->
                 <schmancy-flex justify="between" align="center" >
                   <schmancy-flex gap="sm" align="center">
-                    <schmancy-icon size="48px" class="text-surface-onVariant">pin_drop</schmancy-icon>
+                    <schmancy-icon size="36px" class="text-surface-onVariant lg:text-5xl">pin_drop</schmancy-icon>
                     <div class="flex-1 text-left">
                       <schmancy-typography type="title" token="sm">${venueName}</schmancy-typography>
                       <schmancy-typography type="body" token="sm" class="text-surface-onVariant">${courtName}</schmancy-typography>
@@ -317,8 +329,8 @@ export class BookingConfirmation extends $LitElement() {
     <schmancy-divider>  </schmancy-divider>
 
                 <!-- Date & Time -->
-                <schmancy-flex gap="sm" align="center" class="py-2">
-                  <schmancy-icon size="48px" class="text-surface-onVariant">event</schmancy-icon>
+                <schmancy-flex gap="sm" align="center" class="py-1 lg:py-2">
+                  <schmancy-icon size="36px" class="text-surface-onVariant lg:text-5xl">event</schmancy-icon>
                   <div class="flex-1 text-left">
                     <schmancy-typography type="body" token="md">${dateFormatted}</schmancy-typography>
                     <schmancy-typography type="body" token="sm" class="text-surface-onVariant">
@@ -333,9 +345,9 @@ export class BookingConfirmation extends $LitElement() {
                     <a 
                       href="${this.getMapUrl()}" 
                       target="_blank"
-                      class="flex items-center gap-3 py-2 text-surface-on hover:text-primary-default transition-colors"
+                      class="flex items-center gap-3 py-1 lg:py-2 text-surface-on hover:text-primary-default transition-colors"
                     >
-                      <schmancy-icon size="48px">directions</schmancy-icon>
+                      <schmancy-icon size="36px" class="lg:text-5xl">directions</schmancy-icon>
                       <schmancy-typography type="body" token="sm" class="flex-1">
                         ${this.getFormattedAddress()}
                       </schmancy-typography>
@@ -347,17 +359,18 @@ export class BookingConfirmation extends $LitElement() {
             </schmancy-card>
 
             <!-- Action Buttons -->
-            <schmancy-grid gap="sm">
-              <schmancy-grid justify="center" cols="1fr auto auto 1fr" gap="sm">
+            <schmancy-grid gap="xs" class="lg:gap-sm">
+              <schmancy-grid justify="center" cols="1fr auto auto 1fr" gap="xs" class="lg:gap-sm">
                 <span>  </span>
-                <schmancy-button variant="filled" href=${calendarUrl} >
+                <schmancy-button variant="filled" href=${calendarUrl} size="sm" class="lg:text-base">
                   <schmancy-icon>calendar_month</schmancy-icon>
                   Add to Calendar
                 </schmancy-button>
                 <schmancy-button
                   variant="filled"
                   @click=${() => BookingUtils.shareBooking(this.booking, this.selectedCourt?.name)}
-                  
+                  size="sm"
+                  class="lg:text-base"
                 >
                   <schmancy-icon>share</schmancy-icon>
                   Share
@@ -366,18 +379,19 @@ export class BookingConfirmation extends $LitElement() {
 
               </schmancy-grid>
               
-              <schmancy-grid justify="center" cols="1fr auto auto 1fr" gap="sm">
+              <schmancy-grid justify="center" cols="1fr auto auto 1fr" gap="xs" class="lg:gap-sm">
                 <span></span>
                 <schmancy-button 
                   variant="outlined"
                   @click=${() => this.handleResendEmail()}
                   .disabled=${this.resendingEmail}
-                  
+                  size="sm"
+                  class="lg:text-base"
                 >
                   <schmancy-icon>email</schmancy-icon>
                   ${this.resendingEmail ? 'Sending...' : 'Resend Email'}
                 </schmancy-button>
-                <schmancy-button variant="outlined" @click=${() => this.returnToHome()} >
+                <schmancy-button variant="outlined" @click=${() => this.returnToHome()} size="sm" class="lg:text-base">
                   <schmancy-icon>sports_tennis</schmancy-icon>
                   Book Another
                 </schmancy-button>
@@ -387,7 +401,7 @@ export class BookingConfirmation extends $LitElement() {
             </schmancy-grid>
           </div>
         </div>
-      </div>
+      </schmancy-scroll>
     `
   }
 

@@ -9,8 +9,8 @@ import { Venue } from 'src/db/venue-collection'
 import { CourtBookingSystem } from 'src/public/book/book'
 import { bookingContext, BookingProgressContext, BookingStep } from '../book/context'
 
-@customElement('venue-landing-page')
-export class VenueLandingPage extends $LitElement() {
+@customElement('venues-landing-page')
+export class VenuesLandingPage extends $LitElement() {
 	@select(venuesContext)
 	venues!: Map<string, Venue>
 
@@ -55,7 +55,7 @@ export class VenueLandingPage extends $LitElement() {
 				<div class="flex flex-col items-center px-4 sm:px-6 py-8 max-w-md mx-auto">
 					<!-- Logo Section -->
 					<div class="text-center mb-10">
-						<img src="/logo.svg" alt="Funkhaus Sports Logo" class="w-20 h-20 mx-auto mb-4" />
+						<funkhaus-logo reverse src="/logo.svg" alt="Funkhaus Sports Logo" width="120px" class="mx-auto mb-4" ></funkhaus-logo>
 						<schmancy-typography type="display" token="sm" class="mb-4">
 							<schmancy-animated-text>Funkhaus Sports</schmancy-animated-text>
 						</schmancy-typography>
@@ -100,6 +100,6 @@ export class VenueLandingPage extends $LitElement() {
 
 declare global {
 	interface HTMLElementTagNameMap {
-		'venue-landing-page': VenueLandingPage
+		'venues-landing-page': VenuesLandingPage
 	}
 }

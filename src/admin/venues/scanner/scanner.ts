@@ -3,7 +3,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import jsQR from 'jsqr'
-import { css, html } from 'lit'
+import { html } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { animationFrames, of, Subscription, timer } from 'rxjs'
@@ -23,118 +23,7 @@ dayjs.extend(relativeTime)
  * QR code scanner component for booking check-in
  */
 @customElement('booking-scanner')
-export default class BookingScanner extends $LitElement(css`
-  :host {
-    display: block;
-    position: relative;
-    overflow: hidden;
-    height: 100vh;
-    background: var(--md-sys-color-surface);
-  }
-  
-  /* Video preview with proper aspect ratio */
-  .video-container {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #000;
-  }
-  
-  video {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  
-  /* Scanning overlay */
-  .scanner-overlay {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: radial-gradient(
-      ellipse at center,
-      transparent 0%,
-      transparent 30%,
-      rgba(0, 0, 0, 0.6) 70%
-    );
-  }
-  
-  /* Scanning frame */
-  .scan-frame {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: min(80vw, 300px);
-    height: min(80vw, 300px);
-    border: 3px solid var(--md-sys-color-primary);
-    border-radius: 24px;
-    opacity: 0.8;
-    animation: pulse 2s infinite;
-  }
-  
-  @keyframes pulse {
-    0% { opacity: 0.8; transform: translate(-50%, -50%) scale(1); }
-    50% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
-    100% { opacity: 0.8; transform: translate(-50%, -50%) scale(1); }
-  }
-  
-  /* Result splash screen */
-  .result-splash {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    opacity: 0;
-    visibility: hidden;
-    transition: all 0.3s ease-in-out;
-    z-index: 100;
-    backdrop-filter: blur(10px);
-  }
-  
-  .result-splash.show {
-    opacity: 1;
-    visibility: visible;
-  }
-  
-  .result-splash.success {
-    background: rgba(var(--md-sys-color-success-rgb), 0.9);
-  }
-  
-  .result-splash.warning {
-    background: rgba(var(--md-sys-color-warning-rgb), 0.9);
-  }
-  
-  .result-splash.error {
-    background: rgba(var(--md-sys-color-error-rgb), 0.9);
-  }
-  
-  /* Status indicator */
-  .status-bar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 16px;
-    background: var(--md-sys-color-surface-container);
-    backdrop-filter: blur(10px);
-    z-index: 10;
-  }
-  
-  /* Camera controls */
-  .camera-controls {
-    position: fixed;
-    top: 16px;
-    right: 16px;
-    z-index: 10;
-  }
-`) {
+export default class BookingScanner extends $LitElement() {
   @property({ type: String }) venueId = ''
   
   @state() private scannerStatus: 'idle' | 'scanning' | 'processing' | 'success' | 'error' = 'idle'
@@ -493,19 +382,29 @@ export default class BookingScanner extends $LitElement(css`
     
     // Main scanner view
     return html`
-      <div class="video-container">
-        <video id="video" playsinline autoplay muted></video>
-        <div class="scanner-overlay"></div>
+      <div class="relative w-full h-screen overflow-hidden bg-black">
+        <video 
+          id="video" 
+          playsinline 
+          autoplay 
+          muted
+          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full object-cover"
+        ></video>
+        
+        <!-- Scanning overlay with gradient -->
+        <div class="absolute inset-0 pointer-events-none bg-gradient-radial from-transparent via-transparent to-black/60"></div>
+        
         ${when(this.scannerStatus === 'scanning', () => html`
-          <div class="scan-frame"></div>
+          <!-- Scanning frame with Tailwind animation -->
+          <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(80vw,300px)] h-[min(80vw,300px)] border-[3px] border-primary-default rounded-3xl opacity-80 animate-pulse"></div>
         `)}
       </div>
       
       <!-- Status bar -->
-      <div class="status-bar">
+      <div class="fixed bottom-0 left-0 right-0 p-4 bg-surfaceContainer-default/90 backdrop-blur-md z-10">
         <schmancy-flex justify="between" align="center">
           <schmancy-grid gap="xs">
-            <schmancy-typography type="label" token="sm" class="text-surface-on-variant">
+            <schmancy-typography type="label" token="sm" class="text-onSurfaceVariant-default">
               ${this.venue?.name || 'Scanner'}
             </schmancy-typography>
             <schmancy-typography type="body" token="md">
@@ -519,7 +418,11 @@ export default class BookingScanner extends $LitElement(css`
       </div>
       
       <!-- Result splash -->
-      <div class="result-splash ${this.showResult ? 'show' : ''} ${this.resultType}">
+      <div class="fixed inset-0 flex justify-center items-center transition-all duration-300 z-[100] backdrop-blur-md
+        ${this.showResult ? 'opacity-100 visible' : 'opacity-0 invisible'}
+        ${this.resultType === 'success' ? 'bg-success-default/90' : 
+          this.resultType === 'warning' ? 'bg-warning-default/90' : 
+          'bg-error-default/90'}">
         <schmancy-surface type="surface" rounded="all" class="p-8 m-4 max-w-md">
           <schmancy-grid gap="lg" align="center">
             <schmancy-icon size="64px">

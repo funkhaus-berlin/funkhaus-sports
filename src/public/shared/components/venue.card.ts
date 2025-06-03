@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js'
 import { when } from 'lit/directives/when.js'
 import { delay, fromEvent, merge, startWith, takeUntil } from 'rxjs'
 import { Venue } from 'src/db/venue-collection'
-import '../../venues/logo'
+import '../logo'
 
 // Define golden ratio constant
 const GOLDEN_RATIO = 1.618
