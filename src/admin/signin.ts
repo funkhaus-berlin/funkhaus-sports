@@ -53,7 +53,6 @@ export default class FunkhausSportsSignin extends $LitElement() {
 				user.displayName = authResult.user.displayName || ''
 				user.uid = authResult.user.uid
 				user.role = 'super_admin' as UserRole
-				user.admin = true
 				user.venueAccess = []
 				userContext.set(user)
 				

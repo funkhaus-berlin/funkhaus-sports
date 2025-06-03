@@ -13,7 +13,6 @@ export interface VenueAccess {
 export interface IUserBase {
   email: string;
   displayName: string;
-  admin: boolean; // Legacy field, kept for backwards compatibility
   uid: string;
   role: UserRole;
   venueAccess: VenueAccess[];
@@ -36,33 +35,17 @@ export interface IUserUpdate extends IUserBase {
 }
 
 /**
- * Type alias for backward compatibility
- */
-export type TUser = IUserCreate;
-
-/**
  * User class implementation
  */
 export class User implements IUserUpdate {
-  email: string;
-  password?: string;
-  displayName: string;
-  admin: boolean;
-  uid: string;
-  role: UserRole;
-  venueAccess: VenueAccess[];
+  email: string = '';
+  password?: string = '';
+  displayName: string = '';
+  uid: string = '';
+  role: UserRole = 'staff';
+  venueAccess: VenueAccess[] = [];
   createdAt?: string;
   updatedAt?: string;
-
-  constructor() {
-    this.email = '';
-    this.password = '';
-    this.displayName = '';
-    this.admin = false;
-    this.uid ="";
-    this.role = 'staff';
-    this.venueAccess = [];
-  }
 }
 
 /**

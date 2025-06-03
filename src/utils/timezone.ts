@@ -1,5 +1,3 @@
-// src/utils/timezone.ts
-
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
@@ -49,6 +47,7 @@ export function formatTimeFromMinutes(minutes: number, use24Hour: boolean = fals
 		return `${displayHour}:${mins.toString().padStart(2, '0')} ${period}`
 	}
 }
+
 /**
  * Get user's timezone or default to Berlin
  */
@@ -81,35 +80,4 @@ export function toUTC(date: string, timeString: string): string {
 	const [hours, minutes] = timeString.split(':').map(Number)
 
 	return dayjs(date).tz(userTimezone).hour(hours).minute(minutes).second(0).millisecond(0).utc().toISOString()
-}
-
-/**
- * Get time slot string (HH:MM) from dayjs object
- */
-export function getTimeSlotString(time: dayjs.Dayjs): string {
-	return time.format('HH:mm')
-}
-
-/**
- * Create a time range for checking availability
- * @param startTimeISO UTC ISO string for start time
- * @param durationMinutes Duration in minutes
- * @returns Array of time slot strings in UTC (HH:MM format)
- */
-export function createTimeRange(startTimeISO: string, durationMinutes: number): string[] {
-	// startTimeISO is already in UTC, so just parse it directly
-	const startTime = dayjs(startTimeISO)
-	const endTime = startTime.add(durationMinutes, 'minute')
-
-	const slots: string[] = []
-	let currentTime = startTime.clone()
-
-	// Add slots in 30-minute increments
-	while (currentTime.isBefore(endTime)) {
-		// Format as HH:mm
-		slots.push(currentTime.format('HH:mm'))
-		currentTime = currentTime.add(30, 'minute')
-	}
-
-	return slots
 }

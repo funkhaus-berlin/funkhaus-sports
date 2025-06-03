@@ -10,7 +10,6 @@ import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { VenueLandingPage } from 'src/public/venues/venues'
 import { BookingUtils } from '../book/booking-utils'
-// import '../book/components/wallet-button' // Temporarily disabled
 import { resendBookingEmail } from '../book/components/services'
 import { Booking, bookingContext, BookingProgressContext } from '../book/context'
 
@@ -21,9 +20,6 @@ export class BookingConfirmation extends $LitElement() {
   @property({ type: String }) customerEmail: string = ''
   @property({ type: String }) customerName: string = ''
   @property({ type: String }) bookingId: string = ''
-  // Wallet properties temporarily disabled
-  // @property({ type: Boolean }) autoGenerateWallet: boolean = false
-  // @property({ type: String }) walletPlatform: string = ''
   @property({ attribute: false }) onNewBooking?: () => void
 
   // Utilities for booking data formatting and operations

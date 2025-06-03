@@ -21,8 +21,7 @@ export default class UserForm extends $LitElement() {
 	constructor(user: User = new User()) {
 		super()
 		this.user = user
-		// All users are admins with full access
-		this.user.admin = true
+		// All users are super admins with full access
 		this.user.role = 'super_admin'
 		this.user.venueAccess = []
 	}
