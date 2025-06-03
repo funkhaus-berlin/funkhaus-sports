@@ -272,7 +272,27 @@ export default class BookingScanner extends $LitElement(css`
     return code?.data || null
   }
   
-  private processQRCode(bookingId: string) {
+  private processQRCode(qrData: string) {
+    console.log('QR Code scanned:', qrData)
+    
+    // Parse the QR code data
+    let bookingId: string
+    
+    try {
+      // Try to parse as JSON first (new format)
+      const parsed = JSON.parse(qrData)
+      bookingId = parsed.id
+      console.log('Parsed booking ID from JSON:', bookingId)
+      
+      if (!bookingId) {
+        throw new Error('No booking ID in QR code')
+      }
+    } catch (e) {
+      // Fallback: assume the QR code contains just the booking ID (old format)
+      bookingId = qrData
+      console.log('Using raw QR data as booking ID:', bookingId)
+    }
+    
     if (!this.isValidBookingId(bookingId)) {
       this.showError('Invalid QR code format')
       return
@@ -280,6 +300,7 @@ export default class BookingScanner extends $LitElement(css`
     
     this.scannerStatus = 'processing'
     this.statusMessage = 'Verifying booking...'
+    console.log('Fetching booking from DB with ID:', bookingId)
     
     BookingsDB.get(bookingId).pipe(
       timeout(5000),
