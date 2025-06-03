@@ -11,6 +11,7 @@ import { when } from 'lit/directives/when.js'
 import {
   BehaviorSubject,
   combineLatest,
+  debounceTime,
   distinctUntilChanged,
   filter,
   fromEvent,
@@ -444,9 +445,11 @@ export class TimeSelectionStep extends $LitElement(css`
 			takeUntil(this.disconnecting),
 			filter(availability => !!availability && !!availability.date && !!availability.venueId),
 			filter(availability => availability.date === bookingContext.value.date),
-			distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.venueId === curr.venueId),
+			// distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.venueId === curr.venueId),
+      debounceTime(500)
 		).subscribe({
 			next: () => {
+        
 				this.loadTimeSlots()
 			},
 		})
