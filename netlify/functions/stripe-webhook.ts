@@ -1029,4 +1029,5 @@ async function logPaymentTransaction(
 	}
 }
 
-export { handler, handlePaymentIntentSucceededRx }
+export { handlePaymentIntentSucceededRx, handler }
+
