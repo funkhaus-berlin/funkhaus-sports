@@ -340,8 +340,6 @@ export class CourtBookingSystem extends $LitElement() {
 		if (currentStep === 5) {
 			// Using numeric values now instead of enum
 			return html`
-				<booking-summary .selectedCourt=${this.selectedCourt}></booking-summary>
-
 				<funkhaus-checkout-form
 					.booking=${this.booking}
 					.selectedCourt=${this.selectedCourt}

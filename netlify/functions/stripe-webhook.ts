@@ -19,115 +19,6 @@ import stripe from './_shared/stripe'
 
 
 
-/**
- * Reserve time slots for a booking that's transitioning from holding to confirmed
- * 
- * @param booking The booking data
- * @param bookingId The booking ID
- */
-async function reserveSlotsForBooking(booking: any, bookingId: string): Promise<void> {
-	try {
-		// Parse date to get month document ID
-		const [year, month] = booking.date.split('-')
-		const monthDocId = `${year}-${month}`
-		
-		// Create a transaction to ensure atomicity
-		await db.runTransaction(async (transaction) => {
-			// Get availability document
-			const availabilityRef = db.collection('availability').doc(monthDocId)
-			const availabilityDoc = await transaction.get(availabilityRef)
-
-			if (!availabilityDoc.exists) {
-				console.log(`No availability document for ${monthDocId}, skipping slot reservation`)
-				return
-			}
-
-			const availabilityData = availabilityDoc.data()
-
-			// Check if slots exist for this court and date
-			if (!availabilityData?.courts?.[booking.courtId]?.[booking.date]?.slots) {
-				console.log(`No slots data for court ${booking.courtId} on ${booking.date}, skipping slot reservation`)
-				return
-			}
-
-			// Get the slots for this court and date
-			const slots = availabilityData.courts[booking.courtId][booking.date].slots
-
-			// Calculate time slots to reserve
-			const startDate = new Date(booking.startTime)
-			const endDate = new Date(booking.endTime)
-			const startHour = startDate.getHours()
-			const startMinute = startDate.getMinutes()
-			const endHour = endDate.getHours()
-			const endMinute = endDate.getMinutes()
-			const adjustedEndHour = endMinute === 0 ? endHour : endHour + 1
-
-			// Check if all slots are available (they should be for a holding booking)
-			for (let hour = startHour; hour < adjustedEndHour; hour++) {
-				// Check full hour slot
-				const timeSlot = `${hour.toString().padStart(2, '0')}:00`
-
-				if (slots[timeSlot] && !slots[timeSlot].isAvailable) {
-					console.warn(`Time slot ${timeSlot} is already booked when trying to reserve for booking ${bookingId}`)
-					// Don't throw error, just log warning - the payment is already successful
-				}
-
-				// Skip half-hour check for start/end hours if needed
-				if ((hour === startHour && startMinute === 30) || (hour === endHour - 1 && endMinute === 0)) {
-					continue
-				}
-
-				// Check half-hour slot
-				const halfHourSlot = `${hour.toString().padStart(2, '0')}:30`
-				if (slots[halfHourSlot] && !slots[halfHourSlot].isAvailable) {
-					console.warn(`Time slot ${halfHourSlot} is already booked when trying to reserve for booking ${bookingId}`)
-					// Don't throw error, just log warning - the payment is already successful
-				}
-			}
-
-			// Mark slots as unavailable
-			const updates: Record<string, any> = {}
-			for (let hour = startHour; hour < adjustedEndHour; hour++) {
-				// Update full hour slot
-				const timeSlot = `${hour.toString().padStart(2, '0')}:00`
-				const slotPath = `courts.${booking.courtId}.${booking.date}.slots.${timeSlot}`
-
-				updates[`${slotPath}.isAvailable`] = false
-				updates[`${slotPath}.bookedBy`] = booking.userId || null
-				updates[`${slotPath}.bookingId`] = bookingId
-
-				// Skip half-hour update for start/end hours if needed
-				if ((hour === startHour && startMinute === 30) || (hour === endHour - 1 && endMinute === 0)) {
-					continue
-				}
-
-				// Update half-hour slot
-				const halfHourSlot = `${hour.toString().padStart(2, '0')}:30`
-				const halfSlotPath = `courts.${booking.courtId}.${booking.date}.slots.${halfHourSlot}`
-
-				updates[`${halfSlotPath}.isAvailable`] = false
-				updates[`${halfSlotPath}.bookedBy`] = booking.userId || null
-				updates[`${halfSlotPath}.bookingId`] = bookingId
-			}
-
-			// Update availability and timestamp
-			updates.updatedAt = admin.firestore.FieldValue.serverTimestamp()
-			transaction.update(availabilityRef, updates)
-
-			console.log(`Reserved slots for booking ${bookingId}`)
-		})
-	} catch (error) {
-		console.error('Error reserving slots for booking:', error)
-		// Don't fail the payment confirmation - the payment is already successful
-		// We'll log this for manual intervention if needed
-		await db.collection('bookingSlotReservationErrors').add({
-			bookingId,
-			error: error.message || 'Unknown error',
-			timestamp: admin.firestore.FieldValue.serverTimestamp(),
-			bookingData: booking
-		})
-	}
-}
 
 /**
  * Generate an invoice number for a booking
@@ -541,23 +432,6 @@ function processExistingBooking(bookingDoc: any, paymentIntent: Stripe.PaymentIn
 		}
 		return { bookingData, invoiceNumber }
 	}).pipe(
-		// Reserve slots if needed
-		switchMap(({ bookingData, invoiceNumber }) => {
-			const reserveSlots$ = bookingData?.status === 'holding' 
-				? from(reserveSlotsForBooking(bookingData, bookingId)).pipe(
-					tap(() => console.log(`Reserved slots for booking ${bookingId}`)),
-					catchError(error => {
-						console.error(`Failed to reserve slots for booking ${bookingId}:`, error)
-						// Don't fail the entire process if slot reservation fails
-						return of(null)
-					})
-				)
-				: of(null)
-
-			return reserveSlots$.pipe(
-				map(() => ({ bookingData, invoiceNumber }))
-			)
-		}),
 		// Update booking status
 		switchMap(({ bookingData, invoiceNumber }) => {
 			const updateData: any = {
@@ -740,7 +614,7 @@ function createEmergencyBooking(paymentIntent: Stripe.PaymentIntent, bookingId: 
 		// Log the emergency booking creation
 		tap(() => logPaymentTransaction(paymentIntent, 'succeeded', 'Created emergency booking record as original was missing')),
 		// Attempt to send email for emergency booking
-		switchMap(({ newBooking, invoiceNumber }) => {
+		switchMap(({ invoiceNumber }) => {
 			const emailData = {
 				bookingId: bookingId,
 				customerEmail: customerEmail,
@@ -800,7 +674,7 @@ function createEmergencyBooking(paymentIntent: Stripe.PaymentIntent, bookingId: 
 /**
  * Helper function to prepare email data
  */
-function prepareEmailData(booking, court, venue, paymentIntent) {
+function prepareEmailData(booking: any, court: any, venue: any, paymentIntent: Stripe.PaymentIntent) {
 	// Calculate VAT amounts (assuming 7% VAT)
 	const vatRate = 0.07
 	const netAmount = booking.price / (1 + vatRate)
