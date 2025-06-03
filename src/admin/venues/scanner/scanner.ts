@@ -7,13 +7,13 @@ import { html } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { animationFrames, of, Subscription, timer } from 'rxjs'
-import { catchError, filter, finalize, map, throttleTime, timeout, tap } from 'rxjs/operators'
+import { catchError, filter, finalize, map, tap, throttleTime, timeout } from 'rxjs/operators'
 import { BookingsDB } from 'src/db/bookings.collection'
-import { Booking } from 'src/types/booking/models'
-import { venueContext } from '../venue-context'
-import { PermissionService } from 'src/firebase/permission.service'
 import { Venue } from 'src/db/venue-collection'
+import { PermissionService } from 'src/firebase/permission.service'
+import { Booking } from 'src/types/booking/models'
 import { userContext } from 'src/user.context'
+import { venueContext } from '../venue-context'
 import './booking-details-sheet'
 
 // Initialize dayjs plugins
@@ -401,7 +401,7 @@ export default class BookingScanner extends $LitElement() {
       </div>
       
       <!-- Status bar -->
-      <div class="fixed bottom-0 left-0 right-0 p-4 bg-surfaceContainer-default/90 backdrop-blur-md z-10">
+      <schmancy-surface type="surfaceContainer" class="fixed bottom-0 left-0 right-0 p-4 backdrop-blur-md z-10">
         <schmancy-flex justify="between" align="center">
           <schmancy-grid gap="xs">
             <schmancy-typography type="label" token="sm" class="text-onSurfaceVariant-default">
@@ -415,17 +415,19 @@ export default class BookingScanner extends $LitElement() {
             <schmancy-progress-circular size="24"></schmancy-progress-circular>
           `)}
         </schmancy-flex>
-      </div>
+      </schmancy-surface>
       
       <!-- Result splash -->
-      <div class="fixed inset-0 flex justify-center items-center transition-all duration-300 z-[100] backdrop-blur-md
-        ${this.showResult ? 'opacity-100 visible' : 'opacity-0 invisible'}
-        ${this.resultType === 'success' ? 'bg-success-default/90' : 
-          this.resultType === 'warning' ? 'bg-warning-default/90' : 
-          'bg-error-default/90'}">
-        <schmancy-surface type="surface" rounded="all" class="p-8 m-4 max-w-md">
+      <schmancy-surface 
+        class="fixed inset-0 flex justify-center items-center transition-all duration-300 z-[100] backdrop-blur-md
+          ${this.showResult ? 'opacity-100 visible' : 'opacity-0 invisible' } ${this.resultType === 'success' ? 'bg-success-container text-success-on' : 
+               this.resultType === 'warning' ? 'bg-tertiary-container text-tertiary-on' : 
+               'bg-error-container text-error-on'}">
+        <schmancy-card class="p-8 m-4 max-w-md">
           <schmancy-grid gap="lg" align="center">
-            <schmancy-icon size="64px">
+            <schmancy-icon size="64px" class="${this.resultType === 'success' ? 'text-success-on' : 
+                this.resultType === 'warning' ? 'text-warning-on' : 
+                'text-error-on'}">
               ${this.resultType === 'success' ? 'check_circle' : 
                 this.resultType === 'warning' ? 'warning' : 'error'}
             </schmancy-icon>
@@ -433,13 +435,13 @@ export default class BookingScanner extends $LitElement() {
               ${this.resultMessage}
             </schmancy-typography>
             ${when(this.resultDetails, () => html`
-              <schmancy-typography type="body" align="center">
+              <schmancy-typography type="body" align="center" class="text-onSurfaceVariant-default">
                 ${this.resultDetails}
               </schmancy-typography>
             `)}
           </schmancy-grid>
-        </schmancy-surface>
-      </div>
+        </schmancy-card>
+      </schmancy-surface>
     `
   }
 }
