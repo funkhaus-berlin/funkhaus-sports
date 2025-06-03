@@ -169,7 +169,7 @@ export class SportCourtCard extends $LitElement(css`
         aria-label="${ariaLabel}"
         class="
           rounded-xl transition-all duration-200 overflow-hidden
-          ${this.selected ? 'bg-primary-default shadow-md' : 'bg-surface-high border border-gray-200'}
+          ${this.selected ? 'bg-primary-default shadow-md' : 'bg-surface-low border border-outline-variant'}
           ${!this.disabled ? 'hover:shadow-lg cursor-pointer' : 'opacity-50 cursor-not-allowed'}
           ${this.compact ? 'h-24' : 'h-full'}
         "
@@ -200,7 +200,7 @@ export class SportCourtCard extends $LitElement(css`
         <!-- Info Section -->
         <div 
           class="flex items-center justify-between ${this.compact ? 'px-1.5 py-0.5' : 'px-2 py-1'} 
-            border-t ${this.selected ? 'border-primary-200' : 'border-gray-200'}"
+            border-t ${this.selected ? 'border-primary-default' : 'border-outline-variant'}"
         >
           <div class="${this.compact ? 'text-[10px]' : 'text-xs'} ${this.selected ? 'text-primary-on' : 'text-surface-on'}">
             ${this.courtType ? `${this.formatCourtType(this.courtType)}` : ''}
