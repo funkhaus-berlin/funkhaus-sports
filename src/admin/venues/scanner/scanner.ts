@@ -3,7 +3,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import jsQR from 'jsqr'
-import { html } from 'lit'
+import { css, html } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { animationFrames, of, Subscription, timer } from 'rxjs'
@@ -23,7 +23,21 @@ dayjs.extend(relativeTime)
  * QR code scanner component for booking check-in
  */
 @customElement('booking-scanner')
-export default class BookingScanner extends $LitElement() {
+export default class BookingScanner extends $LitElement(css`
+  :host {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+`) {
   @property({ type: String }) venueId = ''
   
   @state() private scannerStatus: 'idle' | 'scanning' | 'processing' | 'success' | 'error' = 'idle'
@@ -382,13 +396,13 @@ export default class BookingScanner extends $LitElement() {
     
     // Main scanner view
     return html`
-      <div class="relative w-full h-screen overflow-hidden bg-black">
+      <div class="relative w-full h-screen overflow-hidden bg-black touch-none select-none">
         <video 
           id="video" 
           playsinline 
           autoplay 
           muted
-          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full object-cover"
+          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full object-cover touch-none"
         ></video>
         
         <!-- Scanning overlay with gradient -->
@@ -401,7 +415,7 @@ export default class BookingScanner extends $LitElement() {
       </div>
       
       <!-- Status bar -->
-      <schmancy-surface type="surfaceContainer" class="fixed bottom-0 left-0 right-0 p-4 backdrop-blur-md z-10">
+      <schmancy-surface type="surfaceContainer" class="fixed bottom-0 left-0 right-0 p-4 z-10">
         <schmancy-flex justify="between" align="center">
           <schmancy-grid gap="xs">
             <schmancy-typography type="label" token="sm" class="text-onSurfaceVariant-default">
@@ -419,7 +433,7 @@ export default class BookingScanner extends $LitElement() {
       
       <!-- Result splash -->
       <schmancy-surface 
-        class="fixed inset-0 flex justify-center items-center transition-all duration-300 z-[100] backdrop-blur-md
+        class="fixed inset-0 flex justify-center items-center transition-all duration-300 z-[100]
           ${this.showResult ? 'opacity-100 visible' : 'opacity-0 invisible' } ${this.resultType === 'success' ? 'bg-success-container text-success-on' : 
                this.resultType === 'warning' ? 'bg-tertiary-container text-tertiary-on' : 
                'bg-error-container text-error-on'}">
