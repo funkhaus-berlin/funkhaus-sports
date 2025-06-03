@@ -17,7 +17,6 @@ import { BookingConfirmationRoute } from './public/booking-confirmation/booking-
 import './public/shared'
 import { VenueLandingPage } from './public/venues/venues'
 import './schmancy'
-import BookingScanner from './admin/venues/scanner/scanner'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
