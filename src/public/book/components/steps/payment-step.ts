@@ -1,25 +1,25 @@
 // src/public/book/steps/payment-step.ts
 
-import { $notify, SchmancyAutocompleteChangeEvent, sheet, area } from '@mhmo91/schmancy'
+import { $notify, SchmancyAutocompleteChangeEvent, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { Stripe, StripeElements } from '@stripe/stripe-js'
+import { doc, updateDoc } from 'firebase/firestore'
 import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import { distinctUntilChanged, filter, interval, map, Subscription, takeUntil, from, catchError, of } from 'rxjs'
+import { catchError, distinctUntilChanged, filter, from, interval, map, of, Subscription, takeUntil } from 'rxjs'
 import countries from 'src/assets/countries'
-import { Court } from 'src/db/courts.collection'
-import stripePromise, { $stripeElements } from 'src/public/stripe'
-import { FunkhausSportsTermsAndConditions } from '../../../shared/components/terms-and-conditions'
 import { BookingService } from 'src/bookingServices/booking.service'
+import { Court } from 'src/db/courts.collection'
+import { db } from 'src/firebase/firebase'
+import stripePromise, { $stripeElements } from 'src/public/stripe'
+import '../../../booking-confirmation/booking-confirmation'; // Import booking confirmation component
+import { FunkhausSportsTermsAndConditions } from '../../../shared/components/terms-and-conditions'
 import { Booking, bookingContext, BookingProgressContext, BookingStep } from '../../context'
 import { FormValidator } from '../../form-validator'
 import { PaymentService } from '../../payment-service'
-import '../booking-timer' // Import timer component
-import '../../../booking-confirmation/booking-confirmation' // Import booking confirmation component
-import { db } from 'src/firebase/firebase'
-import { doc, updateDoc } from 'firebase/firestore'
+import '../booking-timer'; // Import timer component
 
 /**
  * Checkout form component with Stripe integration
