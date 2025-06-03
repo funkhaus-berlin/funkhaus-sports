@@ -1,10 +1,21 @@
 // netlify/functions/stripe-webhook.ts
 import { Handler } from '@netlify/functions'
 import admin from 'firebase-admin'
+import { defer, forkJoin, from, of, throwError } from 'rxjs'
+import {
+  catchError,
+  delay,
+  filter,
+  map,
+  mergeMap,
+  retryWhen,
+  switchMap,
+  tap
+} from 'rxjs/operators'
 import type { Stripe } from 'stripe'
 import { corsHeaders } from './_shared/cors'
-import stripe from './_shared/stripe'
 import { db } from './_shared/firebase-admin'
+import stripe from './_shared/stripe'
 
 
 
@@ -238,6 +249,11 @@ async function cleanupAbandonedBookings() {
 }
 
 const handler: Handler = async (event, context) => {
+	console.log('=== Stripe Webhook Handler Called ===')
+	console.log('Method:', event.httpMethod)
+	console.log('Path:', event.path)
+	console.log('Headers:', JSON.stringify(Object.keys(event.headers)))
+	
 	// Handle preflight request for CORS
 	if (event.httpMethod === 'OPTIONS') {
 		return {
@@ -263,6 +279,7 @@ const handler: Handler = async (event, context) => {
 	try {
 		// Get the signature from the headers
 		const signature = event.headers['stripe-signature']
+		console.log('Stripe signature present:', !!signature)
 
 		if (!signature) {
 			return {
@@ -304,6 +321,13 @@ const handler: Handler = async (event, context) => {
 		}
 
 		// Log the event to Firestore for auditing and recovery purposes
+		console.log('Webhook event received:', {
+			id: stripeEvent.id,
+			type: stripeEvent.type,
+			created: stripeEvent.created,
+			livemode: stripeEvent.livemode
+		})
+		
 		await logWebhookEvent(stripeEvent)
 
 		// Check if this event has already been processed (idempotency)
@@ -318,10 +342,16 @@ const handler: Handler = async (event, context) => {
 		}
 
 		// Handle different event types
+		console.log(`Processing event type: ${stripeEvent.type}`)
 		let result
 		switch (stripeEvent.type) {
 			case 'payment_intent.succeeded':
-				result = await handlePaymentIntentSucceeded(stripeEvent.data.object as Stripe.PaymentIntent)
+				console.log('Calling handlePaymentIntentSucceededRx...')
+				const paymentIntent = stripeEvent.data.object as Stripe.PaymentIntent
+				console.log('Payment intent ID:', paymentIntent.id)
+				console.log('Payment intent metadata:', paymentIntent.metadata)
+				result = await handlePaymentIntentSucceededRx(paymentIntent)
+				console.log('handlePaymentIntentSucceededRx result:', result)
 				break
 			case 'payment_intent.payment_failed':
 				result = await handlePaymentIntentFailed(stripeEvent.data.object as Stripe.PaymentIntent)
@@ -433,49 +463,103 @@ async function markEventProcessed(eventId: string, result: any): Promise<void> {
 }
 
 /**
- * Handle successful payment intent events with error recovery
+ * Retry configuration for critical operations
  */
-async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+const retryConfig = {
+	maxRetries: 3,
+	delayMs: 1000,
+	backoffMultiplier: 2
+}
+
+/**
+ * Custom retry operator with exponential backoff
+ */
+const retryWithBackoff = <T>(maxRetries = retryConfig.maxRetries, initialDelay = retryConfig.delayMs) =>
+	retryWhen<T>(errors =>
+		errors.pipe(
+			mergeMap((error, index) => {
+				if (index >= maxRetries) {
+					return throwError(() => error)
+				}
+				const delayTime = initialDelay * Math.pow(retryConfig.backoffMultiplier, index)
+				console.log(`Retry attempt ${index + 1} after ${delayTime}ms delay`)
+				return of(error).pipe(delay(delayTime))
+			})
+		)
+	)
+
+/**
+ * Handle successful payment intent events with error recovery (Refactored with RxJS)
+ */
+async function handlePaymentIntentSucceededRx(paymentIntent: Stripe.PaymentIntent) {
 	console.log('Payment succeeded:', paymentIntent.id)
 
 	// Extract booking information from payment intent metadata
 	const { bookingId, courtId, date, userId } = paymentIntent.metadata || {}
 
+	// Early validation
 	if (!bookingId) {
-		// If no bookingId in metadata, this is a payment without a booking
-		// Log it for reconciliation purposes
 		await logPaymentTransaction(paymentIntent, 'succeeded', 'No booking ID associated with payment')
 		return { success: false, reason: 'no_booking_id' }
 	}
 
-	try {
-		// Check if booking already exists
-		const bookingRef = db.collection('bookings').doc(bookingId)
-		const bookingDoc = await bookingRef.get()
-
-		if (bookingDoc.exists) {
-			const bookingData = bookingDoc.data()
-			
-			// Generate invoice number if one doesn't exist already (during payment confirmation)
-			// This is the primary place where invoice numbers should be created
-			let invoiceNumber: string | undefined = undefined
-			if (!bookingData?.invoiceNumber) {
-				invoiceNumber = await generateInvoiceNumber(db, bookingId)
-				console.log(`Generated invoice number ${invoiceNumber} for booking ${bookingId} during payment confirmation`)
+	// Main processing pipeline
+	return from(db.collection('bookings').doc(bookingId).get()).pipe(
+		// Process existing booking
+		switchMap(bookingDoc => {
+			if (bookingDoc.exists) {
+				return processExistingBooking(bookingDoc, paymentIntent, bookingId)
 			} else {
-				invoiceNumber = bookingData?.invoiceNumber
-				console.log(`Using existing invoice number ${invoiceNumber} for booking ${bookingId}`)
+				return createEmergencyBooking(paymentIntent, bookingId, courtId, date, userId)
 			}
+		}),
+		// Log success
+		tap(result => console.log(`Payment processing completed for booking ${bookingId}:`, result)),
+		// Error handling
+		catchError(error => {
+			console.error('Error handling payment success webhook:', error)
+			return from(logPaymentTransaction(paymentIntent, 'error', `Error updating booking: ${error.message}`)).pipe(
+				map(() => ({ success: false, error: error.message }))
+			)
+		})
+	).toPromise()
+}
 
-			// If booking is in holding status, we need to reserve slots
-			if (bookingData?.status === 'holding') {
-				console.log(`Booking ${bookingId} is in holding status, will reserve slots`)
-				
-				// Reserve slots for the booking
-				await reserveSlotsForBooking(bookingData, bookingId)
-			}
+/**
+ * Process an existing booking after successful payment
+ */
+function processExistingBooking(bookingDoc: any, paymentIntent: Stripe.PaymentIntent, bookingId: string) {
+	const bookingData = bookingDoc.data()
+	const bookingRef = db.collection('bookings').doc(bookingId)
 
-			// Booking exists, update its payment status (and include invoice number if just generated)
+	return defer(async () => {
+		// Generate invoice number if needed
+		let invoiceNumber = bookingData?.invoiceNumber
+		if (!invoiceNumber) {
+			invoiceNumber = await generateInvoiceNumber(db, bookingId)
+			console.log(`Generated invoice number ${invoiceNumber} for booking ${bookingId}`)
+		}
+		return { bookingData, invoiceNumber }
+	}).pipe(
+		// Reserve slots if needed
+		switchMap(({ bookingData, invoiceNumber }) => {
+			const reserveSlots$ = bookingData?.status === 'holding' 
+				? from(reserveSlotsForBooking(bookingData, bookingId)).pipe(
+					tap(() => console.log(`Reserved slots for booking ${bookingId}`)),
+					catchError(error => {
+						console.error(`Failed to reserve slots for booking ${bookingId}:`, error)
+						// Don't fail the entire process if slot reservation fails
+						return of(null)
+					})
+				)
+				: of(null)
+
+			return reserveSlots$.pipe(
+				map(() => ({ bookingData, invoiceNumber }))
+			)
+		}),
+		// Update booking status
+		switchMap(({ bookingData, invoiceNumber }) => {
 			const updateData: any = {
 				paymentStatus: 'paid',
 				status: 'confirmed',
@@ -483,92 +567,149 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 				updatedAt: new Date().toISOString(),
 			}
 
-			// Only include invoiceNumber field if we just generated one
 			if (invoiceNumber && !bookingData?.invoiceNumber) {
 				updateData.invoiceNumber = invoiceNumber
 			}
 
-			await bookingRef.update(updateData)
-
-			console.log(`Updated existing booking ${bookingId} to confirmed status`)
-
-			// Now fetch the complete booking data to prepare for email
-			const updatedBookingDoc = await bookingRef.get()
-			const updatedBookingData = updatedBookingDoc.data() as any
-
-			// Only send email if it hasn't been sent already
-			if (!updatedBookingData.emailSent) {
-				// Fetch related court and venue data needed for the email
-				let courtData: any | null = null
-				let venueData: any | null = null
-
-				if (updatedBookingData.courtId) {
-					const courtDoc = await db.collection('courts').doc(updatedBookingData.courtId).get()
-					if (courtDoc.exists) {
-						courtData = courtDoc.data()
-
-						// If we have court data, also fetch venue data
-						if (courtData.venueId) {
-							const venueDoc = await db.collection('venues').doc(courtData.venueId).get()
-							if (venueDoc.exists) {
-								venueData = venueDoc.data()
-							}
-						}
-					}
-				}
-
-				// Prepare email data
-				const emailData = prepareEmailData(updatedBookingData, courtData, venueData, paymentIntent)
-
-				// Call the email sending function
-				try {
-					// Import the email sending function
-					const { handler: emailHandler } = require('./send-booking-email')
-
-					// Create a mock event to pass to the email sending function
-					const mockEvent = {
-						body: JSON.stringify(emailData),
-						httpMethod: 'POST',
-						headers: {},
-					}
-
-					// Send the email
-					const emailResponse = await emailHandler(mockEvent, {})
-					const emailResult = JSON.parse(emailResponse.body)
-
-					if (emailResult.success) {
-						console.log(`Sent confirmation email for booking ${bookingId}`)
-
-						// Mark email as sent in booking record
-						await bookingRef.update({
-							emailSent: true,
-							emailSentAt: new Date().toISOString(),
-						})
-					} else {
-						console.error(`Failed to send confirmation email for booking ${bookingId}:`, emailResult.error)
-					}
-				} catch (emailError) {
-					console.error(`Error sending confirmation email for booking ${bookingId}:`, emailError)
-				}
+			return from(bookingRef.update(updateData)).pipe(
+				retryWithBackoff(3, 500),
+				tap(() => console.log(`Updated booking ${bookingId} to confirmed status`)),
+				map(() => ({ bookingData: { ...bookingData, ...updateData, invoiceNumber } }))
+			)
+		}),
+		// Send confirmation email
+		switchMap(({ bookingData }) => {
+			// Check if email was already successfully sent
+			// Only skip if emailSent is true AND emailSentAt exists (indicating successful send)
+			if (bookingData.emailSent && bookingData.emailSentAt) {
+				console.log(`Email already successfully sent for booking ${bookingId} at ${bookingData.emailSentAt}`)
+				return of({ success: true, action: 'updated_booking', emailSkipped: true })
 			}
 
-			return { success: true, action: 'updated_booking' }
-		} else {
-			// Booking doesn't exist yet - create it from payment metadata
-			// This handles cases where the client disconnected before creating the booking
-			const customerEmail = paymentIntent.receipt_email
-			const customerName = paymentIntent.shipping?.name || 'Guest User'
+			// If emailSent is true but no emailSentAt, it might be a failed attempt
+			if (bookingData.emailSent && !bookingData.emailSentAt) {
+				console.warn(`Booking ${bookingId} has emailSent flag but no emailSentAt timestamp - retrying email`)
+			}
 
-			// Extract time information from metadata
-			const startTime = paymentIntent.metadata?.startTime
-			const endTime = paymentIntent.metadata?.endTime
-			const amount = paymentIntent.amount / 100 // Convert from cents
+			return sendBookingConfirmationEmail(bookingData, bookingId, paymentIntent, bookingRef).pipe(
+				map(() => ({ success: true, action: 'updated_booking', emailSent: true })),
+				catchError(error => {
+					console.error(`Failed to send email for booking ${bookingId}:`, error)
+					// Return success for the payment but note email failure
+					return of({ success: true, action: 'updated_booking', emailFailed: true })
+				})
+			)
+		})
+	)
+}
 
-			// Create a unique invoice number for this emergency booking
-			const invoiceNumber = await generateInvoiceNumber(db, bookingId)
-			console.log(`Generated invoice number ${invoiceNumber} for emergency booking ${bookingId}`)
+/**
+ * Send booking confirmation email with proper error handling
+ */
+function sendBookingConfirmationEmail(bookingData: any, bookingId: string, paymentIntent: Stripe.PaymentIntent, bookingRef: any) {
+	// Fetch court and venue data in parallel
+	const courtData$ = bookingData.courtId 
+		? from(db.collection('courts').doc(bookingData.courtId).get()).pipe(
+			map(doc => doc.exists ? doc.data() : null),
+			catchError(() => of(null))
+		)
+		: of(null)
 
-			// Create an emergency booking record with invoice number
+	const venueData$ = courtData$.pipe(
+		switchMap(courtData => {
+			if (courtData?.venueId) {
+				return from(db.collection('venues').doc(courtData.venueId).get()).pipe(
+					map(doc => doc.exists ? doc.data() : null),
+					catchError(() => of(null))
+				)
+			}
+			return of(null)
+		})
+	)
+
+	return forkJoin({
+		courtData: courtData$,
+		venueData: venueData$
+	}).pipe(
+		// Prepare and send email
+		switchMap(({ courtData, venueData }) => {
+			const emailData = prepareEmailData(bookingData, courtData, venueData, paymentIntent)
+			
+			console.log(`Attempting to send email for booking ${bookingId} to ${emailData.customerEmail}`)
+			console.log('Email data:', JSON.stringify({
+				bookingId: emailData.bookingId,
+				customerEmail: emailData.customerEmail,
+				hasBookingDetails: !!emailData.bookingDetails,
+				hasVenueInfo: !!emailData.venueInfo,
+				invoiceNumber: emailData.invoiceNumber
+			}, null, 2))
+			
+			return defer(async () => {
+				const { handler: emailHandler } = require('./send-booking-email')
+				const mockEvent = {
+					body: JSON.stringify(emailData),
+					httpMethod: 'POST',
+					headers: {},
+				}
+				return emailHandler(mockEvent, {})
+			}).pipe(
+				retryWithBackoff(2, 2000),
+				map(response => JSON.parse(response.body)),
+				tap(result => {
+					if (result.success) {
+						console.log(`Sent confirmation email for booking ${bookingId}`)
+					} else {
+						console.error(`Failed to send confirmation email for booking ${bookingId}:`, result.error)
+					}
+				}),
+				switchMap(result => {
+					if (result.success) {
+						// Only mark email as sent if it was actually successful
+						return from(bookingRef.update({
+							emailSent: true,
+							emailSentAt: new Date().toISOString(),
+						})).pipe(
+							retryWithBackoff(2, 500),
+							map(() => result)
+						)
+					} else {
+						// Email failed - clear the emailSent flag if it was set
+						return from(bookingRef.update({
+							emailSent: false,
+							emailFailedAt: new Date().toISOString(),
+							emailError: result.error || 'Unknown error'
+						})).pipe(
+							catchError(() => of(null)), // Don't fail if we can't update the flag
+							map(() => result)
+						)
+					}
+				})
+			)
+		}),
+		catchError(error => {
+			console.error(`Error sending confirmation email for booking ${bookingId}:`, error)
+			// Don't fail the entire process if email fails
+			return of(null)
+		})
+	)
+}
+
+/**
+ * Create an emergency booking when original booking is missing
+ */
+function createEmergencyBooking(paymentIntent: Stripe.PaymentIntent, bookingId: string, courtId?: string, date?: string, userId?: string) {
+	const customerEmail = paymentIntent.receipt_email
+	const customerName = paymentIntent.shipping?.name || 'Guest User'
+	const startTime = paymentIntent.metadata?.startTime
+	const endTime = paymentIntent.metadata?.endTime
+	const amount = paymentIntent.amount / 100
+
+	return defer(async () => {
+		const invoiceNumber = await generateInvoiceNumber(db, bookingId)
+		console.log(`Generated invoice number ${invoiceNumber} for emergency booking ${bookingId}`)
+		return invoiceNumber
+	}).pipe(
+		switchMap(invoiceNumber => {
 			const newBooking = {
 				id: bookingId,
 				courtId: courtId || 'unknown',
@@ -586,82 +727,76 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 				paymentIntentId: paymentIntent.id,
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
-				recoveredFromPayment: true, // Flag to indicate this was created from payment data
-				invoiceNumber: invoiceNumber // Add invoice number to emergency booking
+				recoveredFromPayment: true,
+				invoiceNumber: invoiceNumber
 			}
 
-			await bookingRef.set(newBooking)
-
-			console.log(`Created emergency booking record for ${bookingId} with invoice number ${invoiceNumber}`)
-			await logPaymentTransaction(
-				paymentIntent,
-				'succeeded',
-				'Created emergency booking record as original was missing',
+			return from(db.collection('bookings').doc(bookingId).set(newBooking)).pipe(
+				retryWithBackoff(),
+				tap(() => console.log(`Created emergency booking record for ${bookingId}`)),
+				map(() => ({ newBooking, invoiceNumber }))
 			)
-
-			// We'll attempt to send an email even for emergency bookings
-			try {
-				// Prepare minimal email data
-				const emailData = {
-					bookingId: bookingId,
-					customerEmail: customerEmail,
-					customerName: customerName,
-					bookingDetails: {
-						date: date || new Date().toISOString().split('T')[0],
-						startTime: startTime ? new Date(startTime).toLocaleTimeString() : 'N/A',
-						endTime: endTime ? new Date(endTime).toLocaleTimeString() : 'N/A',
-						court: courtId || 'Unknown Court',
-						price: amount.toFixed(2),
-						vatInfo: {
-							netAmount: (amount / 1.07).toFixed(2),
-							vatAmount: (amount - amount / 1.07).toFixed(2),
-							vatRate: '7%',
-						},
+		}),
+		// Log the emergency booking creation
+		tap(() => logPaymentTransaction(paymentIntent, 'succeeded', 'Created emergency booking record as original was missing')),
+		// Attempt to send email for emergency booking
+		switchMap(({ newBooking, invoiceNumber }) => {
+			const emailData = {
+				bookingId: bookingId,
+				customerEmail: customerEmail,
+				customerName: customerName,
+				bookingDetails: {
+					date: date || new Date().toISOString().split('T')[0],
+					startTime: startTime ? new Date(startTime).toLocaleTimeString() : 'N/A',
+					endTime: endTime ? new Date(endTime).toLocaleTimeString() : 'N/A',
+					court: courtId || 'Unknown Court',
+					price: amount.toFixed(2),
+					vatInfo: {
+						netAmount: (amount / 1.07).toFixed(2),
+						vatAmount: (amount - amount / 1.07).toFixed(2),
+						vatRate: '7%',
 					},
-					paymentInfo: {
-						paymentStatus: 'paid',
-						paymentIntentId: paymentIntent.id,
-					},
-					invoiceNumber: invoiceNumber // Include invoice number in email data
-				}
+				},
+				paymentInfo: {
+					paymentStatus: 'paid',
+					paymentIntentId: paymentIntent.id,
+				},
+				invoiceNumber: invoiceNumber
+			}
 
-				// Import the email sending function
+			return defer(async () => {
 				const { handler: emailHandler } = require('./send-booking-email')
-
-				// Create a mock event to pass to the email sending function
 				const mockEvent = {
 					body: JSON.stringify(emailData),
 					httpMethod: 'POST',
 					headers: {},
 				}
-
-				// Send the email
-				const emailResponse = await emailHandler(mockEvent, {})
-				const emailResult = JSON.parse(emailResponse.body)
-
-				if (emailResult.success) {
-					console.log(`Sent confirmation email for emergency booking ${bookingId}`)
-
-					// Mark email as sent in booking record
-					await bookingRef.update({
+				return emailHandler(mockEvent, {})
+			}).pipe(
+				map(response => JSON.parse(response.body)),
+				tap(result => {
+					if (result.success) {
+						console.log(`Sent confirmation email for emergency booking ${bookingId}`)
+					}
+				}),
+				filter(result => result.success),
+				switchMap(() => 
+					from(db.collection('bookings').doc(bookingId).update({
 						emailSent: true,
 						emailSentAt: new Date().toISOString(),
-					})
-				}
-			} catch (emailError) {
-				console.error(`Error sending confirmation email for emergency booking ${bookingId}:`, emailError)
-			}
-
-			return { success: true, action: 'created_emergency_booking' }
-		}
-	} catch (error) {
-		console.error('Error handling payment success webhook:', error)
-		await logPaymentTransaction(paymentIntent, 'error', `Error updating booking: ${error.message}`)
-
-		// Retry on next webhook or manual intervention
-		return { success: false, error: error.message }
-	}
+					}))
+				),
+				catchError(error => {
+					console.error(`Error sending email for emergency booking ${bookingId}:`, error)
+					return of(null)
+				})
+			)
+		}),
+		map(() => ({ success: true, action: 'created_emergency_booking' }))
+	)
 }
+
+
 /**
  * Helper function to prepare email data
  */
@@ -894,4 +1029,4 @@ async function logPaymentTransaction(
 	}
 }
 
-export { handler }
+export { handler, handlePaymentIntentSucceededRx }

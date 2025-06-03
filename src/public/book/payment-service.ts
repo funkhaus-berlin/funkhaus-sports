@@ -185,12 +185,16 @@ export class PaymentService {
 					}
 					
 					// Process payment with existing booking
+					console.log('Confirming payment with Stripe...')
 					return from(this.confirmPayment(stripe, elements, clientSecret, bookingData)).pipe(
+						tap(stripeResult => console.log('Stripe confirmPayment result:', stripeResult)),
 						map(stripeResult => {
 							if (stripeResult.error) {
+								console.error('Stripe payment error:', stripeResult.error)
 								throw stripeResult.error
 							}
 							
+							console.log('Payment confirmed successfully')
 							return { success: true, booking: bookingData }
 						})
 					)
@@ -245,6 +249,12 @@ export class PaymentService {
 		clientSecret: string,
 		booking: Booking,
 	): Promise<{ error?: any }> {
+		console.log('Calling stripe.confirmPayment with:', {
+			clientSecret: clientSecret.substring(0, 20) + '...',
+			bookingId: booking.id,
+			redirect: 'if_required'
+		})
+		
 		return stripe.confirmPayment({
 			clientSecret,
 			elements: elements,
@@ -268,6 +278,12 @@ export class PaymentService {
 				receipt_email: booking.customerEmail || '',
 			},
 			redirect: 'if_required',
+		}).then(result => {
+			console.log('stripe.confirmPayment completed:', result)
+			return result
+		}).catch(error => {
+			console.error('stripe.confirmPayment error:', error)
+			throw error
 		})
 	}
 

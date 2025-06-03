@@ -1,23 +1,25 @@
 // src/public/book/steps/payment-step.ts
 
-import { $notify, SchmancyAutocompleteChangeEvent, sheet } from '@mhmo91/schmancy'
+import { $notify, SchmancyAutocompleteChangeEvent, sheet, area } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { Stripe, StripeElements } from '@stripe/stripe-js'
 import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import { distinctUntilChanged, filter, interval, map, Subscription, takeUntil } from 'rxjs'
+import { distinctUntilChanged, filter, interval, map, Subscription, takeUntil, from, catchError, of } from 'rxjs'
 import countries from 'src/assets/countries'
 import { Court } from 'src/db/courts.collection'
 import stripePromise, { $stripeElements } from 'src/public/stripe'
 import { FunkhausSportsTermsAndConditions } from '../../../shared/components/terms-and-conditions'
 import { BookingService } from 'src/bookingServices/booking.service'
-import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgressContext, BookingStep } from '../../context'
 import { FormValidator } from '../../form-validator'
 import { PaymentService } from '../../payment-service'
 import '../booking-timer' // Import timer component
+import '../../../booking-confirmation/booking-confirmation' // Import booking confirmation component
+import { db } from 'src/firebase/firebase'
+import { doc, updateDoc } from 'firebase/firestore'
 
 /**
  * Checkout form component with Stripe integration
@@ -56,12 +58,9 @@ export class CheckoutForm extends $LitElement() {
 			takeUntil(this.disconnecting),
 			map(progress => progress.currentStep),
 			distinctUntilChanged(),
-			map(x => {
-				// Find the position of Payment step in the steps array
-      const paymentStepIndex = BookingProgressContext.value.steps.findIndex(s => s.step === BookingStep.Payment)
-				
-				// Check if this position matches the current step
-				return x === paymentStepIndex
+			map(currentStep => {
+				// Check if current step is the Payment step
+				return currentStep === BookingStep.Payment
 			}),
 			filter(() => !this.isTransitioning),
 		).subscribe(isActive => {
@@ -127,6 +126,11 @@ export class CheckoutForm extends $LitElement() {
 
 		// Cancel any ongoing payment processing
 		this.paymentService.cancelProcessing()
+		
+		// Cancel holding booking if payment hasn't been processed yet
+		if (!this.processing && this.booking?.id && this.booking?.status === 'holding') {
+			this.cancelHoldingBooking()
+		}
 	}
 
 	// Setup methods
@@ -196,18 +200,36 @@ export class CheckoutForm extends $LitElement() {
 		}
 
 		// Process payment (let Stripe handle any payment errors)
-		this.paymentService.processPayment(this.booking, this.stripe, this.elements).subscribe((result: any) => {
-			if (result.success) {
-					// Transition to the next step (from Payment to completion)
-				transitionToNextStep('Payment')
-				
-				// Also dispatch the booking-complete event for backward compatibility
-				this.dispatchEvent(
-					new CustomEvent('booking-complete', {
-						detail: { booking: result.booking },
-						bubbles: true,
-					}),
-				)
+		this.paymentService.processPayment(this.booking, this.stripe, this.elements).subscribe({
+			next: (result: any) => {
+				console.log('Payment result:', result)
+				if (result.success) {
+					console.log('Payment successful, navigating to confirmation...')
+					console.log('Booking data:', result.booking)
+					
+					// Navigate directly to booking confirmation URL
+					// This is more reliable than area.push
+					const bookingId = result.booking.id
+					if (bookingId) {
+						// Use the PaymentStatusHandler's redirect URL pattern
+						const baseUrl = window.location.origin
+						window.location.href = `${baseUrl}/booking/confirmation?id=${bookingId}`
+						console.log(`Navigating to: ${baseUrl}/booking/confirmation?id=${bookingId}`)
+					} else {
+						console.error('No booking ID available for navigation')
+						$notify.error('Booking completed but unable to navigate to confirmation page')
+					}
+				} else if (result.error) {
+					console.error('Payment failed:', result.error)
+					// Stripe should handle the error display, but log it for debugging
+				}
+			},
+			error: (error) => {
+				console.error('Payment processing error:', error)
+				// Don't show notification as Stripe handles its own error display
+			},
+			complete: () => {
+				console.log('Payment processing completed')
 			}
 		})
 	}
@@ -251,6 +273,46 @@ export class CheckoutForm extends $LitElement() {
 		})
 	}
 
+	/**
+	 * Cancel a booking that's in holding status
+	 * This releases the booking when user navigates away from payment
+	 */
+	private cancelHoldingBooking(): void {
+		if (!this.booking?.id || this.booking?.status !== 'holding') {
+			return
+		}
+
+		// Only cancel if payment hasn't been initiated
+		// If paymentIntentId exists, payment might be in progress
+		if (this.booking?.paymentIntentId) {
+			console.log(`Booking ${this.booking.id} has payment intent, skipping cancellation`)
+			// Don't clear from context here as user might return
+			return
+		}
+
+		const bookingRef = doc(db, 'bookings', this.booking.id)
+		
+		// Update booking to cancelled status
+		from(updateDoc(bookingRef, {
+			status: 'cancelled',
+			paymentStatus: 'abandoned',
+			cancellationReason: 'user_navigated_away',
+			updatedAt: new Date().toISOString()
+		})).pipe(
+			map(() => {
+				console.log(`Cancelled holding booking ${this.booking.id} - user navigated away`)
+				// Clear the booking ID from context to prevent reuse
+				bookingContext.set({ id: '', status: 'holding' }, true)
+			}),
+			catchError(error => {
+				console.error('Error cancelling holding booking:', error)
+				// Still clear the booking ID even if the update fails
+				bookingContext.set({ id: '', status: 'holding' }, true)
+				return of(null)
+			})
+		).subscribe()
+	}
+
 	render() {
 		return html`
 			${when(
@@ -277,20 +339,6 @@ export class CheckoutForm extends $LitElement() {
 					${this.isActive ? 'scale-100' : 'scale-95'}
 				"
 			>
-				<!-- Title section when active -->
-				${when(
-					this.isActive,
-					() => html`
-						<div class="mb-3">
-							<schmancy-typography align="left" type="label" token="lg" class="font-medium text-primary-default">
-								Complete Payment
-							</schmancy-typography>
-							<div class="text-xs text-surface-on-variant mt-1">
-								<span>Enter your details to complete the booking</span>
-							</div>
-						</div>
-					`,
-				)}
 				
 				<!-- Timer display -->
 				${when(this.isActive, () => html`

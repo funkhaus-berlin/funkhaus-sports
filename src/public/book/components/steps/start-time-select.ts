@@ -446,7 +446,8 @@ export class TimeSelectionStep extends $LitElement(css`
 			filter(availability => !!availability && !!availability.date && !!availability.venueId),
 			filter(availability => availability.date === bookingContext.value.date),
 			// distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.venueId === curr.venueId),
-      debounceTime(500)
+      debounceTime(500),
+      takeUntil(this.disconnecting),
 		).subscribe({
 			next: () => {
         

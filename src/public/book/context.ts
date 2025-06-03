@@ -3,6 +3,7 @@
 import { createContext } from '@mhmo91/schmancy'
 import type { BookingError } from '../../types/booking/errors'
 import { Booking } from '../../types/booking/models'
+import { BookingStatus } from 'src/types/booking/models';
 
 // Export types directly from their source modules
 export { ErrorCategory } from '../../types/booking/errors'
@@ -17,7 +18,7 @@ export const bookingContext = createContext<Booking>(
 		userName: '',
 		courtId: '',
 		startTime: '',
-		status: 'pending',
+		status: 'holding' as BookingStatus, // Default status
 		endTime: '',
 		price: 0,
 		date: '',

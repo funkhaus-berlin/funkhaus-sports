@@ -3,7 +3,6 @@ import { fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, PropertyValues } from 'lit'
 import { customElement, query, state } from 'lit/decorators.js'
-import { when } from 'lit/directives/when.js'
 import { debounceTime, distinctUntilChanged, filter, map, shareReplay, take, takeUntil, tap } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
@@ -31,7 +30,6 @@ import { PaymentStatusHandler } from './payment-status-handler'
 export class CourtBookingSystem extends $LitElement() {
 	// State
 	@state() selectedCourt?: Court = undefined
-	@state() bookingInProgress: boolean = false
 	@state() loadingCourts: boolean = false
 
 	// Contexts
@@ -309,31 +307,7 @@ export class CourtBookingSystem extends $LitElement() {
 		window.history.pushState({ step }, '', url.toString())
 	}
 
-	// EVENT HANDLERS
-
-	private handleBookingComplete(e: CustomEvent): void {
-		// Start processing state
-		this.bookingInProgress = true
-
-		// Update booking with data from event
-		if (e.detail?.booking) {
-			bookingContext.set(e.detail.booking)
-		}
-
-		// Ensure selected court is set
-		this.ensureSelectedCourt()
-
-		// Get the booking ID - essential for redirecting
-		const bookingId = this.booking.id
-
-		// Redirect to the confirmation page after a short delay
-		requestAnimationFrame(() => {
-			setTimeout(() => {
-				this.bookingInProgress = false
-				this.redirectToConfirmation(bookingId)
-			}, 100)
-		})
-	}
+	// HELPER METHODS
 
 	/**
 	 * Redirect to the confirmation route with the booking ID
@@ -349,24 +323,11 @@ export class CourtBookingSystem extends $LitElement() {
 		window.location.href = confirmationUrl
 	}
 
-	private ensureSelectedCourt(): void {
-		if (!this.selectedCourt) {
-			this.selectedCourt = Array.from(this.availableCourts.values()).find(court => court.id === this.booking.courtId)
-
-			if (!this.selectedCourt && this.availableCourts.size > 0) {
-				this.selectedCourt = Array.from(this.availableCourts.values())[0]
-				bookingContext.set({ courtId: this.selectedCourt.id }, true)
-			}
-		}
-	}
 
 	private renderProgressSteps() {
 		return html` <funkhaus-booking-steps></funkhaus-booking-steps> `
 	}
 
-	private renderProcessingOverlay() {
-		return html` <sch-busy></sch-busy> `
-	}
 	// Key updates for src/public/book/book.ts
 
 	/**
@@ -384,7 +345,6 @@ export class CourtBookingSystem extends $LitElement() {
 				<funkhaus-checkout-form
 					.booking=${this.booking}
 					.selectedCourt=${this.selectedCourt}
-					@booking-complete=${this.handleBookingComplete}
 				>
 					<slot slot="stripe-element" name="stripe-element"></slot>
 				</funkhaus-checkout-form>
@@ -500,7 +460,6 @@ export class CourtBookingSystem extends $LitElement() {
             readonly
 					></funkhaus-venue-card>
 				</schmancy-grid>
-				${when(this.bookingInProgress, () => this.renderProcessingOverlay())}
 			</schmancy-surface>
 		`
 	}

@@ -39,8 +39,8 @@ export default async function upsertUser(body: User | IUserCreate | IUserUpdate)
   }
   
   const response = await fetch(
-    ((import.meta.env.DEV ? import.meta.env.VITE_BASE_URL : '/')) +
-    `api/create-user`,
+    ((import.meta.env.DEV ? import.meta.env.VITE_BASE_URL : '')) +
+    `/api/create-user`,
     {
       method: 'POST',
       headers: {
