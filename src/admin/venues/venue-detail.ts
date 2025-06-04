@@ -140,9 +140,7 @@ export class VenueDetailView extends $LitElement(css`
 
 	render() {
 		const courtsCount = this.courts?.size || 0
-		const contentDrawerClasses = {
-			'rounded-lg px-4 sm:px-6 md:px-8': this.fullScreen === false,
-		}
+	
 
 		// Show error message if there's an error loading courts
 		if (this.error) {
@@ -155,6 +153,41 @@ export class VenueDetailView extends $LitElement(css`
 					<schmancy-grid class="h-full" rows="1fr auto">
 						<!-- Back Button -->
 						<schmancy-list>
+              <schmancy-list-item
+								.selected=${this.activeTab === 'booking-list'}
+								@click=${() => {
+									// Ensure venue context is properly set before navigating
+									if (this.venue) {
+										console.log('Setting venue context before navigating to bookings:', this.venue)
+										venueContext.set(this.venue)
+									} else {
+										console.warn('No venue object available when navigating to bookings')
+									}
+
+									// Add the venueId to URL for consistency
+									setTimeout(() => {
+										const state = { venueId: this.venueId }
+										const url = new URL(window.location.href)
+										url.searchParams.set('venueId', this.venueId)
+
+										// Update URL without navigating
+										window.history.replaceState(state, '', url.toString())
+
+										area.push({
+											component: VenuBookingsList,
+											area: 'venue',
+											state: state,
+										})
+									}, 100)
+								}}
+								rounded
+								variant="container"
+							>
+								<schmancy-flex gap="md">
+									<schmancy-icon>calendar_month</schmancy-icon>
+									Bookings
+								</schmancy-flex>
+							</schmancy-list-item>
 							<!-- Courts Item -->
 							<schmancy-list-item
 								.selected=${this.activeTab === 'funkhaus-venue-courts'}
@@ -193,41 +226,7 @@ export class VenueDetailView extends $LitElement(css`
 								</schmancy-flex>
 							</schmancy-list-item>
 
-							<schmancy-list-item
-								.selected=${this.activeTab === 'booking-list'}
-								@click=${() => {
-									// Ensure venue context is properly set before navigating
-									if (this.venue) {
-										console.log('Setting venue context before navigating to bookings:', this.venue)
-										venueContext.set(this.venue)
-									} else {
-										console.warn('No venue object available when navigating to bookings')
-									}
-
-									// Add the venueId to URL for consistency
-									setTimeout(() => {
-										const state = { venueId: this.venueId }
-										const url = new URL(window.location.href)
-										url.searchParams.set('venueId', this.venueId)
-
-										// Update URL without navigating
-										window.history.replaceState(state, '', url.toString())
-
-										area.push({
-											component: VenuBookingsList,
-											area: 'venue',
-											state: state,
-										})
-									}, 100)
-								}}
-								rounded
-								variant="container"
-							>
-								<schmancy-flex gap="md">
-									<schmancy-icon>calendar_month</schmancy-icon>
-									Bookings
-								</schmancy-flex>
-							</schmancy-list-item>
+							
 
 							<!-- Scanner Item - Only shown if user has permission -->
 							<schmancy-list-item
@@ -289,7 +288,7 @@ export class VenueDetailView extends $LitElement(css`
 					</schmancy-grid>
 				</schmancy-nav-drawer-navbar>
 
-				<schmancy-nav-drawer-content class=${this.classMap(contentDrawerClasses)}>
+				<schmancy-nav-drawer-content>
 					${this.error
 						? html`
 								<div class="p-5 text-center bg-error-container rounded-lg mt-5">
@@ -305,7 +304,7 @@ export class VenueDetailView extends $LitElement(css`
 									${fullHeight()}
 									name="venue"
 									class="animate-in-delay-1"
-									.default=${VenueCourts}
+									.default=${VenuBookingsList}
 								></schmancy-area>
 							`}
 				</schmancy-nav-drawer-content>
