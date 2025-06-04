@@ -190,6 +190,111 @@ export class BookingDetailsSheet extends $LitElement() {
             </schmancy-surface>
           </div>
           
+          <!-- Payment & Additional Info Section -->
+          <div class="mt-6 space-y-4">
+            <!-- Payment Info -->
+            <schmancy-surface type="filled" rounded="all" class="p-4">
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <schmancy-icon class="text-primary">payments</schmancy-icon>
+                    <schmancy-typography type="title" token="sm">Payment Details</schmancy-typography>
+                  </div>
+                  <schmancy-typography type="headline" token="md" class="font-bold text-primary">
+                    ${formattedPrice}
+                  </schmancy-typography>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <schmancy-typography type="label" token="sm" class="text-on-surface-variant">
+                      Payment Status
+                    </schmancy-typography>
+                    <schmancy-typography type="body" token="md" class="font-medium">
+                      ${this.booking.paymentStatus || 'Paid'}
+                    </schmancy-typography>
+                  </div>
+                  
+                  ${when(this.booking.paymentIntentId, () => html`
+                    <div>
+                      <schmancy-typography type="label" token="sm" class="text-on-surface-variant">
+                        Transaction ID
+                      </schmancy-typography>
+                      <schmancy-typography type="body" token="sm" class="font-mono truncate">
+                        ${this.booking!.paymentIntentId?.slice(-12)}
+                      </schmancy-typography>
+                    </div>
+                  `)}
+                </div>
+              </div>
+            </schmancy-surface>
+            
+            <!-- Booking Info -->
+            <schmancy-surface type="filled" rounded="all" class="p-4">
+              <div class="space-y-3">
+                <div class="flex items-center gap-2 mb-2">
+                  <schmancy-icon class="text-secondary">info</schmancy-icon>
+                  <schmancy-typography type="title" token="sm">Booking Information</schmancy-typography>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <schmancy-typography type="label" token="sm" class="text-on-surface-variant">
+                      Created
+                    </schmancy-typography>
+                    <schmancy-typography type="body" token="sm">
+                      ${createdAt}
+                    </schmancy-typography>
+                  </div>
+                  
+                  ${when(this.booking.courtPreference, () => html`
+                    <div>
+                      <schmancy-typography type="label" token="sm" class="text-on-surface-variant">
+                        Court Preference
+                      </schmancy-typography>
+                      <schmancy-typography type="body" token="sm" class="capitalize">
+                        ${this.booking!.courtPreference}
+                      </schmancy-typography>
+                    </div>
+                  `)}
+                  
+                  ${when(this.booking.invoiceNumber, () => html`
+                    <div>
+                      <schmancy-typography type="label" token="sm" class="text-on-surface-variant">
+                        Invoice #
+                      </schmancy-typography>
+                      <schmancy-typography type="body" token="sm">
+                        ${this.booking!.invoiceNumber}
+                      </schmancy-typography>
+                    </div>
+                  `)}
+                  
+                  ${when(this.booking.emailSent, () => html`
+                    <div>
+                      <schmancy-typography type="label" token="sm" class="text-on-surface-variant">
+                        Confirmation Email
+                      </schmancy-typography>
+                      <schmancy-typography type="body" token="sm" class="text-success">
+                        Sent ✓
+                      </schmancy-typography>
+                    </div>
+                  `)}
+                </div>
+                
+                ${when(this.booking.notes, () => html`
+                  <div class="pt-2 border-t border-outline-variant">
+                    <schmancy-typography type="label" token="sm" class="text-on-surface-variant">
+                      Notes
+                    </schmancy-typography>
+                    <schmancy-typography type="body" token="sm" class="mt-1">
+                      ${this.booking!.notes}
+                    </schmancy-typography>
+                  </div>
+                `)}
+              </div>
+            </schmancy-surface>
+          </div>
+          
           <!-- Status Section -->
           <div class="mt-6 p-4 rounded-xl border-2 ${this.booking.status === 'completed' ? 'border-success bg-success/5' : 'border-outline-variant bg-surface-variant/30'}">
             <div class="flex items-center justify-between">
@@ -201,12 +306,12 @@ export class BookingDetailsSheet extends $LitElement() {
                   Status
                 </schmancy-typography>
               </div>
-              <schmancy-badge
-                variant="${this.getStatusVariant(this.booking.status)}"
+              <sch-badge
+                color="${this.getStatusVariant(this.booking.status)}"
                 shape="pill"
               >
                 ${this.booking.status.charAt(0).toUpperCase() + this.booking.status.slice(1).replace('_', ' ')}
-              </schmancy-badge>
+              </sch-badge>
             </div>
           </div>
           
@@ -254,20 +359,20 @@ export class BookingDetailsSheet extends $LitElement() {
   }
 
   /**
-   * Get status variant for the badge component
+   * Get status color for the badge component
    */
-  getStatusVariant(status: BookingStatus): string {
+  getStatusVariant(status: BookingStatus): 'primary' | 'secondary' | 'tertiary' | 'success' | 'warning' | 'error' | 'neutral' {
     switch (status) {
       case 'confirmed':
         return 'success'
       case 'completed':
         return 'success'
       case 'cancelled':
-        return 'danger'
+        return 'error'
       case 'holding':
         return 'warning'
       default:
-        return 'info'
+        return 'neutral'
     }
   }
 
