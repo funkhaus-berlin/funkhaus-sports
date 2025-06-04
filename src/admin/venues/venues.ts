@@ -7,7 +7,7 @@ import { repeat } from 'lit/directives/repeat.js'
 import { takeUntil } from 'rxjs'
 import { Venue, VenuesDB } from 'src/db/venue-collection'
 import { confirm } from 'src/schmancy'
-import './admin-venue-card' // Import admin venue card
+import './admin-venue-card'; // Import admin venue card
 import { VenueForm } from './components/venue-form'
 import { venueContext, venuesContext } from './venue-context'
 import { VenueDetailView } from './venue-detail'
@@ -24,62 +24,14 @@ export class VenueManagement extends $LitElement() {
 
 	connectedCallback() {
 		super.connectedCallback()
-
-		// Diagnostic code to verify venue IDs
-		setTimeout(() => {
-			if (this.venues && this.venues.size > 0) {
-				// Check for venues with missing or invalid IDs
-				console.log(`Loaded ${this.venues.size} venues from context`)
-
-				const venuesWithIssues = Array.from(this.venues.entries()).filter(([id, venue]) => {
-					// Check if the venue ID matches the map key
-					const hasIdMismatch = venue.id !== id
-					// Check if the venue ID is missing or empty
-					const hasMissingId = !venue.id || venue.id.trim() === ''
-					return hasIdMismatch || hasMissingId
-				})
-
-				if (venuesWithIssues.length > 0) {
-					console.warn('Found venues with ID issues:', venuesWithIssues)
-
-					// Fix venues with ID issues
-					venuesWithIssues.forEach(([id, venue]) => {
-						// Ensure the venue ID matches the map key
-						if (venue.id !== id || !venue.id) {
-							console.log(`Fixing ID for venue "${venue.name}": "${venue.id}" → "${id}"`)
-
-							// Update the venue object with the correct ID from the map key
-							const updatedVenue = {
-								...venue,
-								id: id,
-							}
-
-							// Update the venue in the context
-							VenuesDB.upsert(updatedVenue, id).subscribe({
-								next: () => {
-									console.log(`Fixed ID for venue "${venue.name}"`)
-								},
-								error: err => {
-									console.error(`Failed to fix ID for venue "${venue.name}":`, err)
-								},
-							})
-						}
-					})
-				} else {
-					console.log('All venues have valid IDs')
-				}
-			}
-		}, 1000)
 	}
 
 	render() {
 		return html`
 			<schmancy-surface ${fullHeight()} type="container" rounded="all" elevation="1">
 				<div ${fullHeight()} class="max-w-6xl mx-auto p-6 h-full grid grid-rows-[auto_auto_1fr] gap-4">
-
-        
 					<!-- Header with title -->
-					<schmancy-nav-drawer-appbar width="200px">
+					<schmancy-nav-drawer-appbar>
 						<schmancy-typography type="headline">Venue Management</schmancy-typography>
 						<schmancy-button
 							variant="filled"

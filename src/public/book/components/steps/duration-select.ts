@@ -6,7 +6,8 @@ import { customElement, property, state } from 'lit/decorators.js'
 import { createRef, ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import { catchError, combineLatest, debounceTime, distinctUntilChanged, filter, map, of, switchMap, takeUntil } from 'rxjs'
+import { catchError, combineLatest, debounceTime, delay, distinctUntilChanged, filter, map, of, switchMap, take, takeUntil } from 'rxjs'
+import { retryWhen, tap } from 'rxjs/operators'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { availabilityContext, availabilityLoading$, BookingFlowType, getAvailableDurations } from 'src/availability-context'
 import { Court } from 'src/db/courts.collection'
@@ -286,11 +287,20 @@ export class DurationSelectionStep extends $LitElement(css`
 		// Add the ID to booking data
 		const bookingWithId = { ...bookingData, id: bookingId }
 		
-		// Create temporary booking directly in Firebase
+		// Create temporary booking directly in Firebase with retries
 		BookingsDB.upsert(bookingWithId, bookingId)
 			.pipe(
+				// Add retry logic for transient failures
+				retryWhen(errors => 
+					errors.pipe(
+						tap(error => console.warn('Booking creation attempt failed:', error)),
+						delay(1000),
+						take(3)
+					)
+				),
+				tap(() => console.log(`Successfully created booking ${bookingId}`)),
 				catchError(error => {
-					console.error('Failed to create temporary booking:', error)
+					console.error('Failed to create temporary booking after retries:', error)
 					$notify.error('Failed to reserve booking. Please try again.')
 					this.isCreatingBooking = false
 					return of(null)
@@ -298,10 +308,13 @@ export class DurationSelectionStep extends $LitElement(css`
 			)
 			.subscribe(success => {
 				if (success) {
-					// Update booking context with the created booking ID
+					// Update booking context with the full booking data
 					bookingContext.set({
-						id: bookingId
+						...bookingWithId
 					}, true)
+					
+					// Store booking ID in session storage as backup
+					sessionStorage.setItem('currentBookingId', bookingId)
 					
 					// Show notification about reservation
 					$notify.success('Your booking has been reserved for 5 minutes', { duration: 3000 })

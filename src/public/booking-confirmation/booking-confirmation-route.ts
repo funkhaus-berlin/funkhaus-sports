@@ -34,7 +34,7 @@ export class BookingConfirmationRoute extends $LitElement() {
 			this.bookingId = urlParams.get('id') || ''
 		}
 
-		// Setup booking subscription pipeline
+		// Setup booking subscription pipeline with retry logic
 		of(this.bookingId).pipe(
 			tap(id => {
 				if (!id) {
@@ -51,12 +51,18 @@ export class BookingConfirmationRoute extends $LitElement() {
 				}]).pipe(
 					tap(bookings => {
 						if (bookings.size === 0) {
-							this.error = 'Booking not found. Please check your booking ID or contact support.'
-							this.loading = false
+							// Don't immediately show error - webhook might still be processing
+							console.log(`Booking ${id} not found yet, webhook might be processing...`)
 						} else {
 							const booking = bookings.values().next().value as Booking
 							this.booking = booking
 							this.loading = false
+							this.error = null
+							
+							// Show success notification for confirmed bookings
+							if (booking.status === 'confirmed' && booking.paymentStatus === 'paid') {
+								$notify.success('Booking confirmed successfully!')
+							}
 							
 							// Show notification for failed payments
 							if (booking.paymentStatus === 'failed' || booking.paymentStatus === 'cancelled') {
@@ -64,6 +70,8 @@ export class BookingConfirmationRoute extends $LitElement() {
 							}
 						}
 					}),
+					// Keep the subscription open to wait for booking updates
+					filter(bookings => bookings.size > 0),
 					catchError(err => {
 						console.error('Error loading booking:', err)
 						this.error = 'An error occurred while loading your booking details. Please try refreshing the page.'
@@ -72,6 +80,15 @@ export class BookingConfirmationRoute extends $LitElement() {
 					})
 				)
 			),
+			// Add timeout after 30 seconds
+			tap(() => {
+				setTimeout(() => {
+					if (this.loading && !this.booking) {
+						this.error = 'Unable to load booking confirmation. The booking may still be processing. Please check your email for confirmation or contact support.'
+						this.loading = false
+					}
+				}, 30000)
+			}),
 			takeUntil(this.disconnecting)
 		).subscribe()
 	}

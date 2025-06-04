@@ -92,52 +92,6 @@ async function generateInvoiceNumber(db: FirebaseFirestore.Firestore, bookingId:
 /**
  * Enhanced webhook handler with improved reliability and error recovery
  */
-/**
- * Cleanup abandoned temporary bookings that are older than a certain time threshold
- * This helps prevent court slots from being blocked by incomplete bookings
- */
-async function cleanupAbandonedBookings() {
-	try {
-		// Calculate cutoff time (5 minutes ago)
-		const cutoffTime = new Date()
-		cutoffTime.setMinutes(cutoffTime.getMinutes() - 5)
-		const cutoffTimeString = cutoffTime.toISOString()
-		
-		// Query for abandoned holding bookings based on lastActive
-		const bookingsRef = db.collection('bookings')
-		const query = bookingsRef
-			.where('status', '==', 'holding')
-			.where('lastActive', '<', cutoffTimeString)
-			.where('paymentStatus', '==', 'pending')
-			.limit(50) // Process in batches
-			
-		const snapshot = await query.get()
-		console.log(`Found ${snapshot.size} abandoned holding bookings to clean up`)
-		
-		if (snapshot.empty) {
-			return
-		}
-		
-		// Mark bookings as cancelled
-		const batch = db.batch()
-		
-		snapshot.forEach(doc => {
-			const bookingRef = bookingsRef.doc(doc.id)
-			batch.update(bookingRef, {
-				status: 'cancelled',
-				paymentStatus: 'cancelled',
-				updatedAt: new Date().toISOString(),
-				cancellationReason: 'auto_cleanup_abandoned_booking'
-			})
-			console.log(`Marking abandoned booking ${doc.id} as cancelled`)
-		})
-		
-		await batch.commit()
-		console.log(`Successfully cancelled ${snapshot.size} abandoned bookings`)
-	} catch (error) {
-		console.error('Error cleaning up abandoned bookings:', error)
-	}
-}
 
 const handler: Handler = async (event, context) => {
 	console.log('=== Stripe Webhook Handler Called ===')
@@ -161,11 +115,6 @@ const handler: Handler = async (event, context) => {
 			body: JSON.stringify({ error: 'Method Not Allowed' }),
 		}
 	}
-	
-	// Run cleanup for abandoned bookings (non-blocking)
-	cleanupAbandonedBookings().catch(error => 
-		console.error('Background cleanup task failed:', error)
-	)
 
 	try {
 		// Get the signature from the headers
@@ -394,13 +343,17 @@ async function handlePaymentIntentSucceededRx(paymentIntent: Stripe.PaymentInten
 		return { success: false, reason: 'no_booking_id' }
 	}
 
-	// Main processing pipeline
+	// Main processing pipeline with retry for missing bookings
 	return from(db.collection('bookings').doc(bookingId).get()).pipe(
+		// Retry a few times if booking doesn't exist (it might still be writing)
+		retryWithBackoff(3, 2000),
 		// Process existing booking
 		switchMap(bookingDoc => {
 			if (bookingDoc.exists) {
+				console.log(`Found booking ${bookingId}, processing payment confirmation`)
 				return processExistingBooking(bookingDoc, paymentIntent, bookingId)
 			} else {
+				console.warn(`Booking ${bookingId} not found after retries, creating emergency booking`)
 				return createEmergencyBooking(paymentIntent, bookingId, courtId, date, userId)
 			}
 		}),
@@ -409,6 +362,18 @@ async function handlePaymentIntentSucceededRx(paymentIntent: Stripe.PaymentInten
 		// Error handling
 		catchError(error => {
 			console.error('Error handling payment success webhook:', error)
+			// Special handling for missing booking document errors
+			if (error.code === 5 || error.message?.includes('No document to update')) {
+				console.error(`Booking ${bookingId} disappeared during processing, attempting recovery`)
+				return createEmergencyBooking(paymentIntent, bookingId, courtId, date, userId).pipe(
+					catchError(recoveryError => {
+						console.error('Recovery also failed:', recoveryError)
+						return from(logPaymentTransaction(paymentIntent, 'error', `Booking missing and recovery failed: ${error.message}`)).pipe(
+							map(() => ({ success: false, error: error.message }))
+						)
+					})
+				)
+			}
 			return from(logPaymentTransaction(paymentIntent, 'error', `Error updating booking: ${error.message}`)).pipe(
 				map(() => ({ success: false, error: error.message }))
 			)

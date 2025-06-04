@@ -8,16 +8,21 @@ import { db } from './_shared/firebase-admin'
  * Scheduled function to cleanup abandoned bookings
  * This should be called periodically (e.g., every minute) by a cron job
  * 
+ * Frontend timer: 5 minutes base + 1 minute extension if user is active
+ * We use 7 minutes here to be extra safe and avoid deleting active bookings
+ * 
  * Netlify scheduled functions: https://docs.netlify.com/functions/scheduled-functions/
  */
 const cleanupAbandonedBookings = async () => {
 	try {
-		// Calculate cutoff time (5 minutes ago)
+		// Calculate cutoff time (7 minutes ago - to account for timer extension)
+		// Frontend has 5 minute timer + 60 second extension = 6 minutes max
+		// We add 1 extra minute for safety = 7 minutes total
 		const cutoffTime = new Date()
-		cutoffTime.setMinutes(cutoffTime.getMinutes() - 5)
+		cutoffTime.setMinutes(cutoffTime.getMinutes() - 7)
 		const cutoffTimeString = cutoffTime.toISOString()
 		
-		// Query for abandoned holding bookings
+		// Query for abandoned holding bookings based on lastActive
 		const bookingsRef = db.collection('bookings')
 		const query = bookingsRef
 			.where('status', '==', 'holding')
@@ -26,7 +31,7 @@ const cleanupAbandonedBookings = async () => {
 			.limit(100) // Process more in scheduled job
 			
 		const snapshot = await query.get()
-		console.log(`[Scheduled Cleanup] Found ${snapshot.size} abandoned holding bookings to clean up`)
+		console.log(`[Scheduled Cleanup] Found ${snapshot.size} abandoned holding bookings to clean up (older than 7 minutes)`)
 		
 		if (snapshot.empty) {
 			return { 
@@ -38,47 +43,64 @@ const cleanupAbandonedBookings = async () => {
 		// Batch update for efficiency
 		const batch = db.batch()
 		const cleanedBookings: string[] = []
+		let cancelledCount = 0
 		
 		snapshot.forEach((doc: QueryDocumentSnapshot) => {
-			const bookingRef = bookingsRef.doc(doc.id)
 			const booking = doc.data()
+			const lastActiveDate = new Date(booking.lastActive || booking.createdAt)
+			const ageInMinutes = (Date.now() - lastActiveDate.getTime()) / (1000 * 60)
 			
-			// Update booking to cancelled
-			batch.update(bookingRef, {
-				status: 'cancelled',
-				paymentStatus: 'abandoned',
-				updatedAt: new Date().toISOString(),
-				cancellationReason: 'auto_cleanup_abandoned_booking',
-				cleanedAt: new Date().toISOString()
-			})
-			
-			cleanedBookings.push(doc.id)
-			console.log(`[Scheduled Cleanup] Marking abandoned booking ${doc.id} as cancelled`)
-			
-			// Log cleanup action
-			const logRef = db.collection('cleanupLogs').doc()
-			batch.set(logRef, {
-				bookingId: doc.id,
-				action: 'cancelled_abandoned_booking',
-				lastActive: booking.lastActive,
-				createdAt: booking.createdAt,
-				cleanedAt: new Date().toISOString(),
-				userId: booking.userId,
-				courtId: booking.courtId,
-				date: booking.date,
-				startTime: booking.startTime,
-				endTime: booking.endTime
-			})
+			// Only cancel if truly abandoned (older than 7 minutes)
+			if (ageInMinutes > 7) {
+				const bookingRef = bookingsRef.doc(doc.id)
+				
+				// Update booking to cancelled
+				batch.update(bookingRef, {
+					status: 'cancelled',
+					paymentStatus: 'abandoned',
+					updatedAt: new Date().toISOString(),
+					cancellationReason: 'auto_cleanup_abandoned_booking',
+					cleanedAt: new Date().toISOString(),
+					cancelledAfterMinutes: Math.round(ageInMinutes)
+				})
+				
+				cleanedBookings.push(doc.id)
+				console.log(`[Scheduled Cleanup] Marking abandoned booking ${doc.id} as cancelled (${Math.round(ageInMinutes)} minutes old)`)
+				
+				// Log cleanup action
+				const logRef = db.collection('cleanupLogs').doc()
+				batch.set(logRef, {
+					bookingId: doc.id,
+					action: 'cancelled_abandoned_booking',
+					lastActive: booking.lastActive,
+					createdAt: booking.createdAt,
+					cleanedAt: new Date().toISOString(),
+					ageInMinutes: Math.round(ageInMinutes),
+					userId: booking.userId,
+					courtId: booking.courtId,
+					date: booking.date,
+					startTime: booking.startTime,
+					endTime: booking.endTime
+				})
+				
+				cancelledCount++
+			} else {
+				console.log(`[Scheduled Cleanup] Skipping booking ${doc.id} - only ${Math.round(ageInMinutes)} minutes old`)
+			}
 		})
 		
 		// Commit all updates
-		await batch.commit()
-		console.log(`[Scheduled Cleanup] Successfully cancelled ${snapshot.size} abandoned bookings`)
+		if (cancelledCount > 0) {
+			await batch.commit()
+			console.log(`[Scheduled Cleanup] Successfully cancelled ${cancelledCount} abandoned bookings`)
+		}
 		
 		return {
-			cleaned: snapshot.size,
+			cleaned: cancelledCount,
 			bookingIds: cleanedBookings,
-			message: `Successfully cleaned ${snapshot.size} abandoned bookings`
+			message: cancelledCount > 0 
+				? `Successfully cleaned ${cancelledCount} abandoned bookings` 
+				: 'No bookings were old enough to cancel'
 		}
 		
 	} catch (error) {

@@ -26,6 +26,7 @@ export class BookingConfirmation extends $LitElement() {
   private venue?: Venue
   private downloading: boolean = false
   @state() private resendingEmail: boolean = false
+  @state() private enteredEmail: string = ''
 
   connectedCallback(): void {
     super.connectedCallback()
@@ -39,6 +40,9 @@ export class BookingConfirmation extends $LitElement() {
         this.venue = venuesContext.value.get(court.venueId)
       }
     }
+    
+    // Initialize enteredEmail with customerEmail
+    this.enteredEmail = this.customerEmail
   }
 
   /**
@@ -140,6 +144,9 @@ export class BookingConfirmation extends $LitElement() {
    * Prompts user for email address then calls API
    */
   private async handleResendEmail() {
+    // Reset enteredEmail to current customerEmail
+    this.enteredEmail = this.customerEmail;
+    
     // Prompt for email address with the current one prefilled
     const result = await $dialog.confirm({
       title: 'Resend Booking Confirmation',
@@ -150,11 +157,11 @@ export class BookingConfirmation extends $LitElement() {
             id="email-input"
             label="Email Address"
             type="email"
-            value=${this.customerEmail}
+            value=${this.enteredEmail}
             required
-            @change=${(e:SchmancyInputChangeEventV2)=>{
-              if(!e.detail.value) return
-              this.customerEmail = e.detail.value
+            @change=${(e: SchmancyInputChangeEventV2) => {
+              if (!e.detail.value) return;
+              this.enteredEmail = e.detail.value;
             }}
           ></schmancy-input>
         </div>
@@ -164,8 +171,7 @@ export class BookingConfirmation extends $LitElement() {
     });
     
     if (result) {
-      
-      if (!this.customerEmail || !this.customerEmail.includes('@')) {
+      if (!this.enteredEmail || !this.enteredEmail.includes('@')) {
         $notify.error('Please enter a valid email address');
         return;
       }
@@ -176,15 +182,23 @@ export class BookingConfirmation extends $LitElement() {
         // Prepare booking data for API
         const bookingData = {
           bookingId: this.bookingId,
-          customerEmail: this.customerEmail,
+          customerEmail: this.enteredEmail,
           customerName: this.customerName,
           customerPhone: '',
           venueInfo: {
             name: this.venue?.name || '',
-            address: this.venue?.address.street || '',
-            city: this.venue?.address.city || '',
-            postalCode: this.venue?.address.postalCode || '',
-            country: this.venue?.address.country || ''
+            address: typeof this.venue?.address === 'string' 
+              ? this.venue.address 
+              : this.venue?.address?.street || '',
+            city: typeof this.venue?.address === 'object' 
+              ? this.venue?.address?.city || '' 
+              : '',
+            postalCode: typeof this.venue?.address === 'object' 
+              ? this.venue?.address?.postalCode || '' 
+              : '',
+            country: typeof this.venue?.address === 'object' 
+              ? this.venue?.address?.country || '' 
+              : ''
           },
           bookingDetails: {
             date: this.booking.date,
@@ -199,11 +213,11 @@ export class BookingConfirmation extends $LitElement() {
         // Use the email service to resend the email
         resendBookingEmail(bookingData).subscribe({
           next: () => {
-            $notify.success(`Confirmation email sent to ${this.customerEmail}`);
+            $notify.success(`Confirmation email sent to ${this.enteredEmail}`);
             
             // Update the customer email if it changed
-            if (this.customerEmail !== this.customerEmail) {
-              this.customerEmail = this.customerEmail;
+            if (this.enteredEmail !== this.customerEmail) {
+              this.customerEmail = this.enteredEmail;
             }
           },
           error: error => {
@@ -214,7 +228,7 @@ export class BookingConfirmation extends $LitElement() {
             this.resendingEmail = false;
           }
         });
-      } catch (error :any) {
+      } catch (error: any) {
         console.error('Error resending email:', error);
         $notify.error(`Failed to send email: ${error?.message || 'Unknown error'}`);
         this.resendingEmail = false;
@@ -237,168 +251,166 @@ export class BookingConfirmation extends $LitElement() {
     return html`
       <schmancy-scroll class="h-screen bg-surface-default">
         <div class="min-h-screen flex items-center justify-center p-4">
-          <div class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-8">
-            <!-- Left Column - QR Code and Success Message -->
-            <div class="flex flex-col justify-center items-center gap-2 lg:gap-4 py-4 lg:py-0">
-            <!-- Logo -->
-            <funkhaus-logo 
-              reverse 
-              src="/logo.svg" 
-              alt="Funkhaus Sports Logo" 
-              width="80px" 
-              class="mx-auto mb-2 lg:mb-4 cursor-pointer lg:w-[120px]" 
-              @click=${() => this.returnToHome()}
-            ></funkhaus-logo>
+          <div class="w-full max-w-2xl">
+            <!-- Main vertical flow container -->
+            <div class="flex flex-col items-center gap-4">
+              <!-- Logo -->
+              <img 
+                src="/logo.svg" 
+                alt="Funkhaus Sports Logo" 
+                width="60" 
+                height="60"
+                class="cursor-pointer" 
+                @click=${() => this.returnToHome()}
+              />
 
-            <!-- Title -->
-            <schmancy-grid gap="xs" class="text-center">
-              <schmancy-typography type="title" token="lg" class="lg:hidden">Booking Confirmed!</schmancy-typography>
-              <schmancy-typography type="display" token="sm" class="hidden lg:block">Booking Confirmed!</schmancy-typography>
-              <schmancy-typography type="body" token="sm" class="text-surface-onVariant lg:text-base">
-                Check-in with QR code • Email sent to ${this.customerEmail}
-              </schmancy-typography>
-            </schmancy-grid>
-
-            <!-- QR Code -->
-            <schmancy-surface type="containerLow" rounded="all" class="p-4 lg:p-6">
-              <schmancy-grid gap="sm" align="center">
-                <img
-                  src=${BookingUtils.generateQRCodeDataUrl(this.booking, this.selectedCourt)}
-                  alt="Booking QR Code"
-                  width="140"
-                  height="140"
-                  class="block lg:w-[180px] lg:h-[180px]"
-                />
-                <schmancy-button
-                  variant="text"
-                  @click=${() => this.downloadQRCode()}
-                  .disabled=${this.downloading}
-                >
-                  <schmancy-icon>download</schmancy-icon>
-                  ${this.downloading ? 'Downloading...' : 'Download'}
-                </schmancy-button>
+              <!-- Title -->
+              <schmancy-grid gap="xs" class="text-center">
+                <schmancy-typography type="title" token="lg">Booking Confirmed!</schmancy-typography>
+                <schmancy-flex align="center" justify="center" gap="sm">
+                  <schmancy-typography type="body" token="sm" class="text-surface-onVariant">
+                    Check-in with QR code • Email sent to ${this.customerEmail}
+                  </schmancy-typography>
+                  <schmancy-icon-button
+                    variant="text"
+                    @click=${() => this.handleResendEmail()}
+                    .disabled=${this.resendingEmail}
+                    title="Resend email"
+                  >
+                    <schmancy-icon>${this.resendingEmail ? 'hourglass_empty' : 'refresh'}</schmancy-icon>
+                  </schmancy-icon-button>
+                </schmancy-flex>
               </schmancy-grid>
-            </schmancy-surface>
 
-            <!-- Social Buttons -->
-            <schmancy-flex gap="sm" justify="center">
-              <a 
-                href="https://chat.whatsapp.com/LsIWyP8U9mRJZKkBqGTOS7"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-all transform hover:scale-105"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
-                </svg>
-                WhatsApp
-              </a>
-              
-              <a 
-                href="https://www.instagram.com/picklehaus.berlin"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white text-sm font-medium transition-all transform hover:scale-105"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zM5.838 12a6.162 6.162 0 1112.324 0 6.162 6.162 0 01-12.324 0zM12 16a4 4 0 110-8 4 4 0 010 8zm4.965-10.405a1.44 1.44 0 112.881.001 1.44 1.44 0 01-2.881-.001z"/>
-                </svg>
-                Instagram
-              </a>
-            </schmancy-flex>
-          </div>
+              <!-- QR Code -->
+              <schmancy-surface type="containerLow" rounded="all" class="p-4">
+                <schmancy-grid gap="sm" align="center">
+                  <img
+                    src=${BookingUtils.generateQRCodeDataUrl(this.booking, this.selectedCourt)}
+                    alt="Booking QR Code"
+                    width="160"
+                    height="160"
+                    class="block"
+                  />
+                  <schmancy-button
+                    variant="text"
+                    @click=${() => this.downloadQRCode()}
+                    .disabled=${this.downloading}
+                  >
+                    <schmancy-icon>download</schmancy-icon>
+                    ${this.downloading ? 'Downloading...' : 'Download QR'}
+                  </schmancy-button>
+                </schmancy-grid>
+              </schmancy-surface>
 
-          <!-- Right Column - Booking Details and Actions -->
-          <div class="flex flex-col gap-3 lg:gap-4 justify-center pb-4 lg:pb-0 max-w-md mx-auto">
-            <!-- Booking Details Card -->
-            <schmancy-card>
-              <schmancy-grid gap="xs" class="p-3 lg:p-4">
-                <!-- Venue & Court -->
-                <schmancy-flex justify="between" align="center" >
+              <!-- Venue Card - Desktop Only -->
+              ${this.venue ? html`
+                <funkhaus-venue-card
+                  class="hidden md:block w-full"
+                  .venue=${this.venue}
+                  .theme=${this.venue.theme!}
+                  readonly
+                ></funkhaus-venue-card>
+              ` : ''}
+
+              <!-- Booking Details Card -->
+              <schmancy-card class="w-full">
+                <schmancy-grid gap="sm" class="p-3">
+                  <!-- Venue & Court -->
+                  <schmancy-flex justify="between" align="center">
+                    <schmancy-flex gap="sm" align="center">
+                      <schmancy-icon class="text-surface-onVariant">stadium</schmancy-icon>
+                      <div class="flex-1 text-left">
+                        <schmancy-typography type="body" token="md" class="font-medium">${venueName}</schmancy-typography>
+                        <schmancy-typography type="body" token="sm" class="text-surface-onVariant">${courtName}</schmancy-typography>
+                      </div>
+                    </schmancy-flex>
+                    <schmancy-typography type="title" token="md" class="text-primary-default">
+                      €${this.booking.price.toFixed(2)}
+                    </schmancy-typography>
+                  </schmancy-flex>
+                  <schmancy-divider></schmancy-divider>
+
+                  <!-- Date & Time -->
                   <schmancy-flex gap="sm" align="center">
-                    <schmancy-icon size="36px" class="text-surface-onVariant lg:text-5xl">pin_drop</schmancy-icon>
+                    <schmancy-icon class="text-surface-onVariant">event</schmancy-icon>
                     <div class="flex-1 text-left">
-                      <schmancy-typography type="title" token="sm">${venueName}</schmancy-typography>
-                      <schmancy-typography type="body" token="sm" class="text-surface-onVariant">${courtName}</schmancy-typography>
+                      <schmancy-typography type="body" token="md">${dateFormatted}</schmancy-typography>
+                      <schmancy-typography type="body" token="sm" class="text-surface-onVariant">
+                        ${timeFormatted} • ${BookingUtils.formatDuration(this.booking.startTime, this.booking.endTime)}
+                      </schmancy-typography>
                     </div>
                   </schmancy-flex>
-                  <schmancy-typography type="title" token="lg" class="text-primary-default">
-                    €${this.booking.price.toFixed(2)}
-                  </schmancy-typography>
-                </schmancy-flex>
-    <schmancy-divider>  </schmancy-divider>
+                  
+                  <!-- Address -->
+                  ${this.venue?.address 
+                    ? html`
+                      <schmancy-divider></schmancy-divider>
+                      <a 
+                        href="${this.getMapUrl()}" 
+                        target="_blank"
+                        class="flex items-center gap-3 text-surface-on hover:text-primary-default transition-colors"
+                      >
+                        <schmancy-icon>directions</schmancy-icon>
+                        <schmancy-typography type="body" token="sm" class="flex-1">
+                          ${this.getFormattedAddress()}
+                        </schmancy-typography>
+                      </a>
+                    ` 
+                    : ''
+                  }
+                </schmancy-grid>
+              </schmancy-card>
 
-                <!-- Date & Time -->
-                <schmancy-flex gap="sm" align="center" class="py-1 lg:py-2">
-                  <schmancy-icon size="36px" class="text-surface-onVariant lg:text-5xl">event</schmancy-icon>
-                  <div class="flex-1 text-left">
-                    <schmancy-typography type="body" token="md">${dateFormatted}</schmancy-typography>
-                    <schmancy-typography type="body" token="sm" class="text-surface-onVariant">
-                      ${timeFormatted} • ${BookingUtils.formatDuration(this.booking.startTime, this.booking.endTime)}
-                    </schmancy-typography>
-                  </div>
-                </schmancy-flex>
-    <schmancy-divider>  </schmancy-divider>
-                <!-- Address -->
-                ${this.venue?.address 
-                  ? html`
-                    <a 
-                      href="${this.getMapUrl()}" 
-                      target="_blank"
-                      class="flex items-center gap-3 py-1 lg:py-2 text-surface-on hover:text-primary-default transition-colors"
-                    >
-                      <schmancy-icon size="36px" class="lg:text-5xl">directions</schmancy-icon>
-                      <schmancy-typography type="body" token="sm" class="flex-1">
-                        ${this.getFormattedAddress()}
-                      </schmancy-typography>
-                    </a>
-                  ` 
-                  : ''
-                }
+              <!-- Action Buttons -->
+              <schmancy-grid gap="sm" class="w-full">
+                <schmancy-grid cols="1fr 1fr 1fr" gap="sm">
+                  <schmancy-button variant="filled" href=${calendarUrl} width="full">
+                    <schmancy-icon>calendar_month</schmancy-icon>
+                    Calendar
+                  </schmancy-button>
+                  <schmancy-button
+                    variant="filled"
+                    width="full"
+                    @click=${() => BookingUtils.shareBooking(this.booking, this.selectedCourt?.name)}
+                  >
+                    <schmancy-icon>share</schmancy-icon>
+                    Share
+                  </schmancy-button>
+                  <schmancy-button variant="outlined" width="full" @click=${() => this.returnToHome()}>
+                    <schmancy-icon>add</schmancy-icon>
+                    Book More
+                  </schmancy-button>
+                </schmancy-grid>
               </schmancy-grid>
-            </schmancy-card>
 
-            <!-- Action Buttons -->
-            <schmancy-grid gap="xs" class="lg:gap-sm">
-              <schmancy-grid justify="center" cols="1fr auto auto 1fr" gap="xs" class="lg:gap-sm">
-                <span>  </span>
-                <schmancy-button variant="filled" href=${calendarUrl} size="sm" class="lg:text-base">
-                  <schmancy-icon>calendar_month</schmancy-icon>
-                  Add to Calendar
-                </schmancy-button>
-                <schmancy-button
-                  variant="filled"
-                  @click=${() => BookingUtils.shareBooking(this.booking, this.selectedCourt?.name)}
-                  size="sm"
-                  class="lg:text-base"
+              <!-- Social Buttons -->
+              <schmancy-flex gap="sm" justify="center">
+                <a 
+                  href="https://chat.whatsapp.com/LsIWyP8U9mRJZKkBqGTOS7"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white text-xs font-medium transition-all"
                 >
-                  <schmancy-icon>share</schmancy-icon>
-                  Share
-                </schmancy-button>
-                <span>  </span>
-
-              </schmancy-grid>
-              
-              <schmancy-grid justify="center" cols="1fr auto auto 1fr" gap="xs" class="lg:gap-sm">
-                <span></span>
-                <schmancy-button 
-                  variant="outlined"
-                  @click=${() => this.handleResendEmail()}
-                  .disabled=${this.resendingEmail}
-                  size="sm"
-                  class="lg:text-base"
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                  </svg>
+                  WhatsApp
+                </a>
+                
+                <a 
+                  href="https://www.instagram.com/picklehaus.berlin"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white text-xs font-medium transition-all"
                 >
-                  <schmancy-icon>email</schmancy-icon>
-                  ${this.resendingEmail ? 'Sending...' : 'Resend Email'}
-                </schmancy-button>
-                <schmancy-button variant="outlined" @click=${() => this.returnToHome()} size="sm" class="lg:text-base">
-                  <schmancy-icon>sports_tennis</schmancy-icon>
-                  Book Another
-                </schmancy-button>
-                <span></span>
-
-              </schmancy-grid>
-            </schmancy-grid>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zM5.838 12a6.162 6.162 0 1112.324 0 6.162 6.162 0 01-12.324 0zM12 16a4 4 0 110-8 4 4 0 010 8zm4.965-10.405a1.44 1.44 0 112.881.001 1.44 1.44 0 01-2.881-.001z"/>
+                  </svg>
+                  Instagram
+                </a>
+              </schmancy-flex>
+            </div>
           </div>
         </div>
       </schmancy-scroll>
@@ -417,7 +429,7 @@ export class BookingConfirmation extends $LitElement() {
           <schmancy-typography type="body" token="md" class="text-center">
             We couldn't retrieve complete booking information. This may be due to a temporary system issue.
           </schmancy-typography>
-          <schmancy-button variant="filled" @click=${() => this.returnToHome()}> Return to Booking </schmancy-button>
+          <schmancy-button variant="filled" @click=${() => this.returnToHome()}>Return to Booking</schmancy-button>
         </schmancy-flex>
       </schmancy-surface>
     `

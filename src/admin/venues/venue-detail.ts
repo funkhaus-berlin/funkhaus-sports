@@ -194,7 +194,7 @@ export class VenueDetailView extends $LitElement(css`
 							</schmancy-list-item>
 
 							<schmancy-list-item
-								.selected=${this.activeTab === 'venue-bookings'}
+								.selected=${this.activeTab === 'booking-list'}
 								@click=${() => {
 									// Ensure venue context is properly set before navigating
 									if (this.venue) {
@@ -230,42 +230,41 @@ export class VenueDetailView extends $LitElement(css`
 							</schmancy-list-item>
 
 							<!-- Scanner Item - Only shown if user has permission -->
-						<schmancy-list-item
-										.selected=${this.activeTab === 'scanner-view'}
-										@click=${() => {
-											// Ensure venue context is properly set before navigating
-											if (this.venue) {
-												console.log('Setting venue context before navigating to scanner:', this.venue)
-												venueContext.set(this.venue)
-											} else {
-												console.warn('No venue object available when navigating to scanner')
-											}
+							<schmancy-list-item
+								.selected=${this.activeTab === 'scanner-view'}
+								@click=${() => {
+									// Ensure venue context is properly set before navigating
+									if (this.venue) {
+										console.log('Setting venue context before navigating to scanner:', this.venue)
+										venueContext.set(this.venue)
+									} else {
+										console.warn('No venue object available when navigating to scanner')
+									}
 
-											// Add the venueId to URL for consistency
-											setTimeout(() => {
-												const state = { venueId: this.venueId }
-												const url = new URL(window.location.href)
-												url.searchParams.set('venueId', this.venueId)
+									// Add the venueId to URL for consistency
+									setTimeout(() => {
+										const state = { venueId: this.venueId }
+										const url = new URL(window.location.href)
+										url.searchParams.set('venueId', this.venueId)
 
-												// Update URL without navigating
-												window.history.replaceState(state, '', url.toString())
+										// Update URL without navigating
+										window.history.replaceState(state, '', url.toString())
 
-												area.push({
-													component: ScannerView,
-													area: 'venue',
-													state: state,
-												})
-											}, 100)
-										}}
-										rounded
-										variant="container"
-									>
-										<schmancy-flex gap="md">
-											<schmancy-icon>qr_code_scanner</schmancy-icon>
-											Check-in 
-										</schmancy-flex>
-									</schmancy-list-item>
-							
+										area.push({
+											component: ScannerView,
+											area: 'venue',
+											state: state,
+										})
+									}, 100)
+								}}
+								rounded
+								variant="container"
+							>
+								<schmancy-flex gap="md">
+									<schmancy-icon>qr_code_scanner</schmancy-icon>
+									Check-in
+								</schmancy-flex>
+							</schmancy-list-item>
 						</schmancy-list>
 
 						<schmancy-button
@@ -300,7 +299,7 @@ export class VenueDetailView extends $LitElement(css`
 										<schmancy-button @click=${() => window.location.reload()} variant="filled">Retry</schmancy-button>
 									</p>
 								</div>
-						  `
+							`
 						: html`
 								<schmancy-area
 									${fullHeight()}
@@ -308,7 +307,7 @@ export class VenueDetailView extends $LitElement(css`
 									class="animate-in-delay-1"
 									.default=${VenueCourts}
 								></schmancy-area>
-						  `}
+							`}
 				</schmancy-nav-drawer-content>
 			</schmancy-nav-drawer>
 		`
