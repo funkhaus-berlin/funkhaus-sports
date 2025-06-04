@@ -1,4 +1,4 @@
-import { fullHeight, select, sheet } from '@mhmo91/schmancy'
+import { select, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
@@ -423,8 +423,8 @@ export default class BookingScanner extends $LitElement(css`
 		// Permission denied view
 		if (!this.hasPermission) {
 			return html`
-				<schmancy-flex ${fullHeight()} justify="center" align="center" class="p-8">
-					<schmancy-surface type="error" rounded="all" class="p-8 ">
+				<div class="fixed inset-0 bg-black/90 flex items-center justify-center p-8">
+					<div class="bg-surface-default/80 backdrop-blur-md rounded-3xl p-8 max-w-md">
 						<schmancy-grid gap="lg" align="center">
 							<schmancy-icon size="64px">lock</schmancy-icon>
 							<schmancy-typography type="headline" align="center"> Access Denied </schmancy-typography>
@@ -432,8 +432,8 @@ export default class BookingScanner extends $LitElement(css`
 								You don't have permission to use the scanner for this venue.
 							</schmancy-typography>
 						</schmancy-grid>
-					</schmancy-surface>
-				</schmancy-flex>
+					</div>
+				</div>
 			`
 		}
 
@@ -442,7 +442,8 @@ export default class BookingScanner extends $LitElement(css`
 			const isSafariLocalhost = this.statusMessage === 'Camera blocked on Safari localhost'
 			
 			return html`
-					<schmancy-surface  ${fullHeight()} type="surface" rounded="all" class="p-8  h-full">
+				<div class="fixed inset-0 bg-black/90 flex items-center justify-center p-8">
+					<div class="bg-surface-default/80 backdrop-blur-md rounded-3xl p-8 max-w-md">
 						<schmancy-grid gap="lg" align="center">
 							<schmancy-icon size="64px">videocam_off</schmancy-icon>
 							<schmancy-typography type="headline" align="center"> Camera Not Available </schmancy-typography>
@@ -496,7 +497,8 @@ export default class BookingScanner extends $LitElement(css`
 								Try Again
 							</schmancy-button>
 						</schmancy-grid>
-					</schmancy-surface>
+					</div>
+				</div>
 			`
 		}
 
@@ -528,40 +530,30 @@ export default class BookingScanner extends $LitElement(css`
 			</div>
 
 			<!-- Status bar -->
-			<schmancy-surface type="surfaceContainer" class="fixed bottom-0 left-0 right-0 p-4 z-10">
-				<schmancy-flex justify="between" align="center">
-					<schmancy-grid gap="xs">
-						<schmancy-typography type="label" token="sm" class="text-onSurfaceVariant-default">
-							${this.venue?.name || 'Scanner'}
-						</schmancy-typography>
-						<schmancy-typography type="body" token="md"> ${this.statusMessage} </schmancy-typography>
-					</schmancy-grid>
-					${when(
-						this.scannerStatus === 'processing',
-						() => html` <schmancy-circular-progress size="24"></schmancy-circular-progress> `,
-					)}
-				</schmancy-flex>
-			</schmancy-surface>
+			<div class="fixed bottom-0 left-0 right-0 p-4 z-10">
+				<div class="bg-surface-default/80 backdrop-blur-md rounded-2xl p-4">
+					<schmancy-flex justify="between" align="center">
+						<schmancy-grid gap="xs">
+							<schmancy-typography type="label" token="sm" class="text-onSurfaceVariant-default">
+								${this.venue?.name || 'Scanner'}
+							</schmancy-typography>
+							<schmancy-typography type="body" token="md"> ${this.statusMessage} </schmancy-typography>
+						</schmancy-grid>
+						${when(
+							this.scannerStatus === 'processing',
+							() => html` <schmancy-circular-progress size="24"></schmancy-circular-progress> `,
+						)}
+					</schmancy-flex>
+				</div>
+			</div>
 
 			<!-- Result splash -->
-			<schmancy-surface
-				class="fixed inset-0 flex justify-center items-center transition-all duration-300 z-[100]
-          ${this.showResult ? 'opacity-100 visible' : 'opacity-0 invisible'} ${this.resultType === 'success'
-					? 'bg-success-container text-success-on'
-					: this.resultType === 'warning'
-						? 'bg-tertiary-container text-tertiary-on'
-						: 'bg-error-container text-error-on'}"
+			<div
+				class="fixed inset-0 flex justify-center items-center transition-all duration-300 z-[100] ${this.showResult ? 'opacity-100 visible' : 'opacity-0 invisible'}"
 			>
-				<schmancy-card class="p-8 m-4 ">
+				<div class="bg-surface-default/80 backdrop-blur-md rounded-3xl p-8 m-4 max-w-md w-full">
 					<schmancy-grid gap="lg" align="center">
-						<schmancy-icon
-							size="64px"
-							class="${this.resultType === 'success'
-								? 'text-success-on'
-								: this.resultType === 'warning'
-									? 'text-warning-on'
-									: 'text-error-on'}"
-						>
+						<schmancy-icon size="64px" class="text-onSurface-default">
 							${this.resultType === 'success' ? 'check_circle' : this.resultType === 'warning' ? 'warning' : 'error'}
 						</schmancy-icon>
 						<schmancy-typography type="headline" align="center"> ${this.resultMessage} </schmancy-typography>
@@ -574,8 +566,8 @@ export default class BookingScanner extends $LitElement(css`
 							`,
 						)}
 					</schmancy-grid>
-				</schmancy-card>
-			</schmancy-surface>
+				</div>
+			</div>
 		`
 	}
 }
