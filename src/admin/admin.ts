@@ -48,9 +48,22 @@ export default class FunkhausAdmin extends $LitElement() {
 		// Handle fullscreen events
 		this.setupFullscreenListeners()
 
-		// Handle route changes
-		this.setupRouteListeners()
-	}
+		// Combined route listener for both fullscreen state and active tab
+		area
+			.on('admin')
+			.pipe(
+				takeUntil(this.disconnecting),
+				tap(route => {
+					// Handle fullscreen state based on component type
+					const componentName = route.component.toLowerCase()
+
+					// Set fullscreen mode for specific views
+					this.fullScreen = componentName === 'venue-detail-view'
+					this.activeTab = componentName
+          this.requestUpdate()
+				}),
+			)
+			.subscribe()	}
 
 	private checkUserAuth(): void {
 		const user = auth.currentUser
@@ -96,23 +109,6 @@ export default class FunkhausAdmin extends $LitElement() {
 			})
 	}
 
-	private setupRouteListeners(): void {
-		// Combined route listener for both fullscreen state and active tab
-		area
-			.on('admin')
-			.pipe(
-				takeUntil(this.disconnecting),
-				tap(route => {
-					// Handle fullscreen state based on component type
-					const componentName = route.component.toLowerCase()
-
-					// Set fullscreen mode for specific views
-					this.fullScreen = componentName === 'venue-detail-view'
-					this.activeTab = componentName
-				}),
-			)
-			.subscribe()
-	}
 
 	protected render() {
 		const contentDrawerClasses = {
@@ -124,7 +120,7 @@ export default class FunkhausAdmin extends $LitElement() {
 				<schmancy-nav-drawer-navbar .hidden=${!!this.fullScreen} width="180px">
 					<schmancy-list>
 						<schmancy-list-item
-							.selected=${this.activeTab === 'venues-management'}
+							.selected=${this.activeTab == 'venues-management'}
 							@click=${() => {
 								this.navigateToVenues()
 								schmancyNavDrawer.close()
@@ -139,14 +135,13 @@ export default class FunkhausAdmin extends $LitElement() {
 						</schmancy-list-item>
 
 						<schmancy-list-item
-							.selected=${this.activeTab === 'users'}
+							.selected=${this.activeTab == 'funkhaus-users'}
 							@click=${() => {
 								this.activeTab = 'users';
 								schmancyNavDrawer.close();
 								area.push({
 									area: 'admin',
 									component: Users,
-									params: { view: 'users' },
 								});
 							}}
 							rounded
