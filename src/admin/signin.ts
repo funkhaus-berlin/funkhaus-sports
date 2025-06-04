@@ -3,8 +3,6 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
-import { of } from 'rxjs'
-import { catchError, tap } from 'rxjs/operators'
 import { auth as firebaseAuth } from 'src/firebase/firebase'
 import 'src/public/shared/logo'
 import { User, userContext, UserRole } from 'src/user.context'
@@ -38,51 +36,50 @@ export default class FunkhausSportsSignin extends $LitElement() {
 
 		this.busy = true
 		this.requestUpdate()
-		of(this.credentials).pipe(
-			tap(() => console.log('Attempting sign in...')),
-			tap(async (creds) => {
-				const authResult = await signInWithEmailAndPassword(firebaseAuth, creds.email, creds.password)
-				console.log('Sign in successful')
-				
-				// Create a new User instance with the necessary properties
-				const user = new User()
-				user.email = authResult.user.email || ''
-				user.displayName = authResult.user.displayName || ''
-				user.uid = authResult.user.uid
-				user.role = 'super_admin' as UserRole
-				user.venueAccess = []
-				userContext.set(user)
-				
-				// Navigate to admin area
-				area.push({
-					component: FunkhausAdmin,
-					area: 'root',
-					historyStrategy: 'replace',
-				})
-				area.push({
-					component: VenueManagement,
-					area: 'admin',
-				})
-			}),
-			catchError((error) => {
-				this.showForgotPass = true
-				
-				// Handle specific Firebase error codes
-				let errorMessage = 'Unable to sign in. Please try again.'
-				if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-					errorMessage = 'Invalid email or password'
-				} else if (error.code === 'auth/too-many-requests') {
-					errorMessage = 'Too many failed attempts. Please try again later.'
-				} else if (error.code === 'auth/network-request-failed') {
-					errorMessage = 'Network error. Please check your connection.'
-				}
-				
-				$notify.error(errorMessage)
-				console.error('Sign in error:', error)
-				return of(null)
-			}),
 		
-		).subscribe()
+		try {
+			console.log('Attempting sign in...')
+			const authResult = await signInWithEmailAndPassword(firebaseAuth, this.credentials.email, this.credentials.password)
+			console.log('Sign in successful')
+			
+			// Create a new User instance with the necessary properties
+			const user = new User()
+			user.email = authResult.user.email || ''
+			user.displayName = authResult.user.displayName || ''
+			user.uid = authResult.user.uid
+			user.role = 'super_admin' as UserRole
+			user.venueAccess = []
+			userContext.set(user)
+			
+			// Navigate to admin area
+			area.push({
+				component: FunkhausAdmin,
+				area: 'root',
+				historyStrategy: 'replace',
+			})
+			area.push({
+				component: VenueManagement,
+				area: 'admin',
+			})
+		} catch (error: any) {
+			this.showForgotPass = true
+			
+			// Handle specific Firebase error codes
+			let errorMessage = 'Unable to sign in. Please try again.'
+			if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+				errorMessage = 'Invalid email or password'
+			} else if (error.code === 'auth/too-many-requests') {
+				errorMessage = 'Too many failed attempts. Please try again later.'
+			} else if (error.code === 'auth/network-request-failed') {
+				errorMessage = 'Network error. Please check your connection.'
+			}
+			
+			$notify.error(errorMessage)
+			console.error('Sign in error:', error)
+		} finally {
+			this.busy = false
+			this.requestUpdate()
+		}
 	}
 
 	
