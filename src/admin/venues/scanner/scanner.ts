@@ -345,6 +345,7 @@ export default class BookingScanner extends $LitElement(css`
 
 		sheet.open({
 			component: detailsSheet,
+      header:'hidden'
 		})
 	}
 
