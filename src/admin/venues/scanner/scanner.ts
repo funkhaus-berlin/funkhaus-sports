@@ -37,6 +37,25 @@ export default class BookingScanner extends $LitElement(css`
 		user-select: none;
 		-webkit-touch-callout: none;
 	}
+	
+	@keyframes splash-in {
+		0% {
+			transform: scale(0) rotate(0deg);
+			opacity: 0;
+		}
+		50% {
+			transform: scale(1.5) rotate(180deg);
+			opacity: 1;
+		}
+		100% {
+			transform: scale(1) rotate(360deg);
+			opacity: 0.8;
+		}
+	}
+	
+	.splash-animation {
+		animation: splash-in 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+	}
 `) {
 	@property({ type: String }) venueId = ''
 
@@ -49,6 +68,8 @@ export default class BookingScanner extends $LitElement(css`
 	@state() private resultMessage = ''
 	@state() private resultDetails = ''
 	@state() private permissionState: PermissionState = 'prompt'
+	@state() private showSplash = false
+	@state() private splashColor = ''
 
 	@query('#video')
 	private videoElement!: HTMLVideoElement
@@ -308,6 +329,8 @@ export default class BookingScanner extends $LitElement(css`
 			// Valid for check-in
 			this.showSuccess('Valid booking', booking.userName || 'Guest')
 			this.playFeedback('success')
+			// Trigger success splash
+			this.triggerSplash('success')
 		}
 
 		// Show booking details after a brief delay
@@ -348,6 +371,9 @@ export default class BookingScanner extends $LitElement(css`
 		this.showResult = true
 		this.scannerStatus = 'error'
 		this.playFeedback('error')
+
+		// Trigger color splash for errors
+		this.triggerSplash('error')
 
 		// Auto-reset after showing error
 		timer(3000).subscribe(() => {
@@ -401,6 +427,17 @@ export default class BookingScanner extends $LitElement(css`
 		
 		// Try to start camera again
 		await this.startCamera()
+	}
+
+	private triggerSplash(type: 'success' | 'error') {
+		// Set splash color based on type
+		this.splashColor = type === 'error' ? 'bg-error-default' : 'bg-primary-default'
+		this.showSplash = true
+		
+		// Hide splash after animation
+		timer(800).subscribe(() => {
+			this.showSplash = false
+		})
 	}
 
 	disconnectedCallback() {
@@ -517,6 +554,18 @@ export default class BookingScanner extends $LitElement(css`
 				<div
 					class="absolute inset-0 pointer-events-none bg-gradient-radial from-transparent via-transparent to-black/60"
 				></div>
+
+				<!-- Color splash effect -->
+				${when(
+					this.showSplash,
+					() => html`
+						<div class="absolute inset-0 pointer-events-none splash-animation">
+							<div class="absolute inset-0 ${this.splashColor} opacity-70"></div>
+							<div class="absolute inset-0 ${this.splashColor} opacity-50 blur-3xl scale-110"></div>
+							<div class="absolute inset-0 bg-gradient-radial from-white/20 via-transparent to-transparent"></div>
+						</div>
+					`
+				)}
 
 				${when(
 					this.scannerStatus === 'scanning',
