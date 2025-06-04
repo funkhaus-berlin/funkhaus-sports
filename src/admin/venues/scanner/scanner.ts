@@ -461,7 +461,7 @@ export default class BookingScanner extends $LitElement(css`
 		if (!this.hasPermission) {
 			return html`
 				<div class="fixed inset-0 bg-black/90 flex items-center justify-center p-8">
-					<div class="bg-surface-default/80 backdrop-blur-md rounded-3xl p-8 max-w-md">
+					<div class=" backdrop-blur-md rounded-3xl p-8 max-w-md">
 						<schmancy-grid gap="lg" align="center">
 							<schmancy-icon size="64px">lock</schmancy-icon>
 							<schmancy-typography type="headline" align="center"> Access Denied </schmancy-typography>
@@ -480,7 +480,7 @@ export default class BookingScanner extends $LitElement(css`
 			
 			return html`
 				<div class="fixed inset-0 bg-black/90 flex items-center justify-center p-8">
-					<div class="bg-surface-default/80 backdrop-blur-md rounded-3xl p-8 max-w-md">
+					<div class=" backdrop-blur-md rounded-3xl p-8 max-w-md">
 						<schmancy-grid gap="lg" align="center">
 							<schmancy-icon size="64px">videocam_off</schmancy-icon>
 							<schmancy-typography type="headline" align="center"> Camera Not Available </schmancy-typography>
@@ -579,11 +579,11 @@ export default class BookingScanner extends $LitElement(css`
 			</div>
 
 			<!-- Status bar -->
-			<div class="fixed bottom-0 left-0 right-0 p-4 z-10">
-				<div class="bg-surface-default/80 backdrop-blur-md rounded-2xl p-4">
+			<div class="fixed bottom-0 left-0 right-0 z-10 backdrop-blur-xl bg-blend-color-burn bg-gradient-to-br bg-primary-default/50 text-primary-on">
+				<div class="  rounded-2xl p-4">
 					<schmancy-flex justify="between" align="center">
 						<schmancy-grid gap="xs">
-							<schmancy-typography type="label" token="sm" class="text-onSurfaceVariant-default">
+							<schmancy-typography type="display"  class="text-onSurfaceVariant-default">
 								${this.venue?.name || 'Scanner'}
 							</schmancy-typography>
 							<schmancy-typography type="body" token="md"> ${this.statusMessage} </schmancy-typography>
@@ -600,7 +600,7 @@ export default class BookingScanner extends $LitElement(css`
 			<div
 				class="fixed inset-0 flex justify-center items-center transition-all duration-300 z-[100] ${this.showResult ? 'opacity-100 visible' : 'opacity-0 invisible'}"
 			>
-				<div class="bg-surface-default/80 backdrop-blur-md rounded-3xl p-8 m-4 max-w-md w-full">
+				<div class=" backdrop-blur-md rounded-3xl p-8 m-4 max-w-md w-full">
 					<schmancy-grid gap="lg" align="center">
 						<schmancy-icon size="64px" class="text-onSurface-default">
 							${this.resultType === 'success' ? 'check_circle' : this.resultType === 'warning' ? 'warning' : 'error'}

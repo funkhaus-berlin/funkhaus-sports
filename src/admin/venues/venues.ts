@@ -32,9 +32,9 @@ export class VenueManagement extends $LitElement() {
 				<div ${fullHeight()} class="max-w-6xl mx-auto p-6 h-full grid grid-rows-[auto_auto_1fr] gap-4">
 					<!-- Header with title -->
 					<schmancy-nav-drawer-appbar>
-						<schmancy-typography type="headline">Venue Management</schmancy-typography>
-						<schmancy-button
-							variant="filled"
+						<schmancy-typography align="left" type="headline">Venues</schmancy-typography>
+						<schmancy-icon-button
+							variant="outlined"
 							@click=${() => {
 								area.push({
 									component: VenueForm,
@@ -42,8 +42,8 @@ export class VenueManagement extends $LitElement() {
 								})
 							}}
 						>
-							<schmancy-icon>add</schmancy-icon>Add Venue
-						</schmancy-button>
+							add
+						</schmancy-icon-button>
 					</schmancy-nav-drawer-appbar>
 
 					<div class="overflow-y-auto">
@@ -72,15 +72,12 @@ export class VenueManagement extends $LitElement() {
 						// Set venue context first and ensure it's fully updated before navigating
 						venueContext.set(venue)
 
-						// Use setTimeout to ensure context is updated before navigation
-						setTimeout(() => {
-							area.push({
+						area.push({
 								component: new VenueDetailView(venue),
 								area: 'admin',
 								// Pass venue data in params for better context persistence
 								state: { venueId: venue.id },
 							})
-						}, 50)
 					}}
 				></admin-venue-card>
 

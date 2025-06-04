@@ -1,43 +1,41 @@
+import { $notify, color, fullHeight, SchmancySheetPosition, SchmancyTheme, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { color, SchmancySheetPosition, SchmancyTheme, sheet } from '@mhmo91/schmancy'
 import { css, html, TemplateResult } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { switchMap, takeUntil } from 'rxjs'
+import { User } from 'src/user.context'
 import { $usersFilter } from './context'
-import { $notify } from '@mhmo91/schmancy'
 import UserForm from './user-form'
 import { UsersDB } from './users.collection'
-import { User } from 'src/user.context'
 
 @customElement('funkhaus-users')
 export default class Users extends $LitElement(css``) {
 	@state() busy: boolean = false
 	@state() users: Map<string, User> = new Map()
-	
+
 	connectedCallback(): void {
 		super.connectedCallback()
 		$usersFilter
 			.pipe(
 				switchMap(() => UsersDB.query([])),
-				takeUntil(this.disconnecting)
+				takeUntil(this.disconnecting),
 			)
 			.subscribe(users => {
 				this.users = users
 				this.requestUpdate()
 			})
 	}
-	
+
 	render() {
 		const cols = '1fr 1.5fr auto'
 		return html`
-			<section class="px-4 relative inset-0">
-				<schmancy-grid class="mb-6" cols="auto 1fr auto" gap="md" align="center">
-					${when(this.busy, () => html`<schmancy-busy class="fixed inset-0"></schmancy-busy> `)}
-					<schmancy-typography type="headline"> Admin Users </schmancy-typography>
-					<span></span>
-					<schmancy-button
-						variant="filled"
+			<schmancy-grid gap="md" rows="auto 1fr" ${fullHeight()} class="p-2">
+				<!-- Header with title -->
+				<schmancy-nav-drawer-appbar>
+					<schmancy-typography align="left" type="headline">Users</schmancy-typography>
+					<schmancy-icon-button
+						variant="outlined"
 						@click=${() => {
 							sheet.open({
 								component: new UserForm(),
@@ -45,10 +43,10 @@ export default class Users extends $LitElement(css``) {
 							})
 						}}
 					>
-						<schmancy-icon>person_add</schmancy-icon>
-						Create User
-					</schmancy-button>
-				</schmancy-grid>
+						add
+					</schmancy-icon-button>
+				</schmancy-nav-drawer-appbar>
+
 				<schmancy-surface type="containerLow" rounded="all" elevation="2">
 					<schmancy-grid cols="1fr" gap="md">
 						<!-- Header -->
@@ -59,7 +57,7 @@ export default class Users extends $LitElement(css``) {
 								<schmancy-typography weight="bold">Actions</schmancy-typography>
 							</schmancy-grid>
 						</schmancy-surface>
-						
+
 						<!-- User List -->
 						<section class="px-0 py-0">
 							${when(
@@ -87,7 +85,9 @@ export default class Users extends $LitElement(css``) {
 								.items=${Array.from(this.users.values()) as Array<User>}
 								.renderItem=${(user: User): TemplateResult => {
 									return html`
-										<section class="overflow-hidden w-full bg-surface-default hover:bg-surface-container transition-colors">
+										<section
+											class="overflow-hidden w-full bg-surface-default hover:bg-surface-container transition-colors"
+										>
 											<schmancy-grid class="py-3 px-2" .cols=${cols} gap="md" align="center">
 												<schmancy-flex align="center" gap="sm">
 													<schmancy-icon class="text-surface-on-variant">person</schmancy-icon>
@@ -107,24 +107,23 @@ export default class Users extends $LitElement(css``) {
 													</schmancy-icon-button>
 													<schmancy-icon-button
 														@click=${() => {
-															this.busy = true;
+															this.busy = true
 															const yes = confirm('Are you sure you want to delete this user?')
 															if (yes) {
-																UsersDB.delete(user.uid)
-																	.subscribe({
-																		next: () => {
-																			this.busy = false;
-																			$notify.success('User deleted successfully');
-																			$usersFilter.next({ search: '' });
-																		},
-																		error: (error) => {
-																			this.busy = false;
-																			$notify.error('Error deleting user');
-																			console.error('Error deleting user:', error);
-																		}
-																	});
+																UsersDB.delete(user.uid).subscribe({
+																	next: () => {
+																		this.busy = false
+																		$notify.success('User deleted successfully')
+																		$usersFilter.next({ search: '' })
+																	},
+																	error: error => {
+																		this.busy = false
+																		$notify.error('Error deleting user')
+																		console.error('Error deleting user:', error)
+																	},
+																})
 															} else {
-																this.busy = false;
+																this.busy = false
 															}
 														}}
 													>
@@ -140,7 +139,7 @@ export default class Users extends $LitElement(css``) {
 						</section>
 					</schmancy-grid>
 				</schmancy-surface>
-			</section>
+			</schmancy-grid>
 		`
 	}
 }
