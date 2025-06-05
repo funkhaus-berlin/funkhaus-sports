@@ -6,30 +6,14 @@ import { catchError, filter, takeUntil, tap, throttleTime } from 'rxjs/operators
 
 /**
  * Countdown timer for booking reservations
- * - Development: 10 seconds (for testing)
- * - Production: 5 minutes
+ * Duration: 5 minutes
  */
 @customElement('booking-timer')
 export class BookingTimer extends $LitElement() {
-	// Configure timer duration based on environment
-	private static readonly TIMER_DURATION = {
-		development: 10, // 10 seconds for testing
-		production: 5 * 60 // 5 minutes for production
-	}
+	// Timer duration: 5 minutes
+	private static readonly TIMER_DURATION = 5 * 60 // 5 minutes
 	
-	private getTimerDuration(): number {
-		// Check if we're in development mode
-		const isDevelopment = window.location.hostname === 'localhost' || 
-							 window.location.hostname === '127.0.0.1' ||
-							 window.location.hostname.includes('.dev') ||
-							 window.location.hostname.includes('netlify.app')
-		
-		return isDevelopment 
-			? BookingTimer.TIMER_DURATION.development 
-			: BookingTimer.TIMER_DURATION.production
-	}
-	
-	@state() private seconds = this.getTimerDuration()
+	@state() private seconds = BookingTimer.TIMER_DURATION
 	@state() private extensionApplied = false
 	private readonly EXTENSION_TIME = 60 // 60 seconds extension
 	private readonly INTERACTION_EVENTS = ['click', 'keydown', 'touchstart', 'mousemove']
@@ -38,7 +22,7 @@ export class BookingTimer extends $LitElement() {
 		super.connectedCallback()
 		
 		// Log timer configuration
-		console.log(`BookingTimer: Using ${this.seconds} seconds (${this.seconds < 60 ? 'development' : 'production'} mode)`)
+		console.log(`BookingTimer: Using ${this.seconds} seconds`)
 		
 		// Track last user activity time
 		let lastActivityTime = Date.now()
@@ -63,7 +47,7 @@ export class BookingTimer extends $LitElement() {
 				this.seconds = Math.max(0, this.seconds - 1)
 				
 				// Check for timer extension
-				const criticalThreshold = Math.min(60, Math.floor(this.getTimerDuration() * 0.2))
+				const criticalThreshold = Math.min(60, Math.floor(BookingTimer.TIMER_DURATION * 0.2))
 				const isCritical = this.seconds <= criticalThreshold
 				const timeSinceLastActivity = Date.now() - lastActivityTime
 				const isUserActive = timeSinceLastActivity < 5000 // Active in last 5 seconds
@@ -107,10 +91,8 @@ export class BookingTimer extends $LitElement() {
 		const secs = this.seconds % 60
 		const time = `${minutes}:${secs.toString().padStart(2, '0')}`
 		// Critical when less than 20% of original time or 60 seconds (whichever is smaller)
-		const criticalThreshold = Math.min(60, Math.floor(this.getTimerDuration() * 0.2))
+		const criticalThreshold = Math.min(60, Math.floor(BookingTimer.TIMER_DURATION * 0.2))
 		const isCritical = this.seconds <= criticalThreshold
-		
-		const isDev = this.getTimerDuration() === BookingTimer.TIMER_DURATION.development
 		
 		return html`
 			<schmancy-surface 
@@ -122,7 +104,6 @@ export class BookingTimer extends $LitElement() {
 					<schmancy-icon>${isCritical ? 'timer_off' : 'timer'}</schmancy-icon>
 					<span>Booking reserved for</span>
 					<span class="font-mono font-semibold">${time}</span>
-					${isDev ? html`<span class="text-[10px] opacity-70">(DEV)</span>` : ''}
 					${this.extensionApplied ? html`
 						<schmancy-icon class="text-success-default animate-pulse ml-auto" title="Timer extended due to activity">schedule</schmancy-icon>
 					` : ''}
