@@ -71,6 +71,36 @@ A modern, full-featured sports facility booking platform built with Web Componen
 - `npm run lint` - Run linting
 - `npm run typecheck` - TypeScript type checking
 
+### Stripe Integration
+
+The Stripe integration (`src/public/stripe.ts`) is configured with automatic environment detection:
+
+#### Configuration
+```typescript
+// Automatically switches between test and live keys
+export const PUBLISHABLE_KEY = import.meta.env.DEV
+    ? 'pk_test_...' // Test key for development
+    : 'pk_live_...' // Live key for production
+
+// Initialize with automatic locale detection
+export const stripePromise = loadStripe(PUBLISHABLE_KEY, { locale: 'auto' })
+```
+
+#### Key Features
+- **Environment-aware**: Automatically uses test keys in development, live keys in production
+- **Reactive streams**: Uses RxJS for handling asynchronous payment operations
+- **Theme integration**: Stripe Elements automatically match the app's Schmancy design system
+- **Error handling**: Comprehensive error handling for payment failures
+- **Dynamic styling**: Reads CSS variables at runtime for consistent theming
+
+#### Payment Flow
+1. Frontend calls `createPaymentIntent()` with booking details
+2. Backend creates PaymentIntent via Stripe API
+3. Frontend uses client secret to render Stripe Elements
+4. Customer enters payment details in secure iframe
+5. Payment confirmation handled via `stripe.confirmPayment()`
+6. Webhook confirms final payment status
+
 ### Stripe Webhook Testing
 
 To test Stripe webhooks locally:

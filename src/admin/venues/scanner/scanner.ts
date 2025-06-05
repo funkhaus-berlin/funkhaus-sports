@@ -568,15 +568,6 @@ export default class BookingScanner extends $LitElement(css`
 					`
 				)}
 
-				${when(
-					this.scannerStatus === 'scanning',
-					() => html`
-						<!-- Scanning frame with Tailwind animation -->
-						<div
-							class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(80vw,300px)] h-[min(80vw,300px)] border-[3px] border-primary-default rounded-3xl opacity-80 animate-pulse"
-						></div>
-					`,
-				)}
 			</div>
 
 			<!-- Status bar -->
