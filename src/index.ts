@@ -17,6 +17,9 @@ import { BookingConfirmationRoute } from './public/booking-confirmation/booking-
 import './public/shared'
 import { VenuesLandingPage } from './public/venues/venues'
 import './schmancy'
+import { CourtBookingSystem } from './public/book/book'
+import { bookingContext, BookingProgressContext, BookingStep } from './public/book/context'
+import { venueContext } from './admin/venues/venue-context'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -60,6 +63,42 @@ export class AppIndex extends $LitElement() {
 				})
 			})
 			return
+		}
+
+		// Handle venue route with ID
+		if (path.startsWith('/venue/')) {
+			const venueId = path.split('/venue/')[1]
+			if (venueId) {
+				// Load venues first, then handle navigation
+				VenuesDB.subscribeToCollection().pipe(
+					take(1),
+					tap(venues => {
+						const venue = venues.get(venueId)
+						if (venue) {
+							// Reset booking data and set venue
+							bookingContext.clear()
+							bookingContext.set({ venueId: venue.id })
+							venueContext.set(venue)
+							BookingProgressContext.set({ currentStep: BookingStep.Date })
+							
+							// Navigate to booking system
+							area.push({
+								component: new CourtBookingSystem(),
+								area: 'root',
+                historyStrategy:'silent'
+							})
+						} else {
+							// Venue not found, redirect to venues page
+							console.error(`Venue with ID ${venueId} not found`)
+							area.push({
+								component: VenuesLandingPage,
+								area: 'root',
+							})
+						}
+				}),
+			).subscribe()
+				return
+			}
 		}
 
 		// Handle admin panel
@@ -123,6 +162,12 @@ export class AppIndex extends $LitElement() {
 			// Check for scanner route
 			if (path.startsWith('/scanner')) {
 				return document.createElement('booking-scanner')
+			}
+
+			// Check for venue route
+			if (path.startsWith('/venue/')) {
+				// Will be handled in connectedCallback
+				return VenuesLandingPage
 			}
 
 			// Default to landing page
