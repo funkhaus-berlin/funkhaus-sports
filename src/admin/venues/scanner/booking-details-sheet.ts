@@ -93,7 +93,7 @@ export class BookingDetailsSheet extends $LitElement() {
             <div class="flex justify-between items-start mb-4">
               <div>
                 <schmancy-typography type="headline" token="lg" class="font-bold">
-                  ${this.booking.status === 'completed' ? 'Checked In' : 'Check-In Required'}
+                  ${this.booking.status === 'completed' ? 'Checked In' : 'Check-In'}
                 </schmancy-typography>
                 <schmancy-typography type="body" token="md" class="opacity-90">
                   Booking #${this.booking.id.slice(-8).toUpperCase()}

@@ -1,24 +1,23 @@
-import { select } from '@mhmo91/schmancy'
+import { $notify, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
+import { collection, doc } from 'firebase/firestore'
 import { css, html, nothing } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { createRef, ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import { catchError, combineLatest, debounceTime, delay, distinctUntilChanged, filter, map, of, switchMap, take, takeUntil } from 'rxjs'
-import { retryWhen, tap } from 'rxjs/operators'
+import { catchError, combineLatest, debounceTime, distinctUntilChanged, filter, map, of, switchMap, takeUntil } from 'rxjs'
+import { tap } from 'rxjs/operators'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { availabilityContext, availabilityLoading$, BookingFlowType, getAvailableDurations } from 'src/availability-context'
+import { BookingService } from 'src/bookingServices/booking.service'
 import { Court } from 'src/db/courts.collection'
+import { db } from 'src/firebase/firebase'
 import { toUserTimezone } from 'src/utils/timezone'
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { Duration } from '../../types'
-import { $notify } from '@mhmo91/schmancy'
-import { BookingsDB } from 'src/db/bookings.collection'
-import { doc, collection } from 'firebase/firestore'
-import { db } from 'src/firebase/firebase'
 
 const DURATION_LABELS: Record<number, { full: string; compact: string }> = {
 	30: { full: '30 minutes', compact: '30m' },
@@ -56,6 +55,7 @@ export class DurationSelectionStep extends $LitElement(css`
 	private scrollContainerRef = createRef<HTMLElement>()
 	private durationRefs = new Map<number, HTMLElement>()
 	private lastSuccessfulDurations: Duration[] = []
+	private bookingService = new BookingService()
 
 	connectedCallback(): void {
 		super.connectedCallback()
@@ -287,34 +287,42 @@ export class DurationSelectionStep extends $LitElement(css`
 		// Add the ID to booking data
 		const bookingWithId = { ...bookingData, id: bookingId }
 		
-		// Create temporary booking directly in Firebase with retries
-		BookingsDB.upsert(bookingWithId, bookingId)
+		// Create temporary booking using BookingService with conflict checking
+		this.bookingService.createBooking(bookingWithId)
 			.pipe(
-				// Add retry logic for transient failures
-				retryWhen(errors => 
-					errors.pipe(
-						tap(error => console.warn('Booking creation attempt failed:', error)),
-						delay(1000),
-						take(3)
-					)
-				),
 				tap(() => console.log(`Successfully created booking ${bookingId}`)),
 				catchError(error => {
-					console.error('Failed to create temporary booking after retries:', error)
-					$notify.error('Failed to reserve booking. Please try again.')
+					console.error('Failed to create temporary booking:', error)
+					
+					// Check if the error is due to time slot conflict
+					if (error.message?.includes('already booked')) {
+						// Show the error message from the service (it already has a good message)
+						$notify.error(error.message, { duration: 5000 })
+						
+						
+						// Clear the current time selection
+						bookingContext.set({
+							...this.booking,
+							startTime: undefined,
+							endTime: undefined,
+							price: 0
+						}, true)
+					} else {
+						// For other errors, show a generic message
+						$notify.error(error.message || 'Failed to reserve booking. Please try again.')
+					}
+					
 					this.isCreatingBooking = false
 					return of(null)
 				})
 			)
-			.subscribe(success => {
-				if (success) {
-					// Update booking context with the full booking data
-					bookingContext.set({
-						...bookingWithId
-					}, true)
+			.subscribe(createdBooking => {
+				if (createdBooking) {
+					// Update booking context with the created booking data
+					bookingContext.set(createdBooking, true)
 					
 					// Store booking ID in session storage as backup
-					sessionStorage.setItem('currentBookingId', bookingId)
+					sessionStorage.setItem('currentBookingId', createdBooking.id!)
 					
 					// Show notification about reservation
 					$notify.success('Your booking has been reserved for 5 minutes', { duration: 3000 })

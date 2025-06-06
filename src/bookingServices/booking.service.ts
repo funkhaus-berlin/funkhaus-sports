@@ -8,10 +8,8 @@ import {
 	getFirestore,
 	query,
 	runTransaction,
-	serverTimestamp,
 	updateDoc,
-	where,
-	setDoc
+	where
 } from 'firebase/firestore'
 import { Observable, from, of, throwError } from 'rxjs'
 import { catchError, map, switchMap } from 'rxjs/operators'
@@ -43,110 +41,91 @@ export class BookingService {
 		const bookingsRef = collection(this.firestore, 'bookings')
 		const bookingId = booking.id || doc(bookingsRef).id
 		
-		// If this is a holding booking (payment not confirmed yet), just create the booking record
-		// without reserving time slots to prevent blocking courts for payments that might fail
+		// If this is a holding booking (payment not confirmed yet), check for conflicts
+		// with ALL existing bookings (confirmed, paid, or holding) to prevent any overlapping bookings
 		if (booking.status === 'holding') {
-			console.log('Creating holding booking without reserving slots:', bookingId)
-			const bookingData = this.prepareBookingData(booking, bookingId)
-			const newBookingRef = doc(bookingsRef, bookingId)
+			console.log('Creating holding booking with conflict check:', bookingId)
 			
-			return from(setDoc(newBookingRef, bookingData)).pipe(
-				map(() => ({ ...bookingData, id: bookingId } as Booking)),
+			return from(
+				runTransaction(this.firestore, async transaction => {
+					// Query for ALL existing bookings (including holding) on the same court and date
+					// to prevent any overlapping bookings
+					const bookingsQuery = query(
+						bookingsRef,
+						where('courtId', '==', booking.courtId),
+						where('date', '==', booking.date),
+						where('status', 'in', ['confirmed', 'paid', 'holding'])
+					)
+					
+					// Note: We need to use getDocs for queries, not transaction.get
+		const conflictingBookingsSnapshot = await getDocs(bookingsQuery)
+					
+					// Check each existing booking for time overlap
+					for (const docSnap of conflictingBookingsSnapshot.docs) {
+						const existingBooking = docSnap.data() as Booking
+						
+						// Parse times for comparison
+						const newStart = new Date(booking.startTime).getTime()
+						const newEnd = new Date(booking.endTime).getTime()
+						const existingStart = new Date(existingBooking.startTime).getTime()
+						const existingEnd = new Date(existingBooking.endTime).getTime()
+						
+						// Check for any overlap (start1 < end2 AND end1 > start2)
+						if (newStart < existingEnd && newEnd > existingStart) {
+							throw new Error('This time slot is already booked. Please select another time.')
+						}
+					}
+					
+					// No conflicts found, create the holding booking
+					const bookingData = this.prepareBookingData(booking, bookingId)
+					const newBookingRef = doc(bookingsRef, bookingId)
+					transaction.set(newBookingRef, bookingData)
+					
+					console.log(`Created holding booking ${bookingId} after checking for conflicts`)
+					return { ...bookingData, id: bookingId }
+				})
+			).pipe(
+				map(result => result as Booking),
 				catchError(error => {
 					console.error('Error creating holding booking:', error)
+					if (error.message.includes('already booked')) {
+						return throwError(() => new Error(error.message))
+					}
 					return throwError(() => new Error(`Failed to create holding booking: ${error.message}`))
 				})
 			)
 		}
 		
-		// Otherwise, proceed with normal booking creation + slot reservation
-		// Parse date to get month document ID
-		const [year, month] = booking.date.split('-')
-		const monthDocId = `${year}-${month}`
-		
-		// Get references
-		const availabilityRef = doc(this.firestore, 'availability', monthDocId)
-
-		// Create a transaction to ensure atomicity
+		// For confirmed/paid bookings, check for conflicts and create
+		// Use the same logic as holding bookings to ensure consistency
 		return from(
 			runTransaction(this.firestore, async transaction => {
-				// Check availability
-				const availabilityDoc = await transaction.get(availabilityRef)
-
-				if (!availabilityDoc.exists()) {
-					return this.createBookingWithoutAvailabilityCheck(bookingId, booking, transaction)
-				}
-
-				const availabilityData = availabilityDoc.data()
-
-				// Check if slots exist for this court and date
-				if (!availabilityData.courts?.[booking.courtId]?.[booking.date]?.slots) {
-					return this.createBookingWithoutAvailabilityCheck(bookingId, booking, transaction)
-				}
-
-				// Get the slots for this court and date
-				const slots = availabilityData.courts[booking.courtId][booking.date].slots
-
-				// Calculate time slots to reserve
-				const startDate = new Date(booking.startTime)
-				const endDate = new Date(booking.endTime)
-				const startHour = startDate.getHours()
-				const startMinute = startDate.getMinutes()
-				const endHour = endDate.getHours()
-				const endMinute = endDate.getMinutes()
-				const adjustedEndHour = endMinute === 0 ? endHour : endHour + 1
-
-				// Check if all slots are available
-				for (let hour = startHour; hour < adjustedEndHour; hour++) {
-					// Check full hour slot
-					const timeSlot = `${hour.toString().padStart(2, '0')}:00`
-
-					if (!slots[timeSlot] || !slots[timeSlot].isAvailable) {
-						throw new Error(`Time slot ${timeSlot} is already booked. Please select another time.`)
-					}
-
-					// Skip half-hour check for start/end hours if needed
-					if ((hour === startHour && startMinute === 30) || (hour === endHour - 1 && endMinute === 0)) {
-						continue
-					}
-
-					// Check half-hour slot
-					const halfHourSlot = `${hour.toString().padStart(2, '0')}:30`
-					if (!slots[halfHourSlot] || !slots[halfHourSlot].isAvailable) {
-						throw new Error(`Time slot ${halfHourSlot} is already booked. Please select another time.`)
+				// Query for existing bookings to check availability
+				const bookingsQuery = query(
+					bookingsRef,
+					where('courtId', '==', booking.courtId),
+					where('date', '==', booking.date),
+					where('status', 'in', ['confirmed', 'paid', 'holding'])
+				)
+				
+				const existingBookings = await getDocs(bookingsQuery)
+				
+				// Check for time conflicts
+				for (const docSnap of existingBookings.docs) {
+					const existing = docSnap.data() as Booking
+					
+					const newStart = new Date(booking.startTime).getTime()
+					const newEnd = new Date(booking.endTime).getTime()
+					const existingStart = new Date(existing.startTime).getTime()
+					const existingEnd = new Date(existing.endTime).getTime()
+					
+					// Check for overlap
+					if (newStart < existingEnd && newEnd > existingStart) {
+						throw new Error('This time slot is already booked. Please select another time.')
 					}
 				}
-
-				// Mark slots as unavailable
-				const updates: Record<string, any> = {}
-				for (let hour = startHour; hour < adjustedEndHour; hour++) {
-					// Update full hour slot
-					const timeSlot = `${hour.toString().padStart(2, '0')}:00`
-					const slotPath = `courts.${booking.courtId}.${booking.date}.slots.${timeSlot}`
-
-					updates[`${slotPath}.isAvailable`] = false
-					updates[`${slotPath}.bookedBy`] = booking.userId || null
-					updates[`${slotPath}.bookingId`] = bookingId
-
-					// Skip half-hour update for start/end hours if needed
-					if ((hour === startHour && startMinute === 30) || (hour === endHour - 1 && endMinute === 0)) {
-						continue
-					}
-
-					// Update half-hour slot
-					const halfHourSlot = `${hour.toString().padStart(2, '0')}:30`
-					const halfSlotPath = `courts.${booking.courtId}.${booking.date}.slots.${halfHourSlot}`
-
-					updates[`${halfSlotPath}.isAvailable`] = false
-					updates[`${halfSlotPath}.bookedBy`] = booking.userId || null
-					updates[`${halfSlotPath}.bookingId`] = bookingId
-				}
-
-				// Update availability and timestamp
-				updates.updatedAt = serverTimestamp()
-				transaction.update(availabilityRef, updates)
-
-				// Create the booking document
+				
+				// No conflicts, create the booking
 				const bookingData = this.prepareBookingData(booking, bookingId)
 				const newBookingRef = doc(bookingsRef, bookingId)
 				transaction.set(newBookingRef, bookingData)
@@ -170,22 +149,6 @@ export class BookingService {
 		)
 	}
 
-	/**
-	 * Create booking without checking availability
-	 */
-	private async createBookingWithoutAvailabilityCheck(bookingId: string, booking: Booking, transaction: any) {
-		const bookingsRef = collection(this.firestore, 'bookings')
-		const newBookingRef = doc(bookingsRef, bookingId)
-		const bookingData = this.prepareBookingData(booking, bookingId)
-
-		transaction.set(newBookingRef, bookingData)
-		console.log(`Created booking ${bookingId} without availability check`)
-
-		return {
-			...bookingData,
-			id: bookingId,
-		}
-	}
 
 	/**
 	 * Prepare booking data with required fields
@@ -281,45 +244,23 @@ export class BookingService {
 					return throwError(() => new Error('Booking not found'))
 				}
 
-				const booking = docSnap.data() as Booking
+				// const booking = docSnap.data() as Booking - not used anymore
 				
-				// If transitioning to paid status and booking was in holding status,
-				// we need to reserve the slots
-				if (paymentStatus === 'paid' && booking.status === 'holding') {
-					return this.reserveSlotsForBooking(booking).pipe(
-						switchMap(() => {
-							// Now update the booking status
-							const updateData = {
-								paymentStatus,
-								updatedAt: new Date().toISOString(),
-								status: 'confirmed',
-							}
-
-							return from(updateDoc(bookingRef, updateData)).pipe(
-								switchMap(() => this.getBooking(bookingId)),
-								map(updatedBooking => {
-									if (!updatedBooking) throw new Error('Booking not found after update')
-									return updatedBooking
-								}),
-							)
-						})
-					)
-				} else {
-					// Regular update without slot reservation
-					const updateData = {
-						paymentStatus,
-						updatedAt: new Date().toISOString(),
-						...(paymentStatus === 'paid' ? { status: 'confirmed' } : {}),
-					}
-
-					return from(updateDoc(bookingRef, updateData)).pipe(
-						switchMap(() => this.getBooking(bookingId)),
-						map(booking => {
-							if (!booking) throw new Error('Booking not found after update')
-							return booking
-						}),
-					)
+				// Simply update the booking status
+				// No need for separate slot reservation since availability is checked via bookings
+				const updateData = {
+					paymentStatus,
+					updatedAt: new Date().toISOString(),
+					...(paymentStatus === 'paid' ? { status: 'confirmed' } : {}),
 				}
+
+				return from(updateDoc(bookingRef, updateData)).pipe(
+					switchMap(() => this.getBooking(bookingId)),
+					map(booking => {
+						if (!booking) throw new Error('Booking not found after update')
+						return booking
+					}),
+				)
 			}),
 			catchError(error => {
 				console.error('Error updating payment status:', error)
@@ -328,113 +269,6 @@ export class BookingService {
 		)
 	}
 
-	/**
-	 * Reserve time slots for an existing booking
-	 * This is used when a holding booking transitions to confirmed status after payment
-	 */
-	private reserveSlotsForBooking(booking: Booking): Observable<void> {
-		// Parse date to get month document ID
-		const [year, month] = booking.date.split('-')
-		const monthDocId = `${year}-${month}`
-		
-		// Get references
-		const availabilityRef = doc(this.firestore, 'availability', monthDocId)
-
-		// Create a transaction to ensure atomicity
-		return from(
-			runTransaction(this.firestore, async transaction => {
-				// Check availability
-				const availabilityDoc = await transaction.get(availabilityRef)
-
-				if (!availabilityDoc.exists()) {
-					console.log(`No availability document for ${monthDocId}, skipping slot reservation`)
-					return
-				}
-
-				const availabilityData = availabilityDoc.data()
-
-				// Check if slots exist for this court and date
-				if (!availabilityData.courts?.[booking.courtId]?.[booking.date]?.slots) {
-					console.log(`No slots data for court ${booking.courtId} on ${booking.date}, skipping slot reservation`)
-					return
-				}
-
-				// Get the slots for this court and date
-				const slots = availabilityData.courts[booking.courtId][booking.date].slots
-
-				// Calculate time slots to reserve
-				const startDate = new Date(booking.startTime)
-				const endDate = new Date(booking.endTime)
-				const startHour = startDate.getHours()
-				const startMinute = startDate.getMinutes()
-				const endHour = endDate.getHours()
-				const endMinute = endDate.getMinutes()
-				const adjustedEndHour = endMinute === 0 ? endHour : endHour + 1
-
-				// Check if all slots are available (they should be for a holding booking)
-				for (let hour = startHour; hour < adjustedEndHour; hour++) {
-					// Check full hour slot
-					const timeSlot = `${hour.toString().padStart(2, '0')}:00`
-
-					if (slots[timeSlot] && !slots[timeSlot].isAvailable) {
-						console.warn(`Time slot ${timeSlot} is already booked when trying to reserve for booking ${booking.id}`)
-						// Don't throw error, just log warning
-					}
-
-					// Skip half-hour check for start/end hours if needed
-					if ((hour === startHour && startMinute === 30) || (hour === endHour - 1 && endMinute === 0)) {
-						continue
-					}
-
-					// Check half-hour slot
-					const halfHourSlot = `${hour.toString().padStart(2, '0')}:30`
-					if (slots[halfHourSlot] && !slots[halfHourSlot].isAvailable) {
-						console.warn(`Time slot ${halfHourSlot} is already booked when trying to reserve for booking ${booking.id}`)
-						// Don't throw error, just log warning
-					}
-				}
-
-				// Mark slots as unavailable
-				const updates: Record<string, any> = {}
-				for (let hour = startHour; hour < adjustedEndHour; hour++) {
-					// Update full hour slot
-					const timeSlot = `${hour.toString().padStart(2, '0')}:00`
-					const slotPath = `courts.${booking.courtId}.${booking.date}.slots.${timeSlot}`
-
-					updates[`${slotPath}.isAvailable`] = false
-					updates[`${slotPath}.bookedBy`] = booking.userId || null
-					updates[`${slotPath}.bookingId`] = booking.id
-
-					// Skip half-hour update for start/end hours if needed
-					if ((hour === startHour && startMinute === 30) || (hour === endHour - 1 && endMinute === 0)) {
-						continue
-					}
-
-					// Update half-hour slot
-					const halfHourSlot = `${hour.toString().padStart(2, '0')}:30`
-					const halfSlotPath = `courts.${booking.courtId}.${booking.date}.slots.${halfHourSlot}`
-
-					updates[`${halfSlotPath}.isAvailable`] = false
-					updates[`${halfSlotPath}.bookedBy`] = booking.userId || null
-					updates[`${halfSlotPath}.bookingId`] = booking.id
-				}
-
-				// Update availability and timestamp
-				updates.updatedAt = serverTimestamp()
-				transaction.update(availabilityRef, updates)
-
-				console.log(`Reserved slots for booking ${booking.id}`)
-			}),
-		).pipe(
-			map(() => undefined),
-			catchError(error => {
-				console.error('Error reserving slots for booking:', error)
-				// Don't fail the entire payment update if slot reservation fails
-				// The booking is already paid for, so we should complete the transaction
-				return of(undefined)
-			}),
-		)
-	}
 
 	/**
 	 * Update lastActive timestamp for a booking
