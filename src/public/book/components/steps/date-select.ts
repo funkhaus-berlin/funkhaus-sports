@@ -563,11 +563,11 @@ export class DateSelectionStep extends $LitElement(css`
 		const isPastDate = dateDay.isBefore(this._today, 'day')
 		const dateValue = dateDay.format('YYYY-MM-DD')
 
-		// Apply golden ratio to width/height
-		const compactWidth = 'w-14'
-		const compactHeight = `h-${Math.round(14 * GOLDEN_RATIO)}`
+		// Apply golden ratio to width/height with responsive sizing
+		const compactWidth = 'w-12 sm:w-14'
+		const compactHeight = 'h-20 sm:h-24'
 		const activeWidth = 'w-full'
-		const activeHeight = isCompact ? compactHeight : 'h-20'
+		const activeHeight = isCompact ? compactHeight : 'h-16 sm:h-20 md:h-24'
 
 		// ARIA attributes for accessibility
 		const ariaSelected = isSelected ? 'true' : 'false'
@@ -629,11 +629,10 @@ export class DateSelectionStep extends $LitElement(css`
 				aria-disabled=${ariaDisabled}
 				aria-label=${ariaLabel}
 			>
-				<div class="text-xs font-medium ${isWeekend && !isSelected ? 'text-primary-default' : ''}">
+				<div class="text-xs sm:text-sm font-medium ${isWeekend && !isSelected ? 'text-primary-default' : ''}">
 					${dateDay.format('ddd')}
 				</div>
-				<div class="text-${isCompact ? 'base' : 'lg'} font-bold">${date.getDate()}</div>
-				<div class="text-xs">${dateDay.format('MMM')}</div>
+				<div class="${isCompact ? 'text-sm sm:text-base' : 'text-base sm:text-lg md:text-xl'} font-bold">${date.getDate()}</div>
 			</div>
 		`
 	}
@@ -647,6 +646,27 @@ export class DateSelectionStep extends $LitElement(css`
 
 		// Days of week for header - adjusted for locale
 		const daysOfWeek = this.getDaysOfWeek()
+		
+		// Determine the primary month to display based on majority of visible dates
+		// Find the month that has the most days in the current view
+		const monthCounts = new Map<string, number>()
+		dates.forEach(date => {
+			const monthKey = dayjs(date).format('MMMM YYYY')
+			monthCounts.set(monthKey, (monthCounts.get(monthKey) || 0) + 1)
+		})
+		
+		// Get the month with the most days
+		let displayMonth = this.currentMonth
+		let displayYear = this.currentYear
+		let maxCount = 0
+		monthCounts.forEach((count, monthYear) => {
+			if (count > maxCount) {
+				maxCount = count
+				const [month, year] = monthYear.split(' ')
+				displayMonth = month
+				displayYear = year
+			}
+		})
 
 		// Container classes with proper Tailwind utilities
 		const containerClasses = {
@@ -680,6 +700,13 @@ export class DateSelectionStep extends $LitElement(css`
 				<div class="calendar-wrapper" style=${styleMap(wrapperStyle)}>
 					<!-- Active (Expanded) View -->
 					<div class="active-view p-4" role="grid">
+						<!-- Month and Year header -->
+						<div class="text-center mb-4">
+							<h2 class="text-lg sm:text-xl md:text-2xl font-semibold text-primary-default">
+								${displayMonth} ${displayYear}
+							</h2>
+						</div>
+						
 						<!-- Days of week header -->
 						<div class="grid grid-cols-7 gap-2 mb-3 pb-2 border-b border-outlineVariant" role="row">
 							${daysOfWeek.map(
@@ -709,7 +736,14 @@ export class DateSelectionStep extends $LitElement(css`
 					</div>
 
 					<!-- Compact View -->
-					<div class="compact-view" role="grid">
+					<div class="compact-view p-2" role="grid">
+						<!-- Month and Year header for compact view -->
+						<div class="text-center mb-2">
+							<h3 class="text-sm sm:text-base font-medium text-primary-default">
+								${displayMonth} ${displayYear}
+							</h3>
+						</div>
+						
 						<!-- Horizontal scroll for compact view -->
 						<div class="flex gap-0 overflow-x-auto scrollbar-hide snap-x py-1" role="row">
 							${repeat(

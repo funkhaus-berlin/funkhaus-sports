@@ -441,7 +441,7 @@ export class CourtBookingSystem extends $LitElement() {
 						gap="lg"
 					>
 						<section class="max-w-3xl w-full px-4 md:px-8 lg:px-12 mx-auto  justify-center md:justify-end flex">
-							<schmancy-grid rows="auto 1fr" ${fullHeight()} flow="row" class="w-full  pt-2 justify-self-end">
+							<schmancy-grid rows="auto 1fr"  flow="row" class="w-full  pt-2 justify-self-end">
 								<section hidden>${this.renderProgressSteps()}</section>
 								<!-- Error display component - shows errors from BookingProgressContext -->
 								<booking-error-display showRecoverySuggestion language="en"></booking-error-display>
