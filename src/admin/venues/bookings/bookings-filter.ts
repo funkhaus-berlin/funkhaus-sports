@@ -102,7 +102,7 @@ export class BookingsFilter extends $LitElement(css`
    */
   private clearFilters() {
     this.updateFilter({
-      status: 'all',
+      status: 'confirmed', // Changed default from 'all' to 'confirmed'
       search: ''
     })
     this.requestUpdate()
@@ -134,7 +134,7 @@ export class BookingsFilter extends $LitElement(css`
   
   render() {
     const statusCounts = this.getStatusCounts()
-    const currentStatus = this.filter?.status || 'all'
+    const currentStatus = this.filter?.status || 'confirmed' // Changed default from 'all' to 'confirmed'
     const currentSearch = this.filter?.search || ''
     
     return html`
@@ -175,7 +175,7 @@ export class BookingsFilter extends $LitElement(css`
           </div>
           
           <!-- Reset filters -->
-          ${(currentStatus !== 'all' || currentSearch) ? html`
+          ${(currentStatus !== 'confirmed' || currentSearch) ? html`
             <schmancy-button
               variant="text"
               @click=${this.clearFilters}

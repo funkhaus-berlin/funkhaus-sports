@@ -145,14 +145,6 @@ export default class FunkhausVenueCard extends $LitElement(css`
 					<!-- Subtle overlay for better text contrast -->
 					<div style=${this.styleMap(overlayStyle)}></div>
 
-					<!-- Booking badge that appears on hover -->
-					<schmancy-button  
-          .hidden=${this.readonly}
-						variant="filled tonal"
-						class="absolute bottom-3 right-3 font-bold py-1 px-3 rounded-full opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out group-hover:opacity-100 group-hover:translate-y-0 z-10"
-					>
-						Book now
-					</schmancy-button>
 
 					<!-- Card content with golden ratio padding -->
 					<div class="relative h-full flex flex-col justify-between z-10" style="padding: ${goldenPadding}px;">

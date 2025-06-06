@@ -25,7 +25,7 @@ export const bookingFilterContext = createContext<TBookingFilter>(
 	{
 		dateFrom: DEFAULT_DATE_RANGE.dateFrom,
 		dateTo: DEFAULT_DATE_RANGE.dateTo,
-		status: 'all',
+		status: 'confirmed', // Changed default from 'all' to 'confirmed'
 		courts: [],
 		search: '',
 		user: '',

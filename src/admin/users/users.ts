@@ -47,7 +47,7 @@ export default class Users extends $LitElement(css``) {
 					</schmancy-icon-button>
 				</schmancy-nav-drawer-appbar>
 
-				<schmancy-surface type="containerLow" rounded="all" elevation="2">
+				<schmancy-surface type="container" rounded="all" elevation="2">
 					<schmancy-grid cols="1fr" gap="md">
 						<!-- Header -->
 						<schmancy-surface rounded="top" elevation="1" type="containerHighest" class="sticky top-0 z-10">
@@ -86,7 +86,7 @@ export default class Users extends $LitElement(css``) {
 								.renderItem=${(user: User): TemplateResult => {
 									return html`
 										<section
-											class="overflow-hidden w-full bg-surface-default hover:bg-surface-container transition-colors"
+											class="overflow-hidden w-full bg-surface-container hover:bg-surface-high border-b-1 border-outlineVariant transition-colors"
 										>
 											<schmancy-grid class="py-3 px-2" .cols=${cols} gap="md" align="center">
 												<schmancy-flex align="center" gap="sm">
