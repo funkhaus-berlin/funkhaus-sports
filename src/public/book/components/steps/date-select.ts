@@ -683,7 +683,7 @@ export class DateSelectionStep extends $LitElement(css`
 
 		// Wrapper style with fixed height to prevent layout shifts
 		const wrapperStyle = {
-			height: `100%`,
+			height: this.contentHeight > 0 ? `${this.contentHeight}px` : 'auto',
 			transition: 'height 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
 			position: 'relative',
 			overflow: 'hidden',
@@ -696,17 +696,17 @@ export class DateSelectionStep extends $LitElement(css`
 				role="region"
 				aria-label="Date selection calendar"
 			>
+				<!-- Month and Year header - Outside the animated wrapper -->
+				<div class="text-center p-3 pb-0">
+					<h2 class="${this.active ? 'text-lg sm:text-xl md:text-2xl' : 'text-base sm:text-lg'} font-semibold text-primary-default transition-all duration-300">
+						${displayMonth} ${displayYear}
+					</h2>
+				</div>
+				
 				<!-- Fixed height wrapper for smooth transitions -->
 				<div class="calendar-wrapper" style=${styleMap(wrapperStyle)}>
 					<!-- Active (Expanded) View -->
-					<div class="active-view p-4" role="grid">
-						<!-- Month and Year header -->
-						<div class="text-center mb-4">
-							<h2 class="text-lg sm:text-xl md:text-2xl font-semibold text-primary-default">
-								${displayMonth} ${displayYear}
-							</h2>
-						</div>
-						
+					<div class="active-view p-4 pt-2" role="grid">
 						<!-- Days of week header -->
 						<div class="grid grid-cols-7 gap-2 mb-3 pb-2 border-b border-outlineVariant" role="row">
 							${daysOfWeek.map(
@@ -737,13 +737,6 @@ export class DateSelectionStep extends $LitElement(css`
 
 					<!-- Compact View -->
 					<div class="compact-view p-2" role="grid">
-						<!-- Month and Year header for compact view -->
-						<div class="text-center mb-2">
-							<h3 class="text-sm sm:text-base font-medium text-primary-default">
-								${displayMonth} ${displayYear}
-							</h3>
-						</div>
-						
 						<!-- Horizontal scroll for compact view -->
 						<div class="flex gap-0 overflow-x-auto scrollbar-hide snap-x py-1" role="row">
 							${repeat(

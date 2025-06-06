@@ -17,6 +17,7 @@ import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
 import './components'
+import '../shared/components/venue-map'
 import { BookingErrorService } from './components/errors/booking-error-service'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep, ErrorCategory } from './context'
 import { PaymentStatusHandler } from './payment-status-handler'
@@ -410,7 +411,7 @@ export class CourtBookingSystem extends $LitElement() {
 		const stepLabel = step.label
 		switch (stepLabel) {
 			case 'Date': // Date (was BookingStep.Date)
-				return html` <date-selection-step class="max-w-full sticky top-0 block my-2 z-10"></date-selection-step> `
+				return html` <date-selection-step class="max-w-full sticky top-0 block z-10"></date-selection-step> `
 			case 'Court': // Court (was BookingStep.Court)
 				return html` <court-select-step class="max-w-full block mt-2 z-10"></court-select-step> `
 			case 'Time': // Time (was BookingStep.Time)
@@ -424,31 +425,87 @@ export class CourtBookingSystem extends $LitElement() {
 
 	render() {
 		return html`
-				<schmancy-grid ${fullHeight()} rows="auto 10fr">
+				<schmancy-grid ${fullHeight()} rows="auto 10fr" gap="md">
 					<page-header-banner
-          class="h-[25vh] hidden md:block"
+          class="h-[30vh] hidden md:block"
 						.title=${venueContext.value.name ?? ''}
 						description="EXPERIENCE BERLIN'S FIRST PICKLEBALL CLUB!"
-						imageSrc="/assets/still05.webp"
+						imageSrc="/assets/still02.jpg"
 					>
 					</page-header-banner>
 					<schmancy-grid
 						.rcols=${{
 							sm: '1fr',
+              md:"2fr 1fr"
 						}}
-						justify="stretch"
-						align="stretch"
 						gap="lg"
 					>
-						<section class="max-w-3xl w-full px-4 md:px-8 lg:px-12 mx-auto  justify-center md:justify-end flex">
-							<schmancy-grid rows="auto 1fr"  flow="row" class="w-full  pt-2 justify-self-end">
+						<section class="max-w-3xl w-full   justify-self-center md:justify-end flex">
+							<schmancy-grid rows="auto 1fr"  flow="row" class="w-full   justify-self-end">
 								<section hidden>${this.renderProgressSteps()}</section>
 								<!-- Error display component - shows errors from BookingProgressContext -->
 								<booking-error-display showRecoverySuggestion language="en"></booking-error-display>
 								<schmancy-scroll hide>${this.renderCurrentStep()}</schmancy-scroll>
 							</schmancy-grid>
 						</section>
-					
+            <schmancy-card
+            type="elevated"
+            
+            class="max-w-md w-full hidden md:block mr-auto"> 
+              <schmancy-grid gap="md" class="p-4">
+                <!-- Venue Name Header -->
+                <schmancy-flex align="center" gap="sm">
+                  <schmancy-icon class="text-primary-default">location_on</schmancy-icon>
+                  <schmancy-typography type="headline" token="sm">
+                    ${venueContext.value?.name || 'Venue Location'}
+                  </schmancy-typography>
+                </schmancy-flex>
+                
+                <!-- Map Component -->
+                <venue-map
+                  .address=${venueContext.value?.address}
+                  .venueName=${venueContext.value?.name || 'Venue'}
+                  zoom=${16}
+                  showMarker
+                  interactive
+                  class="h-64 w-full rounded-lg overflow-hidden"
+                ></venue-map>
+                
+                <!-- Address and Directions -->
+                ${venueContext.value?.address ? html`
+                  <schmancy-divider></schmancy-divider>
+                  <schmancy-grid gap="sm">
+                    <schmancy-typography type="body" token="sm" class="text-surface-onVariant">
+                      ${venueContext.value.address.street}<br>
+                      ${venueContext.value.address.city}, ${venueContext.value.address.postalCode}<br>
+                      ${venueContext.value.address.country}
+                    </schmancy-typography>
+                    
+                    <schmancy-button 
+                      variant="outlined" 
+                      width="full"
+                      @click=${() => {
+                        const address = venueContext.value?.address
+                        if (!address) return
+                        
+                        let query = ''
+                        if (address.coordinates) {
+                          query = `${address.coordinates.lat},${address.coordinates.lng}`
+                        } else {
+                          const fullAddress = `${address.street}, ${address.city}, ${address.postalCode}, ${address.country}`
+                          query = encodeURIComponent(fullAddress)
+                        }
+                        
+                        window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank')
+                      }}
+                    >
+                      <schmancy-icon slot="prefix">directions</schmancy-icon>
+                      Get Directions
+                    </schmancy-button>
+                  </schmancy-grid>
+                ` : ''}
+              </schmancy-grid>
+            </schmancy-card>
 					</schmancy-grid>
 				</schmancy-grid>
 		`
