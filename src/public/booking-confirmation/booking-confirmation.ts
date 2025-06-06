@@ -5,12 +5,7 @@ import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
 import { html } from 'lit'
-
-// Set up dayjs plugins
-dayjs.extend(utc)
-dayjs.extend(timezone)
 import { customElement, property, state } from 'lit/decorators.js'
-import '../shared/components/social-buttons'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { Court } from 'src/db/courts.collection'
@@ -19,6 +14,11 @@ import { VenuesLandingPage } from 'src/public/venues/venues'
 import { BookingUtils } from '../book/booking-utils'
 import { resendBookingEmail } from '../book/components/services'
 import { Booking, bookingContext, BookingProgressContext } from '../book/context'
+import '../shared/components/social-buttons'
+
+// Set up dayjs plugins
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 @customElement('booking-confirmation')
 export class BookingConfirmation extends $LitElement() {
@@ -265,9 +265,8 @@ export class BookingConfirmation extends $LitElement() {
 							<img
 								src="/logo.svg"
 								alt="Funkhaus Sports Logo"
-								width="60"
-								height="60"
-								class="cursor-pointer"
+								
+								class="cursor-pointer size-1/6"
 								@click=${() => this.returnToHome()}
 							/>
 

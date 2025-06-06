@@ -61,7 +61,7 @@ export class BookingConfirmationRoute extends $LitElement() {
 							
 							// Show success notification for confirmed bookings
 							if (booking.status === 'confirmed' && booking.paymentStatus === 'paid') {
-								$notify.success('Booking confirmed successfully!')
+								// $notify.success('Booking confirmed successfully!')
 							}
 							
 							// Show notification for failed payments
