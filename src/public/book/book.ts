@@ -163,14 +163,17 @@ export class CourtBookingSystem extends $LitElement() {
 			tap(v => console.log('.....', v)),
 
 			map(booking => {
-				bookingContext.set({
-					price: pricingService.calculatePrice(
-						this.availableCourts.get(booking.courtId)!,
-						booking.startTime,
-						booking.endTime,
-						booking.userId,
-					),
-				}, true)
+				bookingContext.set(
+					{
+						price: pricingService.calculatePrice(
+							this.availableCourts.get(booking.courtId)!,
+							booking.startTime,
+							booking.endTime,
+							booking.userId,
+						),
+					},
+					true,
+				)
 				return booking.price
 			}),
 			distinctUntilChanged((prev, curr) => prev === curr),
@@ -227,26 +230,24 @@ export class CourtBookingSystem extends $LitElement() {
 	}
 
 	private checkPaymentStatus(): void {
-		this.paymentStatusHandler.checkUrlForPaymentStatus()
-    .pipe(
-      takeUntil(this.disconnecting),
-      debounceTime(1000),
-    )
-    
-    .subscribe(result => {
-			if (result.processed && result.success && result.bookingId) {
-				// Redirect to confirmation page instead of showing it inline
-				this.redirectToConfirmation(result.bookingId)
-			} else if (result.processed && !result.success) {
-				// Handle payment failure
-				BookingErrorService.setError(
-					'Payment processing failed. Please try again.',
-					ErrorCategory.PAYMENT,
-					{},
-					true, // Show notification
-				)
-			}
-		})
+		this.paymentStatusHandler
+			.checkUrlForPaymentStatus()
+			.pipe(takeUntil(this.disconnecting), debounceTime(1000))
+
+			.subscribe(result => {
+				if (result.processed && result.success && result.bookingId) {
+					// Redirect to confirmation page instead of showing it inline
+					this.redirectToConfirmation(result.bookingId)
+				} else if (result.processed && !result.success) {
+					// Handle payment failure
+					BookingErrorService.setError(
+						'Payment processing failed. Please try again.',
+						ErrorCategory.PAYMENT,
+						{},
+						true, // Show notification
+					)
+				}
+			})
 	}
 
 	private initializeStepFromUrl(): void {
@@ -323,7 +324,6 @@ export class CourtBookingSystem extends $LitElement() {
 		window.location.href = confirmationUrl
 	}
 
-
 	private renderProgressSteps() {
 		return html` <funkhaus-booking-steps></funkhaus-booking-steps> `
 	}
@@ -340,10 +340,7 @@ export class CourtBookingSystem extends $LitElement() {
 		if (currentStep === 5) {
 			// Using numeric values now instead of enum
 			return html`
-				<funkhaus-checkout-form
-					.booking=${this.booking}
-					.selectedCourt=${this.selectedCourt}
-				>
+				<funkhaus-checkout-form .booking=${this.booking} .selectedCourt=${this.selectedCourt}>
 					<slot slot="stripe-element" name="stripe-element"></slot>
 				</funkhaus-checkout-form>
 			`
@@ -427,38 +424,33 @@ export class CourtBookingSystem extends $LitElement() {
 
 	render() {
 		return html`
-			<schmancy-surface class="max-w-4xl mx-auto" ${fullHeight()} type="container" rounded="all" elevation="1">
-				<schmancy-grid
-					.rcols=${{
-						sm: '1fr',
-						md: '1.68fr 1fr',
-					}}
-					justify="stretch"
-					align="stretch"
-					gap="lg"
-				>
-					<section class="w-full justify-center md:justify-end flex">
-						<schmancy-grid
-							rows="auto auto 1fr"
-							${fullHeight()}
-							flow="row"
-							class="max-w-lg w-full pt-2 justify-self-end"
-						>
-							${this.renderProgressSteps()}
-
-							<!-- Error display component - shows errors from BookingProgressContext -->
-							<booking-error-display showRecoverySuggestion language="en"></booking-error-display>
-							<schmancy-scroll hide>${this.renderCurrentStep()}</schmancy-scroll>
-						</schmancy-grid>
-					</section>
-					<funkhaus-venue-card
-						class="hidden md:block col-auto justify-self-start mt-4"
-						.venue=${venueContext.value as Venue}
-						.theme=${(venueContext.value as Venue).theme!}
-            readonly
-					></funkhaus-venue-card>
+				<schmancy-grid ${fullHeight()} rows="auto 10fr">
+					<page-header-banner
+          class="h-[25vh] hidden md:block"
+						.title=${venueContext.value.name ?? ''}
+						description="EXPERIENCE BERLIN'S FIRST PICKLEBALL CLUB!"
+						imageSrc="/assets/still05.webp"
+					>
+					</page-header-banner>
+					<schmancy-grid
+						.rcols=${{
+							sm: '1fr',
+						}}
+						justify="stretch"
+						align="stretch"
+						gap="lg"
+					>
+						<section class="max-w-3xl w-full px-4 md:px-8 lg:px-12 mx-auto  justify-center md:justify-end flex">
+							<schmancy-grid rows="auto 1fr" ${fullHeight()} flow="row" class="w-full  pt-2 justify-self-end">
+								<section hidden>${this.renderProgressSteps()}</section>
+								<!-- Error display component - shows errors from BookingProgressContext -->
+								<booking-error-display showRecoverySuggestion language="en"></booking-error-display>
+								<schmancy-scroll hide>${this.renderCurrentStep()}</schmancy-scroll>
+							</schmancy-grid>
+						</section>
+					
+					</schmancy-grid>
 				</schmancy-grid>
-			</schmancy-surface>
 		`
 	}
 }

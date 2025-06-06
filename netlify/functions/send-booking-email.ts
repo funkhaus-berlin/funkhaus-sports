@@ -10,6 +10,9 @@ import QRCode from 'qrcode'
 import { createCalendarEvent, generateICSFile } from './_shared/calendar-utils'
 import { corsHeaders } from './_shared/cors'
 import resend, { emailHtml } from './_shared/resend'
+import { from, of, throwError } from 'rxjs'
+import { retry, delay, catchError, tap } from 'rxjs/operators'
+import { lastValueFrom } from 'rxjs'
 
 // Set up dayjs plugins
 dayjs.extend(utc)
@@ -62,12 +65,25 @@ const handler: Handler = async (event) => {
 		const emailSent = await sendEmail(data, pdfBuffer)
 
 		if (emailSent) {
-			// Update booking record to indicate email was sent
+			// Update booking record to indicate email was sent with retry logic
 			const bookingRef = db.collection('bookings').doc(data.bookingId)
-			await bookingRef.update({
+			const updateBooking$ = from(bookingRef.update({
 				emailSent: true,
 				emailSentAt: new Date().toISOString(),
-			})
+			})).pipe(
+				tap(() => console.log(`Updating booking ${data.bookingId} email status...`)),
+				retry({
+					count: 2,
+					delay: 1000
+				}),
+				catchError(error => {
+					console.error('Failed to update booking email status:', error)
+					// Don't fail the whole operation if status update fails
+					return of(null)
+				})
+			)
+
+			await lastValueFrom(updateBooking$)
 
 			return {
 				statusCode: 200,
@@ -203,12 +219,24 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			invoiceNumber = data.invoiceNumber
 			console.log(`Using provided invoice number ${invoiceNumber} for booking ${data.bookingId}`)
 		} else {
-			// Otherwise look it up from the database
+			// Otherwise look it up from the database with retry logic
 			try {
 				const bookingRef = db.collection('bookings').doc(data.bookingId)
-				const bookingDoc = await bookingRef.get()
+				const getBooking$ = from(bookingRef.get()).pipe(
+					tap(() => console.log(`Fetching invoice number for booking ${data.bookingId}...`)),
+					retry({
+						count: 2,
+						delay: 500
+					}),
+					catchError(error => {
+						console.error('Failed to fetch booking for invoice number:', error)
+						return of(null)
+					})
+				)
 				
-				if (bookingDoc.exists && bookingDoc.data()?.invoiceNumber) {
+				const bookingDoc = await lastValueFrom(getBooking$)
+				
+				if (bookingDoc && bookingDoc.exists && bookingDoc.data()?.invoiceNumber) {
 					invoiceNumber = bookingDoc.data()?.invoiceNumber
 					console.log(`Using database invoice number ${invoiceNumber} for booking ${data.bookingId}`)
 				} else {
@@ -356,8 +384,8 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		    // If there's an error, use the original time string
 		}
 
-		// Send email with Resend
-		await resend.emails.send({
+		// Send email with Resend using retry logic
+		const sendEmail$ = from(resend.emails.send({
 			from: `Funkhaus Sports <ticket@funkhaus-berlin.net>`,
 			to: data.customerEmail,
 			subject: `Funkhaus Sports - Court Booking Confirmation - ${formattedDate} at ${emailSubjectTime}`,
@@ -368,7 +396,36 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 					content: pdfBase64,
 				}
 			],
-		})
+		})).pipe(
+			tap(() => console.log(`Sending email to ${data.customerEmail}...`)),
+			retry({
+				count: 3,
+				delay: (error, retryCount) => {
+					// Check if error is retryable (network issues, rate limits, etc.)
+					const isRetryable = 
+						error.message?.includes('ESOCKETTIMEDOUT') ||
+						error.message?.includes('ECONNREFUSED') ||
+						error.message?.includes('ETIMEDOUT') ||
+						error.message?.includes('rate_limit') ||
+						error.statusCode >= 500
+					
+					if (!isRetryable) {
+						return throwError(() => error)
+					}
+					
+					// Exponential backoff: 2s, 4s, 8s for email
+					const delayMs = Math.pow(2, retryCount) * 1000
+					console.log(`Retry attempt ${retryCount} for email send after ${delayMs}ms...`)
+					return of(error).pipe(delay(delayMs))
+				}
+			}),
+			catchError(error => {
+				console.error('Failed to send email after retries:', error)
+				return throwError(() => error)
+			})
+		)
+
+		await lastValueFrom(sendEmail$)
 
 		return true
 	} catch (error) {
@@ -412,11 +469,23 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	let invoiceNumber: string | undefined = undefined
 	
 	try {
-		// Check if this booking already has an invoice number
+		// Check if this booking already has an invoice number with retry logic
 		const bookingRef = db.collection('bookings').doc(data.bookingId)
-		const bookingDoc = await bookingRef.get()
+		const getBooking$ = from(bookingRef.get()).pipe(
+			tap(() => console.log(`Fetching invoice number for PDF generation...`)),
+			retry({
+				count: 2,
+				delay: 500
+			}),
+			catchError(error => {
+				console.error('Failed to fetch booking for PDF invoice number:', error)
+				return of(null)
+			})
+		)
 		
-		if (bookingDoc.exists) {
+		const bookingDoc = await lastValueFrom(getBooking$)
+		
+		if (bookingDoc && bookingDoc.exists) {
 			// If the booking has an invoice number, use it
 			if (bookingDoc.data()?.invoiceNumber) {
 				invoiceNumber = bookingDoc.data()?.invoiceNumber

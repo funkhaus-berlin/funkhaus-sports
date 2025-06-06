@@ -6,6 +6,9 @@ import { corsHeaders } from './_shared/cors'
 import stripe from './_shared/stripe'
 import { Booking } from './types/booking.types'
 import { db } from './_shared/firebase-admin'
+import { from, of, throwError } from 'rxjs'
+import { retry, delay, catchError, tap, map } from 'rxjs/operators'
+import { lastValueFrom } from 'rxjs'
 
 
 /**
@@ -126,12 +129,23 @@ async function recoverSingleBooking(bookingId: string): Promise<any> {
 
 			if (hoursSincePending > 2) {
 				// 2 hours is enough time to complete payment
-				await bookingRef.update({
+				const markAbandoned$ = from(bookingRef.update({
 					paymentStatus: 'abandoned',
 					status: 'cancelled',
 					updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 					recoveryNotes: 'Marked as abandoned due to prolonged pending status',
-				})
+				})).pipe(
+					retry({
+						count: 2,
+						delay: 1000
+					}),
+					catchError(error => {
+						console.error('Failed to mark booking as abandoned:', error)
+						return throwError(() => error)
+					})
+				)
+
+				await lastValueFrom(markAbandoned$)
 
 				return {
 					recovered: 1,
@@ -154,8 +168,36 @@ async function recoverSingleBooking(bookingId: string): Promise<any> {
  */
 async function recoverByPaymentIntent(paymentIntentId: string, knownBookingId?: string): Promise<any> {
 	try {
-		// First, get the payment intent from Stripe
-		const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+		// First, get the payment intent from Stripe with retry logic
+		const paymentIntent$ = from(stripe.paymentIntents.retrieve(paymentIntentId)).pipe(
+			tap(() => console.log(`Retrieving payment intent ${paymentIntentId} for recovery...`)),
+			retry({
+				count: 3,
+				delay: (error, retryCount) => {
+					// Check if error is retryable
+					const isRetryable = 
+						error.type === 'StripeConnectionError' ||
+						error.type === 'StripeAPIError' ||
+						error.code === 'rate_limit' ||
+						error.statusCode >= 500
+					
+					if (!isRetryable) {
+						return throwError(() => error)
+					}
+					
+					// Exponential backoff: 1s, 2s, 4s
+					const delayMs = Math.pow(2, retryCount - 1) * 1000
+					console.log(`Retry attempt ${retryCount} for Stripe API after ${delayMs}ms...`)
+					return of(error).pipe(delay(delayMs))
+				}
+			}),
+			catchError(error => {
+				console.error('Failed to retrieve payment intent after retries:', error)
+				return throwError(() => error)
+			})
+		)
+
+		const paymentIntent = await lastValueFrom(paymentIntent$)
 
 		// Try to find the booking ID, either from parameter or metadata
 		const bookingId = knownBookingId || paymentIntent.metadata?.bookingId
@@ -172,8 +214,24 @@ async function recoverByPaymentIntent(paymentIntentId: string, knownBookingId?: 
 			// Handle case where payment exists but booking doesn't - create emergency booking
 			if (paymentIntent.status === 'succeeded') {
 				const recoveryBooking = createEmergencyBookingFromPayment(paymentIntent, bookingId)
-				await bookingRef.set(recoveryBooking)
+				
+				const createBooking$ = from(bookingRef.set(recoveryBooking)).pipe(
+					tap(() => console.log(`Creating emergency booking ${bookingId}...`)),
+					retry({
+						count: 3,
+						delay: (error, retryCount) => {
+							const delayMs = Math.pow(2, retryCount - 1) * 500
+							console.log(`Retry attempt ${retryCount} for booking creation after ${delayMs}ms...`)
+							return of(error).pipe(delay(delayMs))
+						}
+					}),
+					catchError(error => {
+						console.error('Failed to create emergency booking after retries:', error)
+						return throwError(() => error)
+					})
+				)
 
+				await lastValueFrom(createBooking$)
 				await logRecoveryAction(bookingId, paymentIntentId, 'created_missing_booking')
 
 				return {
@@ -201,12 +259,28 @@ async function recoverByPaymentIntent(paymentIntentId: string, knownBookingId?: 
 		// Handle mismatched statuses
 		if (stripeStatus === 'succeeded' && bookingPaymentStatus !== 'paid') {
 			// Payment succeeded in Stripe but not marked in booking
-			await bookingRef.update({
+			const updateBooking$ = from(bookingRef.update({
 				paymentStatus: 'paid',
 				status: 'confirmed',
 				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 				recoveryNotes: 'Updated via recovery process - payment was successful in Stripe',
-			})
+			})).pipe(
+				tap(() => console.log(`Updating booking ${bookingId} to paid status...`)),
+				retry({
+					count: 3,
+					delay: (error, retryCount) => {
+						const delayMs = Math.pow(2, retryCount - 1) * 500
+						console.log(`Retry attempt ${retryCount} for booking update after ${delayMs}ms...`)
+						return of(error).pipe(delay(delayMs))
+					}
+				}),
+				catchError(error => {
+					console.error('Failed to update booking status after retries:', error)
+					return throwError(() => error)
+				})
+			)
+
+			await lastValueFrom(updateBooking$)
 
 			await logRecoveryAction(bookingId, paymentIntentId, 'updated_booking_status_to_paid')
 
@@ -220,12 +294,28 @@ async function recoverByPaymentIntent(paymentIntentId: string, knownBookingId?: 
 
 		if (stripeStatus === 'canceled' && bookingPaymentStatus !== 'cancelled') {
 			// Payment canceled in Stripe but not in booking
-			await bookingRef.update({
+			const updateToCancelled$ = from(bookingRef.update({
 				paymentStatus: 'cancelled',
 				status: 'cancelled',
 				updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 				recoveryNotes: 'Updated via recovery process - payment was cancelled in Stripe',
-			})
+			})).pipe(
+				tap(() => console.log(`Updating booking ${bookingId} to cancelled status...`)),
+				retry({
+					count: 3,
+					delay: (error, retryCount) => {
+						const delayMs = Math.pow(2, retryCount - 1) * 500
+						console.log(`Retry attempt ${retryCount} for booking cancellation after ${delayMs}ms...`)
+						return of(error).pipe(delay(delayMs))
+					}
+				}),
+				catchError(error => {
+					console.error('Failed to update booking to cancelled after retries:', error)
+					return throwError(() => error)
+				})
+			)
+
+			await lastValueFrom(updateToCancelled$)
 
 			await logRecoveryAction(bookingId, paymentIntentId, 'updated_booking_status_to_cancelled')
 
@@ -406,13 +496,24 @@ async function logRecoveryAction(
 	action: string,
 ): Promise<void> {
 	try {
-		await db.collection('recoveryActions').add({
+		const logAction$ = from(db.collection('recoveryActions').add({
 			bookingId,
 			paymentIntentId,
 			action,
 			timestamp: admin.firestore.FieldValue.serverTimestamp(),
 			source: 'recovery_function',
-		})
+		})).pipe(
+			retry({
+				count: 2,
+				delay: 500
+			}),
+			catchError(error => {
+				console.error('Failed to log recovery action after retries:', error)
+				return of(null) // Don't fail recovery if logging fails
+			})
+		)
+
+		await lastValueFrom(logAction$)
 	} catch (error) {
 		console.error('Error logging recovery action:', error)
 	}

@@ -663,7 +663,7 @@ export class DateSelectionStep extends $LitElement(css`
 
 		// Wrapper style with fixed height to prevent layout shifts
 		const wrapperStyle = {
-			height: `${this.contentHeight}px`,
+			height: `100%`,
 			transition: 'height 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
 			position: 'relative',
 			overflow: 'hidden',

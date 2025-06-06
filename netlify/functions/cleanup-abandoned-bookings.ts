@@ -2,6 +2,9 @@ import { Handler } from '@netlify/functions'
 import { corsHeaders } from './_shared/cors'
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore'
 import { db } from './_shared/firebase-admin'
+import { from, of, throwError } from 'rxjs'
+import { retry, delay, catchError, tap } from 'rxjs/operators'
+import { lastValueFrom } from 'rxjs'
 
 
 /**
@@ -89,9 +92,26 @@ const cleanupAbandonedBookings = async () => {
 			}
 		})
 		
-		// Commit all updates
+		// Commit all updates with retry logic
 		if (cancelledCount > 0) {
-			await batch.commit()
+			const commitBatch$ = from(batch.commit()).pipe(
+				tap(() => console.log(`[Scheduled Cleanup] Committing batch updates for ${cancelledCount} bookings...`)),
+				retry({
+					count: 3,
+					delay: (error, retryCount) => {
+						// Exponential backoff: 1s, 2s, 4s
+						const delayMs = Math.pow(2, retryCount - 1) * 1000
+						console.log(`[Scheduled Cleanup] Retry attempt ${retryCount} for batch commit after ${delayMs}ms...`)
+						return of(error).pipe(delay(delayMs))
+					}
+				}),
+				catchError(error => {
+					console.error('[Scheduled Cleanup] Failed to commit batch after retries:', error)
+					return throwError(() => error)
+				})
+			)
+			
+			await lastValueFrom(commitBatch$)
 			console.log(`[Scheduled Cleanup] Successfully cancelled ${cancelledCount} abandoned bookings`)
 		}
 		
@@ -145,7 +165,23 @@ const cleanupOldHoldingBookings = async () => {
 			})
 		})
 		
-		await batch.commit()
+		const commitOldBatch$ = from(batch.commit()).pipe(
+			tap(() => console.log(`[Scheduled Cleanup] Committing batch updates for ${snapshot.size} old bookings...`)),
+			retry({
+				count: 3,
+				delay: (error, retryCount) => {
+					const delayMs = Math.pow(2, retryCount - 1) * 1000
+					console.log(`[Scheduled Cleanup] Retry attempt ${retryCount} for old bookings batch after ${delayMs}ms...`)
+					return of(error).pipe(delay(delayMs))
+				}
+			}),
+			catchError(error => {
+				console.error('[Scheduled Cleanup] Failed to commit old bookings batch after retries:', error)
+				return throwError(() => error)
+			})
+		)
+		
+		await lastValueFrom(commitOldBatch$)
 		console.log(`[Scheduled Cleanup] Cleaned ${snapshot.size} old holding bookings`)
 		
 		return { cleaned: snapshot.size }

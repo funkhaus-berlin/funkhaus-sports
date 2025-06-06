@@ -2,6 +2,9 @@
 import { Handler } from '@netlify/functions'
 import { corsHeaders } from './_shared/cors'
 import stripe from './_shared/stripe'
+import { from, of, throwError } from 'rxjs'
+import { retry, delay, catchError, tap } from 'rxjs/operators'
+import { lastValueFrom } from 'rxjs'
 
 const handler: Handler = async (event, context) => {
 	// Handle preflight request for CORS
@@ -89,25 +92,57 @@ const handler: Handler = async (event, context) => {
 		}`
 
 		try {
-			// Create a payment intent with all necessary details
-			const paymentIntent = await stripe.paymentIntents.create({
-				amount: Math.round(amount), // Ensure it's an integer
-				currency: currency,
-				automatic_payment_methods: { enabled: true },
-				metadata: metadata,
-				description: description,
-				// Store customer info for the payment record
-				shipping: {
-					name: name || 'Guest',
-					phone: phone || '',
-					address: {
-						line1: address || '',
-						postal_code: postalCode || '',
-						city: city || '',
-						country: country || '',
+			// Create a payment intent with retry logic for transient failures
+			const paymentIntent$ = from(
+				stripe.paymentIntents.create({
+					amount: Math.round(amount), // Ensure it's an integer
+					currency: currency,
+					automatic_payment_methods: { enabled: true },
+					metadata: metadata,
+					description: description,
+					// Store customer info for the payment record
+					shipping: {
+						name: name || 'Guest',
+						phone: phone || '',
+						address: {
+							line1: address || '',
+							postal_code: postalCode || '',
+							city: city || '',
+							country: country || '',
+						},
 					},
-				},
-			})
+				})
+			).pipe(
+				tap(() => console.log('Attempting to create payment intent...')),
+				retry({
+					count: 3, // Retry up to 3 times
+					delay: (error, retryCount) => {
+						// Check if error is retryable (network errors, rate limits, etc.)
+						const isRetryable = 
+							error.type === 'StripeConnectionError' ||
+							error.type === 'StripeAPIError' ||
+							error.code === 'rate_limit' ||
+							error.statusCode >= 500
+						
+						if (!isRetryable) {
+							// Don't retry non-retryable errors
+							return throwError(() => error)
+						}
+						
+						// Exponential backoff: 1s, 2s, 4s
+						const delayMs = Math.pow(2, retryCount - 1) * 1000
+						console.log(`Retry attempt ${retryCount} after ${delayMs}ms delay...`)
+						return of(error).pipe(delay(delayMs))
+					}
+				}),
+				catchError(error => {
+					console.error('Failed to create payment intent after retries:', error)
+					return throwError(() => error)
+				})
+			)
+
+			// Wait for the observable to complete
+			const paymentIntent = await lastValueFrom(paymentIntent$)
 
 			// Return all necessary information to the client
 			return {
