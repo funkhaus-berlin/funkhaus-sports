@@ -58,7 +58,7 @@ export class VenuBookingsList extends $LitElement() {
 	 */
 	fetchBookings() {
 		// Wait for venue and courts to be ready
-		combineLatest([venueContext.$, courtsContext.$])
+		combineLatest([venueContext.$, courtsContext.$, BookingsContext.$])
 			.pipe(
 				filter(() => !!venueContext.ready && !!courtsContext.ready),
 				take(1),
@@ -172,9 +172,16 @@ export class VenuBookingsList extends $LitElement() {
 
 		return new Map(
 			Array.from(bookings.entries()).filter(([id, booking]) => {
-				// Status filter
-				if (filter.status && filter.status !== 'all' && booking.status !== filter.status) {
-					return false
+				// Status filter - treat completed and confirmed as the same
+				if (filter.status && filter.status !== 'all') {
+					if (filter.status === 'confirmed') {
+						// Include both confirmed and completed bookings when filtering for confirmed
+						if (booking.status !== 'confirmed' && booking.status !== 'completed') {
+							return false
+						}
+					} else if (booking.status !== filter.status) {
+						return false
+					}
 				}
 
 				// Search filter (case insensitive)

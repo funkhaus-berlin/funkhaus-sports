@@ -54,7 +54,7 @@ export class BookingsFilter extends $LitElement(css`
   @select(BookingsContext) bookings!: Map<string, Booking>
   @select(bookingFilterContext) filter!: { status?: string, search?: string }
   
-  @state() statusList = ['all', 'confirmed', 'holding', 'completed', 'cancelled']
+  @state() statusList = ['all', 'confirmed', 'holding', 'cancelled']
   
   // Search query behavior subject for debouncing
   private searchSubject = new BehaviorSubject<string>('')
@@ -116,7 +116,6 @@ export class BookingsFilter extends $LitElement(css`
       all: 0,
       confirmed: 0,
       pending: 0,
-      completed: 0,
       cancelled: 0
     }
     
@@ -124,7 +123,10 @@ export class BookingsFilter extends $LitElement(css`
     this.bookings.forEach(booking => {
       counts.all++
       
-      if (booking.status && counts[booking.status] !== undefined) {
+      // Treat completed as confirmed
+      if (booking.status === 'completed' || booking.status === 'confirmed') {
+        counts.confirmed++
+      } else if (booking.status && counts[booking.status] !== undefined) {
         counts[booking.status]++
       }
     })
