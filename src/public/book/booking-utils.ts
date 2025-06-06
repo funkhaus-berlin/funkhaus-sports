@@ -1,9 +1,15 @@
 // src/public/book/booking-utils.ts
 
 import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 import qrcode from 'qrcode-generator'
 import { Court } from 'src/db/courts.collection'
 import { Booking } from './context'
+
+// Set up dayjs plugins
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 /**
  * Centralized utility class for booking-related functions

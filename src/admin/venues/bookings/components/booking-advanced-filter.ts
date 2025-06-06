@@ -18,14 +18,10 @@ export class BookingAdvancedFilter extends $LitElement() {
 
   @property({ type: Array })
   statuses: BookingStatus[] = [
-    'pending',
+    'holding',
     'confirmed',
     'cancelled',
     'completed',
-    'no-show',
-    'refunded',
-    'failed',
-    'processing',
   ]
 
   @state() showFilters = false

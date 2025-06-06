@@ -586,8 +586,9 @@ function createEmergencyBooking(paymentIntent: Stripe.PaymentIntent, bookingId: 
 				customerName: customerName,
 				bookingDetails: {
 					date: date || new Date().toISOString().split('T')[0],
-					startTime: startTime ? new Date(startTime).toLocaleTimeString() : 'N/A',
-					endTime: endTime ? new Date(endTime).toLocaleTimeString() : 'N/A',
+					startTime: startTime || 'N/A',
+					endTime: endTime || 'N/A',
+					userTimezone: 'Europe/Berlin', // Default to venue timezone
 					court: courtId || 'Unknown Court',
 					price: amount.toFixed(2),
 					vatInfo: {
@@ -653,19 +654,9 @@ function prepareEmailData(booking: any, court: any, venue: any, paymentIntent: S
 		day: 'numeric',
 	})
 
-	const startTime = booking.startTime
-		? new Date(booking.startTime).toLocaleTimeString([], {
-				hour: '2-digit',
-				minute: '2-digit',
-		  })
-		: 'N/A'
-
-	const endTime = booking.endTime
-		? new Date(booking.endTime).toLocaleTimeString([], {
-				hour: '2-digit',
-				minute: '2-digit',
-		  })
-		: 'N/A'
+	// Send the full ISO strings - the email template and calendar utils will handle timezone conversion
+	const startTime = booking.startTime || 'N/A'
+	const endTime = booking.endTime || 'N/A'
 
 	// Machine-readable formats for ICS calendar
 	const rawDate = booking.date ? new Date(booking.date).toISOString().split('T')[0] : null
@@ -689,8 +680,9 @@ function prepareEmailData(booking: any, court: any, venue: any, paymentIntent: S
 		customerAddress: booking.customerAddress || paymentIntent.shipping?.address || {},
 		bookingDetails: {
 			date: bookingDate,
-			startTime,
-			endTime,
+			startTime: booking.startTime || startTime, // Send ISO timestamp
+			endTime: booking.endTime || endTime, // Send ISO timestamp
+			userTimezone: 'Europe/Berlin', // Default to venue timezone
 			court: court?.name || 'Court',
 			courtType: court?.courtType || 'standard',
 			venue: venue?.name || 'Funkhaus Sports',

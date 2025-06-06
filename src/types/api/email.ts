@@ -35,6 +35,7 @@ export interface EmailBookingDetails {
   price: string
   court: string
   venue: string
+  userTimezone?: string // User's timezone for proper time display
 }
 
 /**

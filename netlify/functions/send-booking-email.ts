@@ -1,6 +1,8 @@
 // netlify/functions/send-booking-email.ts
 import { Handler } from '@netlify/functions'
-import admin from 'firebase-admin'
+import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 
 import { resolve } from 'path'
 import PDFDocument from 'pdfkit'
@@ -8,6 +10,10 @@ import QRCode from 'qrcode'
 import { createCalendarEvent, generateICSFile } from './_shared/calendar-utils'
 import { corsHeaders } from './_shared/cors'
 import resend, { emailHtml } from './_shared/resend'
+
+// Set up dayjs plugins
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 
 /**
@@ -17,7 +23,7 @@ import {
   BookingEmailRequest as EmailBookingData
 } from './types/shared-types'
 import { db } from './_shared/firebase-admin'
-const handler: Handler = async (event, context) => {
+const handler: Handler = async (event) => {
 	// Handle preflight request for CORS
 	if (event.httpMethod === 'OPTIONS') {
 		return {
@@ -224,26 +230,24 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		
 		// Format time display for the template
 		let timeDisplay = '';
+		const userTimezone = data.bookingDetails.userTimezone || 'Europe/Berlin';
 		
-		// First try to use calendar event's display time
-		if (calendarEvent && calendarEvent.displayTimeRange) {
-			timeDisplay = calendarEvent.displayTimeRange;
-		} else {
-			// Otherwise format booking times
-			let startTime = data.bookingDetails.startTime;
-			let endTime = data.bookingDetails.endTime;
-			
-			// Process start time
-			if (startTime) {
-				if (startTime.includes('T')) {
-					// Handle ISO format
-					startTime = new Date(startTime).toLocaleTimeString('en-GB', {
-						hour: '2-digit',
-						minute: '2-digit',
-						hour12: false
-					});
+		// Always format booking times with timezone awareness
+		// Don't use calendar event's display time as it doesn't have timezone info
+		let startTime = data.bookingDetails.startTime;
+		let endTime = data.bookingDetails.endTime;
+		
+		// Process start time
+		if (startTime) {
+			if (startTime.includes('T')) {
+					// Handle ISO format - convert to user's timezone
+					startTime = dayjs(startTime).tz(userTimezone).format('HH:mm');
+				} else if (/^\d{2}:\d{2}$/.test(startTime)) {
+					// Already in HH:mm format, use as is
+					// This handles the case where frontend already converted it
+					startTime = startTime;
 				} else {
-					// Handle string format with AM/PM
+					// Handle string format with AM/PM (legacy support)
 					const startMatch = /(\d+):(\d+)\s*(am|pm|AM|PM)?/.exec(startTime);
 					if (startMatch) {
 						let hours = parseInt(startMatch[1]);
@@ -261,14 +265,14 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 			// Process end time
 			if (endTime) {
 				if (endTime.includes('T')) {
-					// Handle ISO format
-					endTime = new Date(endTime).toLocaleTimeString('en-GB', {
-						hour: '2-digit',
-						minute: '2-digit',
-						hour12: false
-					});
+					// Handle ISO format - convert to user's timezone
+					endTime = dayjs(endTime).tz(userTimezone).format('HH:mm');
+				} else if (/^\d{2}:\d{2}$/.test(endTime)) {
+					// Already in HH:mm format, use as is
+					// This handles the case where frontend already converted it
+					endTime = endTime;
 				} else {
-					// Handle string format with AM/PM
+					// Handle string format with AM/PM (legacy support)
 					const endMatch = /(\d+):(\d+)\s*(am|pm|AM|PM)?/.exec(endTime);
 					if (endMatch) {
 						let hours = parseInt(endMatch[1]);
@@ -282,10 +286,9 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 					}
 				}
 			}
-			
-			// Format the time display
-			timeDisplay = `${startTime || ''} - ${endTime || ''}`;
-		}
+		
+		// Format the time display
+		timeDisplay = `${startTime || ''} - ${endTime || ''}`;
 		
 		// Generate HTML for email
 		const html = await emailHtml({
@@ -321,20 +324,20 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		})
 		
 		// Extract time from booking details for email subject and format as 24-hour time
-		let startTime = data.bookingDetails.startTime
+		let emailSubjectTime = data.bookingDetails.startTime
+		const subjectTimezone = data.bookingDetails.userTimezone || 'Europe/Berlin';
 		
 		// Convert to 24-hour format regardless of input format
 		try {
-		    if (startTime && startTime.includes('T')) {
-		        // If it's an ISO string, format as 24-hour time
-		        startTime = new Date(startTime).toLocaleTimeString('en-GB', {
-		            hour: '2-digit',
-		            minute: '2-digit',
-		            hour12: false
-		        });
-		    } else if (startTime) {
-		        // Handle non-ISO time strings (like "4:30 PM")
-		        const amPmMatch = /(\d+):(\d+)\s*(am|pm|AM|PM)?/.exec(startTime);
+		    if (emailSubjectTime && emailSubjectTime.includes('T')) {
+		        // If it's an ISO string, convert to user's timezone
+		        emailSubjectTime = dayjs(emailSubjectTime).tz(subjectTimezone).format('HH:mm');
+		    } else if (emailSubjectTime && /^\d{2}:\d{2}$/.test(emailSubjectTime)) {
+		        // Already in HH:mm format, use as is
+		        emailSubjectTime = emailSubjectTime;
+		    } else if (emailSubjectTime) {
+		        // Handle non-ISO time strings (like "4:30 PM") - legacy support
+		        const amPmMatch = /(\d+):(\d+)\s*(am|pm|AM|PM)?/.exec(emailSubjectTime);
 		        if (amPmMatch) {
 		            let hours = parseInt(amPmMatch[1]);
 		            const minutes = parseInt(amPmMatch[2]);
@@ -345,7 +348,7 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		            if (ampm === 'am' && hours === 12) hours = 0;
 		            
 		            // Format with leading zeros
-		            startTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+		            emailSubjectTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
 		        }
 		    }
 		} catch (error) {
@@ -354,10 +357,10 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		}
 
 		// Send email with Resend
-		const response = await resend.emails.send({
+		await resend.emails.send({
 			from: `Funkhaus Sports <ticket@funkhaus-berlin.net>`,
 			to: data.customerEmail,
-			subject: `Funkhaus Sports - Court Booking Confirmation - ${formattedDate} at ${startTime}`,
+			subject: `Funkhaus Sports - Court Booking Confirmation - ${formattedDate} at ${emailSubjectTime}`,
 			html: html,
 			attachments: [
 				{
@@ -561,19 +564,20 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	// Format the description
 	const description = `${data.bookingDetails.court} - ${data.bookingDetails.venue}`
 	
-	// Format duration with 24-hour time
+	// Format duration with 24-hour time using user's timezone
+	const pdfUserTimezone = data.bookingDetails.userTimezone || 'Europe/Berlin';
 	let startTime = data.bookingDetails.startTime;
 	let endTime = data.bookingDetails.endTime;
 	
-	// Convert times to 24-hour format
+	// Convert times to 24-hour format with timezone support
 	if (startTime && startTime.includes('T')) {
-	    startTime = new Date(startTime).toLocaleTimeString('en-GB', {
-	        hour: '2-digit',
-	        minute: '2-digit',
-	        hour12: false
-	    });
+	    // Convert from UTC to user's timezone
+	    startTime = dayjs(startTime).tz(pdfUserTimezone).format('HH:mm');
+	} else if (startTime && /^\d{2}:\d{2}$/.test(startTime)) {
+	    // Already in HH:mm format, use as is
+	    startTime = startTime;
 	} else if (startTime) {
-	    // Handle non-ISO time strings (like "4:30 PM")
+	    // Handle non-ISO time strings (like "4:30 PM") - legacy support
 	    const amPmMatch = /(\d+):(\d+)\s*(am|pm|AM|PM)?/.exec(startTime);
 	    if (amPmMatch) {
 	        let hours = parseInt(amPmMatch[1]);
@@ -590,13 +594,13 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	}
 	
 	if (endTime && endTime.includes('T')) {
-	    endTime = new Date(endTime).toLocaleTimeString('en-GB', {
-	        hour: '2-digit',
-	        minute: '2-digit',
-	        hour12: false
-	    });
+	    // Convert from UTC to user's timezone
+	    endTime = dayjs(endTime).tz(pdfUserTimezone).format('HH:mm');
+	} else if (endTime && /^\d{2}:\d{2}$/.test(endTime)) {
+	    // Already in HH:mm format, use as is
+	    endTime = endTime;
 	} else if (endTime) {
-	    // Handle non-ISO time strings
+	    // Handle non-ISO time strings - legacy support
 	    const amPmMatch = /(\d+):(\d+)\s*(am|pm|AM|PM)?/.exec(endTime);
 	    if (amPmMatch) {
 	        let hours = parseInt(amPmMatch[1]);
