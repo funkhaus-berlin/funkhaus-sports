@@ -1,71 +1,26 @@
 import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
-import { customElement, property, state } from 'lit/decorators.js'
+import { customElement, property } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { debounceTime, fromEvent, Subscription, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
+import { venueContext } from 'src/admin/venues/venue-context'
 import { Court } from 'src/db/courts.collection'
 import { Booking, bookingContext } from '../context'
+import dayjs from 'dayjs'
 
 /**
- * Booking summary component that shows details about the current booking
- * Automatically expands on desktop and collapses on mobile
+ * Booking summary component with ultra-compact, single-line design
+ * Displays date, time range, court, and price in a condensed format
  */
 @customElement('booking-summary')
 export class BookingSummary extends $LitElement() {
 	@select(bookingContext) booking!: Booking
 	@select(courtsContext) courts!: Map<string, Court>
+	@select(venueContext) venue!: any
 
 	@property({ type: Object }) selectedCourt?: Court
 
-	@state() private isDesktop = window.innerWidth >= 768
-	@state() private summaryExpanded = false
-
-	private resizeSubscription?: Subscription
-
-	connectedCallback(): void {
-		super.connectedCallback()
-		this.summaryExpanded = this.isDesktop
-
-		this.resizeSubscription = fromEvent(window, 'resize')
-			.pipe(
-				debounceTime(100), 
-				takeUntil(this.disconnecting)
-			)
-			.subscribe(() => this.handleResize())
-	}
-
-	disconnectedCallback(): void {
-		super.disconnectedCallback()
-		this.resizeSubscription?.unsubscribe()
-	}
-
-	private handleResize(): void {
-		const wasDesktop = this.isDesktop
-		this.isDesktop = window.innerWidth >= 768
-
-		if (!wasDesktop && this.isDesktop) {
-			this.summaryExpanded = true
-		}
-	}
-
-	private toggleSummary(): void {
-		this.summaryExpanded = !this.summaryExpanded
-		this.announceForScreenReader(`Booking summary ${this.summaryExpanded ? 'expanded' : 'collapsed'}`)
-	}
-
-	private announceForScreenReader(message: string): void {
-		const announcement = document.createElement('div')
-		announcement.setAttribute('aria-live', 'polite')
-		announcement.setAttribute('class', 'sr-only')
-		announcement.textContent = message
-		document.body.appendChild(announcement)
-
-		setTimeout(() => {
-			document.body.removeChild(announcement)
-		}, 1000)
-	}
 
 	private getSelectedCourt(): Court | undefined {
 		if (this.selectedCourt) {
@@ -81,32 +36,12 @@ export class BookingSummary extends $LitElement() {
 
 	private formatDate(dateStr: string): string {
 		if (!dateStr) return 'TBD'
-
-		try {
-			const date = new Date(dateStr)
-			return date.toLocaleDateString('en-US', { 
-				weekday: 'short', 
-				month: 'short', 
-				day: 'numeric' 
-			})
-		} catch {
-			return 'Invalid date'
-		}
+		return dayjs(dateStr).format('ddd, MMM D')
 	}
 
 	private formatTime(timeStr: string): string {
 		if (!timeStr) return 'TBD'
-
-		try {
-			const date = new Date(timeStr)
-			return date.toLocaleTimeString('en-GB', { 
-				hour: '2-digit', 
-				minute: '2-digit', 
-				hour12: false 
-			})
-		} catch {
-			return 'Invalid time'
-		}
+		return dayjs(timeStr).format('HH:mm')
 	}
 
 	private formatDuration(): string {
@@ -114,28 +49,14 @@ export class BookingSummary extends $LitElement() {
 			return 'TBD'
 		}
 
-		try {
-			const startTime = new Date(this.booking.startTime)
-			const endTime = new Date(this.booking.endTime)
-			const durationMs = endTime.getTime() - startTime.getTime()
+		const duration = dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute')
+		const hours = Math.floor(duration / 60)
+		const minutes = duration % 60
 
-			if (isNaN(durationMs) || durationMs < 0) {
-				return 'Invalid duration'
-			}
-
-			const durationHours = Math.floor(durationMs / (1000 * 60 * 60))
-			const durationMinutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60))
-
-			if (durationHours > 0) {
-				const hourText = `${durationHours} hour${durationHours > 1 ? 's' : ''}`
-				const minuteText = durationMinutes > 0 ? ` ${durationMinutes} min` : ''
-				return hourText + minuteText
-			}
-			
-			return `${durationMinutes} minutes`
-		} catch {
-			return 'Invalid duration'
+		if (hours > 0) {
+			return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
 		}
+		return `${minutes}m`
 	}
 
 	private formatPrice(price: number): string {
@@ -148,73 +69,59 @@ export class BookingSummary extends $LitElement() {
 
 	render() {
 		const court = this.getSelectedCourt()
+		const hasBookingDetails = this.booking?.date && this.booking?.startTime
 
 		return html`
-			<schmancy-surface type="container" class="p-4">
-				<!-- Header with toggle -->
-				<div
-					class="flex justify-between items-center cursor-pointer select-none"
-					@click=${this.toggleSummary}
-					@keydown=${(e: KeyboardEvent) => e.key === 'Enter' && this.toggleSummary()}
-					tabindex="0"
-					role="button"
-					aria-expanded=${this.summaryExpanded}
-					aria-controls="booking-summary-content"
-				>
-					<schmancy-typography type="title" token="sm">Booking Summary</schmancy-typography>
-					<schmancy-icon 
-						class="transition-transform duration-300 ${this.summaryExpanded ? 'rotate-180' : ''}"
-					>
-						expand_more
-					</schmancy-icon>
-				</div>
-
-				<!-- Expandable content -->
-				<div 
-					id="booking-summary-content"
-					class="overflow-hidden transition-all duration-300 ${this.summaryExpanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}"
-				>
-					<schmancy-grid gap="sm" class="mt-3">
-						${this.renderDetailRow('Date', this.formatDate(this.booking?.date))}
-						${this.renderDetailRow('Time', `${this.formatTime(this.booking?.startTime)} - ${this.formatTime(this.booking?.endTime)}`)}
-						${this.renderDetailRow('Duration', this.formatDuration())}
-						${this.renderDetailRow('Court', court?.name || 'Auto-assigned')}
-						
-						<schmancy-divider></schmancy-divider>
-						
-						<div class="flex justify-between items-center">
-							<schmancy-typography type="title" token="sm">Total:</schmancy-typography>
-							<schmancy-typography type="display" token="sm" class="text-primary-default">
-								${this.formatPrice(this.booking?.price)}
-							</schmancy-typography>
-						</div>
-					</schmancy-grid>
-				</div>
-
-				<!-- Collapsed view -->
-				${when(
-					!this.summaryExpanded,
-					() => html`
-						<div class="flex justify-between items-center mt-2">
+			<schmancy-surface type="containerHigh" rounded="all" class="p-3">
+				<!-- Compact always-visible summary -->
+				<div class="flex items-center justify-between gap-2">
+					<!-- Left side - booking info -->
+					<div class="flex-1 min-w-0">
+						${hasBookingDetails ? html`
+							<div class="flex items-center gap-2 flex-wrap">
+								<!-- Date & Time -->
+								<div class="flex items-center gap-1.5">
+									<schmancy-icon size="16px" class="text-primary-default">calendar_today</schmancy-icon>
+									<schmancy-typography type="body" token="sm" class="font-medium">
+										${this.formatDate(this.booking.date)}
+									</schmancy-typography>
+								</div>
+								
+								<!-- Time Range -->
+								<div class="flex items-center gap-1.5">
+									<schmancy-icon size="16px" class="text-primary-default">schedule</schmancy-icon>
+									<schmancy-typography type="body" token="sm">
+										${this.formatTime(this.booking.startTime)} - ${this.formatTime(this.booking.endTime)}
+									</schmancy-typography>
+								</div>
+								
+								<!-- Court (if selected) -->
+								${court ? html`
+									<div class="flex items-center gap-1.5">
+										<schmancy-icon size="16px" class="text-primary-default">sports_tennis</schmancy-icon>
+										<schmancy-typography type="body" token="sm">
+											${court.name}
+										</schmancy-typography>
+									</div>
+								` : ''}
+							</div>
+						` : html`
 							<schmancy-typography type="body" token="sm" class="text-surface-on-variant">
-								${this.formatDate(this.booking?.date)} · ${this.formatTime(this.booking?.startTime)}
+								Complete your booking details
 							</schmancy-typography>
-							<schmancy-typography type="title" token="sm" class="text-primary-default">
-								${this.formatPrice(this.booking?.price)}
-							</schmancy-typography>
-						</div>
-					`,
-				)}
-			</schmancy-surface>
-		`
-	}
+						`}
+					</div>
+					
+					<!-- Right side - price and toggle -->
+					<div class="flex items-center gap-2">
+						<schmancy-typography type="title" token="md" class="text-primary-default font-bold">
+							${this.formatPrice(this.booking?.price)}
+						</schmancy-typography>
+						
+					</div>
+				</div>
 
-	private renderDetailRow(label: string, value: string) {
-		return html`
-			<div class="flex justify-between items-center">
-				<schmancy-typography type="label" token="sm">${label}:</schmancy-typography>
-				<schmancy-typography type="body" token="md" weight="medium">${value}</schmancy-typography>
-			</div>
+			</schmancy-surface>
 		`
 	}
 }

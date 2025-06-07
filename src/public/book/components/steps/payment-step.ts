@@ -8,7 +8,24 @@ import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import { BehaviorSubject, catchError, distinctUntilChanged, filter, finalize, from, interval, map, of, Subscription, switchMap, takeUntil, tap } from 'rxjs'
+import {
+	BehaviorSubject,
+	catchError,
+	delay,
+	distinctUntilChanged,
+	filter,
+	finalize,
+	from,
+	interval,
+	map,
+	merge,
+	of,
+	startWith,
+	Subscription,
+	switchMap,
+	takeUntil,
+	tap,
+} from 'rxjs'
 import dayjs from 'dayjs'
 import countries from 'src/assets/countries'
 import { BookingService } from 'src/bookingServices/booking.service'
@@ -16,12 +33,12 @@ import { Court } from 'src/db/courts.collection'
 import { auth, db } from 'src/firebase/firebase'
 import stripePromise, { $stripeElements } from 'src/public/stripe'
 import { createPaymentIntent } from '../../../stripe'
-import '../../../booking-confirmation/booking-confirmation'; // Import booking confirmation component
+import '../../../booking-confirmation/booking-confirmation' // Import booking confirmation component
 import { FunkhausSportsTermsAndConditions } from '../../../shared/components/terms-and-conditions'
 import { Booking, bookingContext, BookingProgressContext, BookingStep } from '../../context'
 import { FormValidator } from '../../form-validator'
-import '../booking-timer'; // Import timer component
-import '../booking-summery'; // Import booking summary component
+import '../booking-timer' // Import timer component
+import '../booking-summery' // Import booking summary component
 
 /**
  * Checkout form component with Stripe integration
@@ -47,7 +64,6 @@ export class CheckoutForm extends $LitElement() {
 	private stripe: Stripe | null = null
 	private elements?: StripeElements
 	private _elementsSubscription?: Subscription
-	private _lastActiveSubscription?: Subscription
 
 	// Payment processing state
 	private _processing = new BehaviorSubject<boolean>(false)
@@ -57,52 +73,64 @@ export class CheckoutForm extends $LitElement() {
 
 	connectedCallback() {
 		super.connectedCallback()
-		
-		// Add subscription to BookingProgressContext to track active state
-		BookingProgressContext.$.pipe(
-			takeUntil(this.disconnecting),
+
+		// Track active state changes from BookingProgressContext
+		const isActive$ = BookingProgressContext.$.pipe(
 			map(progress => progress.currentStep),
 			distinctUntilChanged(),
-			map(currentStep => {
-				// Check if current step is the Payment step
-				return currentStep === BookingStep.Payment
-			}),
+			map(currentStep => currentStep === BookingStep.Payment),
 			filter(() => !this.isTransitioning),
-		).subscribe(isActive => {
-			// Set transitioning flag to enable smooth animations
-			this.isTransitioning = true
-			
-			// Update active state
-			this.isActive = isActive
-			
-			// Reset timer expired state when becoming active again
-			if (isActive && this.timerExpired) {
-				this.timerExpired = false
-			}
-			
-			// Start or stop lastActive updates based on active state
-			if (isActive && this.booking?.id && this.booking?.status === 'holding') {
-				// Update lastActive every 2 minutes while on payment page
-				this._lastActiveSubscription = interval(120000) // 2 minutes
-					.pipe(takeUntil(this.disconnecting))
-					.subscribe(() => {
-						if (this.booking?.id) {
-							this.bookingService.updateLastActive(this.booking.id).subscribe()
-						}
-					})
-			} else {
-				// Stop updating when not active
-				this._lastActiveSubscription?.unsubscribe()
-			}
-			
-			// Reset transitioning flag after animation time
-			setTimeout(() => {
+			tap(isActive => {
+				// Update state flags
+				this.isTransitioning = true
+				this.isActive = isActive
+
+				// Reset timer expired state when becoming active
+				if (isActive && this.timerExpired) {
+					this.timerExpired = false
+				}
+			}),
+			takeUntil(this.disconnecting),
+		)
+
+		// Handle transition animation completion
+		const transitionComplete$ = isActive$.pipe(
+			switchMap(() => of(null).pipe(delay(350))),
+			tap(() => {
 				this.isTransitioning = false
 				this.requestUpdate()
-			}, 350)
-			
-			this.requestUpdate()
-		})
+			}),
+		)
+
+		// Handle lastActive updates when on payment page
+		const lastActiveUpdates$ = isActive$.pipe(
+			switchMap(isActive => {
+				// Only update when active and booking is in holding status
+				if (isActive && this.booking?.id && this.booking?.status === 'holding') {
+					return interval(120000).pipe(
+						// Update every 2 minutes
+						startWith(0), // Update immediately when becoming active
+						switchMap(() =>
+							this.booking?.id
+								? this.bookingService.updateLastActive(this.booking.id).pipe(
+										catchError(err => {
+											console.error('Failed to update lastActive:', err)
+											return of(null)
+										}),
+									)
+								: of(null),
+						),
+						takeUntil(this.disconnecting),
+					)
+				}
+				return of(null) // Stop updates when not active
+			}),
+		)
+
+		// Merge all subscriptions into a single pipeline
+		merge(isActive$.pipe(tap(() => this.requestUpdate())), transitionComplete$, lastActiveUpdates$)
+			.pipe(takeUntil(this.disconnecting))
+			.subscribe()
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
@@ -113,9 +141,7 @@ export class CheckoutForm extends $LitElement() {
 		this.initializeStripe()
 
 		// Subscribe to processing state changes
-		this._processing.pipe(
-			takeUntil(this.disconnecting)
-		).subscribe(isProcessing => {
+		this._processing.pipe(takeUntil(this.disconnecting)).subscribe(isProcessing => {
 			this.processing = isProcessing
 		})
 	}
@@ -128,13 +154,9 @@ export class CheckoutForm extends $LitElement() {
 			this._elementsSubscription.unsubscribe()
 		}
 
-		if (this._lastActiveSubscription) {
-			this._lastActiveSubscription.unsubscribe()
-		}
-
 		// Cancel any ongoing payment processing
 		this.cancelProcessing()
-		
+
 		// Cancel holding booking if payment hasn't been processed yet
 		if (!this.processing && this.booking?.id && this.booking?.status === 'holding') {
 			this.cancelHoldingBooking()
@@ -257,7 +279,7 @@ export class CheckoutForm extends $LitElement() {
 	/**
 	 * Confirm payment with Stripe
 	 */
-	private confirmPayment(
+	private async confirmPayment(
 		stripe: Stripe,
 		elements: StripeElements,
 		clientSecret: string,
@@ -266,39 +288,41 @@ export class CheckoutForm extends $LitElement() {
 		console.log('Calling stripe.confirmPayment with:', {
 			clientSecret: clientSecret.substring(0, 20) + '...',
 			bookingId: booking.id,
-			redirect: 'if_required'
+			redirect: 'if_required',
 		})
-		
-		return stripe.confirmPayment({
-			clientSecret,
-			elements: elements,
-			confirmParams: {
-				payment_method_data: {
-					billing_details: {
-						name: booking.userName || '',
-						email: booking.customerEmail || '',
-						phone: booking.customerPhone || '',
-						address: {
-							country: booking.customerAddress?.country || '',
-							state: booking.customerAddress?.city || '',
-							city: booking.customerAddress?.city || '',
-							line1: booking.customerAddress?.street || '',
-							line2: '',
-							postal_code: booking.customerAddress?.postalCode || '',
+
+		try {
+			const result = await stripe.confirmPayment({
+				clientSecret,
+				elements: elements,
+				confirmParams: {
+					payment_method_data: {
+						billing_details: {
+							name: booking.userName || '',
+							email: booking.customerEmail || '',
+							phone: booking.customerPhone || '',
+							address: {
+								country: booking.customerAddress?.country || '',
+								state: booking.customerAddress?.city || '',
+								city: booking.customerAddress?.city || '',
+								line1: booking.customerAddress?.street || '',
+								line2: '',
+								postal_code: booking.customerAddress?.postalCode || '',
+							},
 						},
 					},
+					return_url: `${window.location.href.split('?')[0]}?booking=${booking.id}`,
+					receipt_email: booking.customerEmail || '',
 				},
-				return_url: `${window.location.href.split('?')[0]}?booking=${booking.id}`,
-				receipt_email: booking.customerEmail || '',
-			},
-			redirect: 'if_required',
-		}).then(result => {
+				redirect: 'if_required',
+			})
+
 			console.log('stripe.confirmPayment completed:', result)
 			return result
-		}).catch(error => {
+		} catch (error) {
 			console.error('stripe.confirmPayment error:', error)
 			throw error
-		})
+		}
 	}
 
 	/**
@@ -313,11 +337,7 @@ export class CheckoutForm extends $LitElement() {
 	/**
 	 * Process payment with integrated logic
 	 */
-	private processPaymentWithStripe(
-		booking: Booking,
-		stripe: Stripe,
-		elements: StripeElements,
-	) {
+	private processPaymentWithStripe(booking: Booking, stripe: Stripe, elements: StripeElements) {
 		// Prevent multiple processing attempts
 		this._processing.next(true)
 
@@ -349,9 +369,9 @@ export class CheckoutForm extends $LitElement() {
 				customerAddress: bookingData.customerAddress,
 				userId: bookingData.userId,
 				updatedAt: new Date().toISOString(),
-				lastActive: new Date().toISOString()
+				lastActive: new Date().toISOString(),
 			}
-			
+
 			// Update booking in Firestore
 			from(updateDoc(doc(db, 'bookings', bookingData.id), bookingUpdate))
 				.pipe(
@@ -360,7 +380,7 @@ export class CheckoutForm extends $LitElement() {
 						console.error('Error updating booking with user info:', error)
 						// Continue anyway - payment is more important
 						return of(null)
-					})
+					}),
 				)
 				.subscribe()
 		}
@@ -373,17 +393,17 @@ export class CheckoutForm extends $LitElement() {
 				if (this._processingLock !== lockFlag) {
 					return of({ success: false, booking: bookingData })
 				}
-				
+
 				const clientSecret = response.clientSecret
-				
+
 				// Check if booking already exists (created during duration selection)
 				if (bookingData.id) {
 					console.log('Using existing booking:', bookingData.id)
-					
+
 					if (!stripe || !elements) {
 						throw new Error('Payment system not available')
 					}
-					
+
 					// Process payment with existing booking
 					console.log('Confirming payment with Stripe...')
 					return from(this.confirmPayment(stripe, elements, clientSecret, bookingData)).pipe(
@@ -393,10 +413,10 @@ export class CheckoutForm extends $LitElement() {
 								console.error('Stripe payment error:', stripeResult.error)
 								throw stripeResult.error
 							}
-							
+
 							console.log('Payment confirmed successfully')
 							return { success: true, booking: bookingData }
-						})
+						}),
 					)
 				} else {
 					// Create temporary booking record if it doesn't exist
@@ -406,7 +426,7 @@ export class CheckoutForm extends $LitElement() {
 							if (!stripe || !elements) {
 								throw new Error('Payment system not available')
 							}
-							
+
 							// Now process the payment with Stripe
 							return this.confirmPayment(stripe, elements, clientSecret, createdBooking)
 						}),
@@ -414,9 +434,9 @@ export class CheckoutForm extends $LitElement() {
 							if (stripeResult.error) {
 								throw stripeResult.error
 							}
-							
+
 							return { success: true, booking: bookingData }
-						})
+						}),
 					)
 				}
 			}),
@@ -429,12 +449,17 @@ export class CheckoutForm extends $LitElement() {
 			finalize(() => {
 				// Only update processing state if component is still mounted
 				if (this._processingLock === lockFlag) {
-					// Add a small delay to prevent flickering
-					setTimeout(() => {
-						if (this._processingLock === lockFlag) {
-							this._processing.next(false)
-						}
-					}, 300)
+					// Add a small delay to prevent flickering using RxJS
+					of(null)
+						.pipe(
+							delay(300),
+							tap(() => {
+								if (this._processingLock === lockFlag) {
+									this._processing.next(false)
+								}
+							}),
+						)
+						.subscribe()
 				}
 			}),
 		)
@@ -485,7 +510,7 @@ export class CheckoutForm extends $LitElement() {
 				if (result.success) {
 					console.log('Payment successful, navigating to confirmation...')
 					console.log('Booking data:', result.booking)
-					
+
 					// Navigate directly to booking confirmation URL
 					// This is more reliable than area.push
 					const bookingId = result.booking.id
@@ -503,13 +528,13 @@ export class CheckoutForm extends $LitElement() {
 					// Stripe should handle the error display, but log it for debugging
 				}
 			},
-			error: (error) => {
+			error: error => {
 				console.error('Payment processing error:', error)
 				// Don't show notification as Stripe handles its own error display
 			},
 			complete: () => {
 				console.log('Payment processing completed')
-			}
+			},
 		})
 	}
 
@@ -570,26 +595,30 @@ export class CheckoutForm extends $LitElement() {
 		}
 
 		const bookingRef = doc(db, 'bookings', this.booking.id)
-		
+
 		// Update booking to cancelled status
-		from(updateDoc(bookingRef, {
-			status: 'cancelled',
-			paymentStatus: 'abandoned',
-			cancellationReason: 'user_navigated_away',
-			updatedAt: new Date().toISOString()
-		})).pipe(
-			map(() => {
-				console.log(`Cancelled holding booking ${this.booking.id} - user navigated away`)
-				// Clear the booking ID from context to prevent reuse
-				bookingContext.set({ id: '', status: 'holding' }, true)
+		from(
+			updateDoc(bookingRef, {
+				status: 'cancelled',
+				paymentStatus: 'abandoned',
+				cancellationReason: 'user_navigated_away',
+				updatedAt: new Date().toISOString(),
 			}),
-			catchError(error => {
-				console.error('Error cancelling holding booking:', error)
-				// Still clear the booking ID even if the update fails
-				bookingContext.set({ id: '', status: 'holding' }, true)
-				return of(null)
-			})
-		).subscribe()
+		)
+			.pipe(
+				map(() => {
+					console.log(`Cancelled holding booking ${this.booking.id} - user navigated away`)
+					// Clear the booking ID from context to prevent reuse
+					bookingContext.set({ id: '', status: 'holding' }, true)
+				}),
+				catchError(error => {
+					console.error('Error cancelling holding booking:', error)
+					// Still clear the booking ID even if the update fails
+					bookingContext.set({ id: '', status: 'holding' }, true)
+					return of(null)
+				}),
+			)
+			.subscribe()
 	}
 
 	/**
@@ -607,29 +636,33 @@ export class CheckoutForm extends $LitElement() {
 		// Cancel the booking
 		if (this.booking?.id && this.booking?.status === 'holding') {
 			const bookingRef = doc(db, 'bookings', this.booking.id)
-			
+
 			// Update booking to cancelled status
-			from(updateDoc(bookingRef, {
-				status: 'cancelled',
-				paymentStatus: 'expired',
-				cancellationReason: 'timer_expired',
-				updatedAt: new Date().toISOString()
-			})).pipe(
-				tap(() => {
-					console.log(`Cancelled expired booking ${this.booking.id}`)
-					// Clear the booking ID from context
-					bookingContext.set({ id: '', status: 'holding' }, true)
-					// Show notification
-					$notify.error('Booking time expired. Please start a new booking.')
+			from(
+				updateDoc(bookingRef, {
+					status: 'cancelled',
+					paymentStatus: 'expired',
+					cancellationReason: 'timer_expired',
+					updatedAt: new Date().toISOString(),
 				}),
-				catchError(error => {
-					console.error('Error cancelling expired booking:', error)
-					// Still clear the booking ID even if the update fails
-					bookingContext.set({ id: '', status: 'holding' }, true)
-					$notify.error('Booking time expired. Please start a new booking.')
-					return of(null)
-				})
-			).subscribe()
+			)
+				.pipe(
+					tap(() => {
+						console.log(`Cancelled expired booking ${this.booking.id}`)
+						// Clear the booking ID from context
+						bookingContext.set({ id: '', status: 'holding' }, true)
+						// Show notification
+						$notify.error('Booking time expired. Please start a new booking.')
+					}),
+					catchError(error => {
+						console.error('Error cancelling expired booking:', error)
+						// Still clear the booking ID even if the update fails
+						bookingContext.set({ id: '', status: 'holding' }, true)
+						$notify.error('Booking time expired. Please start a new booking.')
+						return of(null)
+					}),
+				)
+				.subscribe()
 		} else {
 			// Just show notification if no booking to cancel
 			$notify.error('Booking time expired. Please start a new booking.')
@@ -655,24 +688,29 @@ export class CheckoutForm extends $LitElement() {
 				`,
 			)}
 			<!-- Error display -->
-			
+
 			<div
 				class="
-					w-full bg-surface-low rounded-lg transition-all duration-300 p-2
+					w-full  rounded-lg transition-all duration-300 p-2
 					${this.isActive ? 'scale-100' : 'scale-95'}
 				"
 			>
 				<!-- Booking Summary - only show when timer hasn't expired -->
-				${when(!this.timerExpired, () => html`
-					<booking-summary .selectedCourt=${this.selectedCourt}></booking-summary>
-				`)}
-				
-				<!-- Timer display -->
-				${when(this.isActive && !this.timerExpired, () => html`
-					<booking-timer @timer-expired=${() => this.handleTimerExpired()}></booking-timer>
-				`)}
+				${when(
+					!this.timerExpired,
+					() => html`
+               <booking-summary  .selectedCourt=${this.selectedCourt}></booking-summary>
+          
+          `,
+				)}
 
-				${when(this.timerExpired, 
+				<!-- Timer display -->
+				${when(
+					this.isActive && !this.timerExpired,
+					() => html` <booking-timer @timer-expired=${() => this.handleTimerExpired()}></booking-timer> `,
+				)}
+				${when(
+					this.timerExpired,
 					() => html`
 						<div class="w-full grid items-center justify-center py-8 px-4 text-center">
 							<schmancy-icon size="64px" class="text-error-default mb-4">timer_off</schmancy-icon>
@@ -682,124 +720,126 @@ export class CheckoutForm extends $LitElement() {
 							<schmancy-typography type="body" token="md" class="mb-4">
 								Your booking reservation has expired. Please start a new booking.
 							</schmancy-typography>
-							<schmancy-button class="mx-auto" variant="filled" @click=${() => window.location.href = '/book'}>
+							<schmancy-button class="mx-auto" variant="filled" @click=${() => (window.location.href = '/book')}>
 								Start New Booking
 							</schmancy-button>
 						</div>
 					`,
 					() => html`
-				<schmancy-form @submit=${this.processPayment} .inert=${this.processing || this.timerExpired}>
-					<schmancy-grid class="w-full py-2 md:py-4 px-2" gap="sm">
-						<!-- Personal Information -->
-						<sch-input
-							size="sm"
-							autocomplete="name"
-							.value=${this.booking.userName || ''}
-							required
-							.error=${!this.formValidator.isFieldValid('userName')}
-							type="text"
-							class="w-full"
-							placeholder="Full Name"
-							@change=${(e: any) => this.updateBookingField('userName', e.detail.value)}
-						></sch-input>
-
-						<schmancy-grid gap="sm" cols="1fr 1fr">
-							<sch-input
-								size="sm"
-								autocomplete="email"
-								.value=${this.booking.customerEmail || ''}
-								required
-								.error=${!this.formValidator.isFieldValid('customerEmail') ||
-								!this.formValidator.isFieldValid('emailFormat')}
-								type="email"
-								placeholder="Email Address"
-								@change=${(e: any) => this.updateBookingField('customerEmail', e.detail.value)}
-							></sch-input>
-							<sch-input
-								size="sm"
-								autocomplete="tel"
-								.value=${this.booking.customerPhone || ''}
-								required
-								.error=${!this.formValidator.isFieldValid('customerPhone')}
-								type="tel"
-								class="w-full"
-								placeholder="Phone Number"
-								@change=${(e: any) => this.updateBookingField('customerPhone', e.detail.value)}
-							></sch-input>
-						</schmancy-grid>
-
-						<!-- Billing Information -->
-						<schmancy-grid gap="sm">
-							<div class="grid grid-cols-3 gap-2">
+						<schmancy-form @submit=${this.processPayment} .inert=${this.processing || this.timerExpired}>
+							<schmancy-grid class="w-full px-2" gap="sm">
+								<!-- Personal Information -->
 								<sch-input
 									size="sm"
-									autocomplete="postal-code"
-									.value=${this.booking.customerAddress?.postalCode || ''}
+									autocomplete="name"
+									.value=${this.booking.userName || ''}
 									required
-									.error=${!this.formValidator.isFieldValid('customerAddress.postalCode')}
+									.error=${!this.formValidator.isFieldValid('userName')}
 									type="text"
-									placeholder="Postal Code"
-									@change=${(e: any) => this.updateBookingField('customerAddress.postalCode', e.detail.value)}
+									class="w-full"
+									placeholder="Full Name"
+									@change=${(e: any) => this.updateBookingField('userName', e.detail.value)}
 								></sch-input>
 
-								<sch-input
-									size="sm"
-									autocomplete="address-level2"
-									.value=${this.booking.customerAddress?.city || ''}
-									required
-									.error=${!this.formValidator.isFieldValid('customerAddress.city')}
-									type="text"
-									placeholder="City"
-									@change=${(e: any) => this.updateBookingField('customerAddress.city', e.detail.value)}
-								></sch-input>
-								<schmancy-autocomplete
-									size="sm"
-									.autocomplete=${'country-name'}
-									required
-									@change=${(e: SchmancyAutocompleteChangeEvent) => {
-										this.updateBookingField('customerAddress.country', e.detail.value as string)
-									}}
-									placeholder="Country"
-									.value=${this.booking.customerAddress?.country || ''}
-								>
-									${repeat(
-										countries,
-										c => c.code,
-										c =>
-											html` <schmancy-option .label=${c.name ?? ''} .value=${c.code ?? 0}> ${c.name} </schmancy-option>`,
-									)}
-								</schmancy-autocomplete>
-							</div>
-						</schmancy-grid>
+								<schmancy-grid gap="sm" cols="1fr 1fr">
+									<sch-input
+										size="sm"
+										autocomplete="email"
+										.value=${this.booking.customerEmail || ''}
+										required
+										.error=${!this.formValidator.isFieldValid('customerEmail') ||
+										!this.formValidator.isFieldValid('emailFormat')}
+										type="email"
+										placeholder="Email Address"
+										@change=${(e: any) => this.updateBookingField('customerEmail', e.detail.value)}
+									></sch-input>
+									<sch-input
+										size="sm"
+										autocomplete="tel"
+										.value=${this.booking.customerPhone || ''}
+										required
+										.error=${!this.formValidator.isFieldValid('customerPhone')}
+										type="tel"
+										class="w-full"
+										placeholder="Phone Number"
+										@change=${(e: any) => this.updateBookingField('customerPhone', e.detail.value)}
+									></sch-input>
+								</schmancy-grid>
 
-						<!-- Payment Details -->
-						<section>
-							<slot name="stripe-element"></slot>
-						</section>
+								<!-- Billing Information -->
+								<schmancy-grid gap="sm">
+									<div class="grid grid-cols-3 gap-2">
+										<sch-input
+											size="sm"
+											autocomplete="postal-code"
+											.value=${this.booking.customerAddress?.postalCode || ''}
+											required
+											.error=${!this.formValidator.isFieldValid('customerAddress.postalCode')}
+											type="text"
+											placeholder="Postal Code"
+											@change=${(e: any) => this.updateBookingField('customerAddress.postalCode', e.detail.value)}
+										></sch-input>
 
-						<!-- Terms & Submit Button -->
-						<schmancy-grid class="pr-4" gap="sm" justify="end">
-							<schmancy-grid cols="1fr" justify="end">
-								<schmancy-typography type="label" class="col-span-1" align="left">
-									<span>
-										By clicking Pay you agree to
-
-										<a class="text-sky-700 underline" href="javascript:void(0)" @click=${this.showTerms}
-											>our terms and conditions</a
+										<sch-input
+											size="sm"
+											autocomplete="address-level2"
+											.value=${this.booking.customerAddress?.city || ''}
+											required
+											.error=${!this.formValidator.isFieldValid('customerAddress.city')}
+											type="text"
+											placeholder="City"
+											@change=${(e: any) => this.updateBookingField('customerAddress.city', e.detail.value)}
+										></sch-input>
+										<schmancy-autocomplete
+											size="sm"
+											.autocomplete=${'country-name'}
+											required
+											@change=${(e: SchmancyAutocompleteChangeEvent) => {
+												this.updateBookingField('customerAddress.country', e.detail.value as string)
+											}}
+											placeholder="Country"
+											.value=${this.booking.customerAddress?.country || ''}
 										>
-									</span>
-								</schmancy-typography>
-								<schmancy-typography class="mb-0" type="label"> Includes: 7% VAT </schmancy-typography>
+											${repeat(
+												countries,
+												c => c.code,
+												c =>
+													html` <schmancy-option .label=${c.name ?? ''} .value=${c.code ?? 0}>
+														${c.name}
+													</schmancy-option>`,
+											)}
+										</schmancy-autocomplete>
+									</div>
+								</schmancy-grid>
+
+								<!-- Payment Details -->
+								<section>
+									<slot name="stripe-element"></slot>
+								</section>
+
+								<!-- Terms & Submit Button -->
+								<schmancy-grid class="pr-4" gap="sm" justify="end">
+									<schmancy-grid cols="1fr" justify="end">
+										<schmancy-typography type="label" class="col-span-1" align="left">
+											<span>
+												By clicking Pay you agree to
+
+												<a class="text-sky-700 underline" href="javascript:void(0)" @click=${this.showTerms}
+													>our terms and conditions</a
+												>
+											</span>
+										</schmancy-typography>
+										<schmancy-typography class="mb-0" type="label"> Includes: 7% VAT </schmancy-typography>
+									</schmancy-grid>
+									<schmancy-button class="h-[3rem] pb-2" type="submit" variant="filled" ?disabled=${this.processing}>
+										<schmancy-typography class="px-4" type="title" token="lg">
+											Pay &euro;${this.booking.price.toFixed(2)}
+										</schmancy-typography>
+									</schmancy-button>
+								</schmancy-grid>
 							</schmancy-grid>
-							<schmancy-button class="h-[3rem] pb-2" type="submit" variant="filled" ?disabled=${this.processing}>
-								<schmancy-typography class="px-4" type="title" token="lg">
-									Pay &euro;${this.booking.price.toFixed(2)}
-								</schmancy-typography>
-							</schmancy-button>
-						</schmancy-grid>
-					</schmancy-grid>
-				</schmancy-form>
-					`
+						</schmancy-form>
+					`,
 				)}
 			</div>
 		`

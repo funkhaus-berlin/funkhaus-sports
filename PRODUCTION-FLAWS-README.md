@@ -4,19 +4,6 @@ This document contains a comprehensive analysis of potential production flaws fo
 
 ## Critical Production Flaws Found
 
-### 2. **Missing Retry Logic for Critical Payment Operations (HIGH SEVERITY)**
-**Location**: `netlify/functions/create-payment-intent.ts` (lines 92-111)
-**Issue**: No retry mechanism for Stripe payment intent creation, which can fail due to transient network issues.
-```typescript
-// No retry logic here
-const paymentIntent = await stripe.paymentIntents.create({
-    amount: Math.round(amount),
-    currency: currency,
-    // ... rest of config
-})
-```
-**Impact**: Payment failures due to temporary network issues, leading to lost revenue.
-
 ### 3. **Inadequate Booking Cleanup Timer Logic (MEDIUM SEVERITY)**
 **Location**: `netlify/functions/cleanup-abandoned-bookings.ts` (lines 17-23)
 **Issue**: The cleanup function uses a fixed 7-minute timeout, but the frontend timer can be extended if the user is active. This mismatch can cause active bookings to be cancelled.

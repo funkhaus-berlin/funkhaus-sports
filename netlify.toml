@@ -4,7 +4,8 @@
   included_files = ["netlify/functions/_shared/ticket.pug", "netlify/functions/_shared/assets/**", "netlify/functions/_shared/data/**"]
 
 # Scheduled function to cleanup abandoned bookings
-# Runs every minute
+# Runs every minute to check for bookings older than 8 minutes
+# This ensures timely cleanup while respecting the frontend timer + lastActive updates
 [functions.cleanup-abandoned-bookings]
   schedule = "* * * * *"
 

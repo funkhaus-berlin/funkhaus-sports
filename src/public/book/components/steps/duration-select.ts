@@ -321,12 +321,6 @@ export class DurationSelectionStep extends $LitElement(css`
 					// Update booking context with the created booking data
 					bookingContext.set(createdBooking, true)
 					
-					// Store booking ID in session storage as backup
-					sessionStorage.setItem('currentBookingId', createdBooking.id!)
-					
-					// Show notification about reservation
-					$notify.success('Your booking has been reserved for 5 minutes', { duration: 3000 })
-					
 					// Transition to payment step
 					transitionToNextStep('Duration')
 				}

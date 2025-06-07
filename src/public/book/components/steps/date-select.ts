@@ -11,8 +11,6 @@ import { availabilityContext } from 'src/availability-context'
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { bookingContext, BookingProgressContext, BookingStep } from '../../context'
 
-// Define golden ratio constant
-const GOLDEN_RATIO = 1.618
 
 // Animation presets
 const ANIMATIONS: {
@@ -128,7 +126,7 @@ export class DateSelectionStep extends $LitElement(css`
 					// Find the position of Date step in the steps array
 					const dateStepIndex = progress.steps.findIndex(s => s.step === BookingStep.Date)
 					// Check if this position matches the current step
-					return progress.currentStep === dateStepIndex +1
+					return progress.currentStep === dateStepIndex + 1
 				}),
 				distinctUntilChanged(),
 				filter(() => !this._transitionActive), // Only process if not already transitioning
@@ -136,16 +134,16 @@ export class DateSelectionStep extends $LitElement(css`
 					if (this.active !== isActive) {
 						// Set transition flag to enable smooth animations
 						this._transitionActive = true
-						
+
 						// Update active state
 						this.active = isActive
-						
+
 						// Reset transition flag after animation
 						setTimeout(() => {
 							this._transitionActive = false
 							this.requestUpdate()
 						}, 350)
-						
+
 						this.requestUpdate()
 					}
 				}),
@@ -422,16 +420,19 @@ export class DateSelectionStep extends $LitElement(css`
 
 		const today = new Date()
 		today.setHours(0, 0, 0, 0) // Normalize to start of day
-		
+
 		// Find the start of the week containing today
 		const dayOfWeek = today.getDay()
-		const daysToSubtract = this._firstDayOfWeek === 1 
-			? (dayOfWeek === 0 ? 6 : dayOfWeek - 1) // Monday as first day
-			: dayOfWeek // Sunday as first day
-		
+		const daysToSubtract =
+			this._firstDayOfWeek === 1
+				? dayOfWeek === 0
+					? 6
+					: dayOfWeek - 1 // Monday as first day
+				: dayOfWeek // Sunday as first day
+
 		const startDate = new Date(today)
 		startDate.setDate(today.getDate() - daysToSubtract)
-		
+
 		// Always generate exactly 28 days (4 rows of 7 days)
 		this._cachedDates = Array.from({ length: 28 }, (_, i) => {
 			const date = new Date(startDate)
@@ -456,7 +457,7 @@ export class DateSelectionStep extends $LitElement(css`
 		// Since we always have exactly 28 days starting from the first day of the week,
 		// we can simply chunk them into groups of 7
 		const weeks: Date[][] = []
-		
+
 		for (let i = 0; i < dates.length; i += 7) {
 			weeks.push(dates.slice(i, i + 7))
 		}
@@ -632,7 +633,9 @@ export class DateSelectionStep extends $LitElement(css`
 				<div class="text-xs sm:text-sm font-medium ${isWeekend && !isSelected ? 'text-primary-default' : ''}">
 					${dateDay.format('ddd')}
 				</div>
-				<div class="${isCompact ? 'text-sm sm:text-base' : 'text-base sm:text-lg md:text-xl'} font-bold">${date.getDate()}</div>
+				<div class="${isCompact ? 'text-sm sm:text-base' : 'text-base sm:text-lg md:text-xl'} font-bold">
+					${date.getDate()}
+				</div>
 			</div>
 		`
 	}
@@ -646,7 +649,7 @@ export class DateSelectionStep extends $LitElement(css`
 
 		// Days of week for header - adjusted for locale
 		const daysOfWeek = this.getDaysOfWeek()
-		
+
 		// Determine the primary month to display based on majority of visible dates
 		// Find the month that has the most days in the current view
 		const monthCounts = new Map<string, number>()
@@ -654,7 +657,7 @@ export class DateSelectionStep extends $LitElement(css`
 			const monthKey = dayjs(date).format('MMMM YYYY')
 			monthCounts.set(monthKey, (monthCounts.get(monthKey) || 0) + 1)
 		})
-		
+
 		// Get the month with the most days
 		let displayMonth = this.currentMonth
 		let displayYear = this.currentYear
@@ -698,11 +701,15 @@ export class DateSelectionStep extends $LitElement(css`
 			>
 				<!-- Month and Year header - Outside the animated wrapper -->
 				<div class="text-center p-3 pb-0">
-					<h2 class="${this.active ? 'text-lg sm:text-xl md:text-2xl' : 'text-base sm:text-lg'} font-semibold text-primary-default transition-all duration-300">
+					<h2
+						class="${this.active
+							? 'text-lg sm:text-xl md:text-2xl'
+							: 'text-base sm:text-lg'} font-semibold text-primary-default transition-all duration-300"
+					>
 						${displayMonth} ${displayYear}
 					</h2>
 				</div>
-				
+
 				<!-- Fixed height wrapper for smooth transitions -->
 				<div class="calendar-wrapper" style=${styleMap(wrapperStyle)}>
 					<!-- Active (Expanded) View -->

@@ -1,9 +1,9 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { html, css } from 'lit'
-import { customElement, property, state, query } from 'lit/decorators.js'
+import { css, html } from 'lit'
+import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { fromEvent, of, from, BehaviorSubject, EMPTY, Observable } from 'rxjs'
-import { tap, switchMap, map, catchError, filter, take, takeUntil, distinctUntilChanged, finalize, debounceTime } from 'rxjs/operators'
+import { BehaviorSubject, EMPTY, from, fromEvent, Observable, of } from 'rxjs'
+import { catchError, debounceTime, distinctUntilChanged, filter, finalize, map, switchMap, take, takeUntil, tap } from 'rxjs/operators'
 import { Address } from 'src/db/venue-collection'
 
 // Define the Google Maps API types we need
@@ -18,6 +18,21 @@ declare global {
 				Animation: {
 					DROP: any
 				}
+				MapTypeControlStyle: {
+					DEFAULT: any
+					HORIZONTAL_BAR: any
+					DROPDOWN_MENU: any
+				}
+				ControlPosition: {
+					TOP_LEFT: any
+					TOP_CENTER: any
+					TOP_RIGHT: any
+					LEFT_CENTER: any
+					RIGHT_CENTER: any
+					BOTTOM_LEFT: any
+					BOTTOM_CENTER: any
+					BOTTOM_RIGHT: any
+				}
 			}
 		}
 		initMap?: () => void
@@ -27,6 +42,13 @@ declare global {
 /**
  * Google Maps component to display venue location
  * Follows project's functional programming patterns with RxJS
+ * 
+ * Features:
+ * - Satellite view by default (configurable via mapType prop)
+ * - Configurable map controls (zoom, map type, street view, etc.)
+ * - Only zoom control enabled by default
+ * - Automatic geocoding for addresses without coordinates
+ * - Responsive and accessible design
  */
 @customElement('venue-map')
 export class VenueMap extends $LitElement(css`
@@ -46,6 +68,15 @@ export class VenueMap extends $LitElement(css`
 	@property({ type: Number }) zoom = 15
 	@property({ type: Boolean }) showMarker = true
 	@property({ type: Boolean }) interactive = true
+	@property({ type: String }) mapType: 'roadmap' | 'satellite' | 'hybrid' | 'terrain' = 'satellite'
+	
+	// Map control properties - all false by default except zoom
+	@property({ type: Boolean }) showZoomControl = true
+	@property({ type: Boolean }) showMapTypeControl = false
+	@property({ type: Boolean }) showStreetViewControl = false
+	@property({ type: Boolean }) showFullscreenControl = false
+	@property({ type: Boolean }) showRotateControl = false
+	@property({ type: Boolean }) showScaleControl = false
 
 	@state() private mapLoaded = false
 	@state() private loading = true
@@ -245,17 +276,28 @@ export class VenueMap extends $LitElement(css`
 		const mapOptions = {
 			center,
 			zoom: this.zoom,
-			disableDefaultUI: !this.interactive,
-			zoomControl: this.interactive,
+			mapTypeId: this.mapType,
+			disableDefaultUI: true, // Disable all default UI first
+			zoomControl: this.interactive && this.showZoomControl,
+			mapTypeControl: this.interactive && this.showMapTypeControl,
+			mapTypeControlOptions: {
+				mapTypeIds: ['roadmap', 'satellite', 'hybrid', 'terrain'],
+				style: window.google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+				position: window.google.maps.ControlPosition.TOP_RIGHT
+			},
+			streetViewControl: this.interactive && this.showStreetViewControl,
+			fullscreenControl: this.interactive && this.showFullscreenControl,
+			rotateControl: this.interactive && this.showRotateControl,
+			scaleControl: this.interactive && this.showScaleControl,
 			scrollwheel: this.interactive,
 			draggable: this.interactive,
-			styles: [
+			styles: this.mapType === 'roadmap' ? [
 				{
 					featureType: 'poi',
 					elementType: 'labels',
 					stylers: [{ visibility: 'off' }]
 				}
-			]
+			] : []
 		}
 
 		// Create map
@@ -308,23 +350,6 @@ export class VenueMap extends $LitElement(css`
 		)
 	}
 
-	/**
-	 * Open the location in Google Maps app/website
-	 */
-	private openInGoogleMaps = () => {
-		if (!this.address) return
-
-		let query = ''
-		if (this.address.coordinates) {
-			query = `${this.address.coordinates.lat},${this.address.coordinates.lng}`
-		} else {
-			const { street, city, postalCode, country } = this.address
-			query = encodeURIComponent(`${street}, ${city}, ${postalCode}, ${country}`)
-		}
-
-		const url = `https://www.google.com/maps/search/?api=1&query=${query}`
-		window.open(url, '_blank')
-	}
 
 	render() {
 		return html`

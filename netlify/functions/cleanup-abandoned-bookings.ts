@@ -1,4 +1,4 @@
-import { Handler } from '@netlify/functions'
+import { Handler, schedule } from '@netlify/functions'
 import { corsHeaders } from './_shared/cors'
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore'
 import { db } from './_shared/firebase-admin'
@@ -12,17 +12,19 @@ import { lastValueFrom } from 'rxjs'
  * This should be called periodically (e.g., every minute) by a cron job
  * 
  * Frontend timer: 5 minutes base + 1 minute extension if user is active
- * We use 7 minutes here to be extra safe and avoid deleting active bookings
+ * lastActive updates: Every 2 minutes while on payment page
+ * Cleanup threshold: 8 minutes (6 min timer + 2 min update window)
  * 
  * Netlify scheduled functions: https://docs.netlify.com/functions/scheduled-functions/
  */
 const cleanupAbandonedBookings = async () => {
 	try {
-		// Calculate cutoff time (7 minutes ago - to account for timer extension)
-		// Frontend has 5 minute timer + 60 second extension = 6 minutes max
-		// We add 1 extra minute for safety = 7 minutes total
+		// Calculate cutoff time (8 minutes ago - minimum safe threshold)
+		// Frontend: 5 min base + 1 min extension = 6 minutes max
+		// lastActive updates every 2 minutes, so we add 2 minute buffer
+		// Total: 8 minutes to avoid cancelling active bookings
 		const cutoffTime = new Date()
-		cutoffTime.setMinutes(cutoffTime.getMinutes() - 7)
+		cutoffTime.setMinutes(cutoffTime.getMinutes() - 8)
 		const cutoffTimeString = cutoffTime.toISOString()
 		
 		// Query for abandoned holding bookings based on lastActive
@@ -34,7 +36,7 @@ const cleanupAbandonedBookings = async () => {
 			.limit(100) // Process more in scheduled job
 			
 		const snapshot = await query.get()
-		console.log(`[Scheduled Cleanup] Found ${snapshot.size} abandoned holding bookings to clean up (older than 7 minutes)`)
+		console.log(`[Scheduled Cleanup] Found ${snapshot.size} abandoned holding bookings to clean up (older than 8 minutes)`)
 		
 		if (snapshot.empty) {
 			return { 
@@ -53,8 +55,8 @@ const cleanupAbandonedBookings = async () => {
 			const lastActiveDate = new Date(booking.lastActive || booking.createdAt)
 			const ageInMinutes = (Date.now() - lastActiveDate.getTime()) / (1000 * 60)
 			
-			// Only cancel if truly abandoned (older than 7 minutes)
-			if (ageInMinutes > 7) {
+			// Only cancel if truly abandoned (older than 8 minutes)
+			if (ageInMinutes > 8) {
 				const bookingRef = bookingsRef.doc(doc.id)
 				
 				// Update booking to cancelled
@@ -192,7 +194,7 @@ const cleanupOldHoldingBookings = async () => {
 	}
 }
 
-const handler: Handler = async (_event, _context) => {
+const handler: Handler = schedule('*/5 * * * *',  async (_event, _context) => {
 	// This can be triggered by:
 	// 1. Netlify scheduled function (cron)
 	// 2. Manual HTTP call for testing
@@ -233,7 +235,7 @@ const handler: Handler = async (_event, _context) => {
 			})
 		}
 	}
-}
+})
 
 // For Netlify scheduled functions
 export { handler }

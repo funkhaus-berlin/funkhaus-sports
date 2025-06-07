@@ -442,14 +442,16 @@ export class CourtBookingSystem extends $LitElement() {
 					>
 						<section class="max-w-3xl w-full   justify-self-center md:justify-end flex">
 							<schmancy-grid rows="auto 1fr"  flow="row" class="w-full   justify-self-end">
-								<section hidden>${this.renderProgressSteps()}</section>
+								<section .hidden=${BookingProgressContext.value.currentStep < 5}>${this.renderProgressSteps()}</section>
 								<!-- Error display component - shows errors from BookingProgressContext -->
 								<booking-error-display showRecoverySuggestion language="en"></booking-error-display>
 								<schmancy-scroll hide>${this.renderCurrentStep()}</schmancy-scroll>
 							</schmancy-grid>
 						</section>
-            <schmancy-card
-            type="elevated"
+            <schmancy-surface
+            rounded="all"
+          
+            type="container"
             
             class="max-w-md w-full hidden md:block mr-auto"> 
               <schmancy-grid gap="md" class="p-4">
@@ -468,6 +470,7 @@ export class CourtBookingSystem extends $LitElement() {
                   zoom=${16}
                   showMarker
                   interactive
+
                   class="h-64 w-full rounded-lg overflow-hidden"
                 ></venue-map>
                 
@@ -505,7 +508,7 @@ export class CourtBookingSystem extends $LitElement() {
                   </schmancy-grid>
                 ` : ''}
               </schmancy-grid>
-            </schmancy-card>
+            </schmancy-surface>
 					</schmancy-grid>
 				</schmancy-grid>
 		`
