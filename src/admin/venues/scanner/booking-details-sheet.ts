@@ -9,7 +9,7 @@ import { of } from 'rxjs'
 import { catchError, finalize, take, tap } from 'rxjs/operators'
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Court } from 'src/db/courts.collection'
-import { Booking, BookingStatus } from 'src/types/booking/models'
+import { Booking, BookingStatus } from 'src/types/booking/booking.types'
 import { courtsContext } from '../courts/context'
 
 /**

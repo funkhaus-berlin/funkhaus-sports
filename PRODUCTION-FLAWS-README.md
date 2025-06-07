@@ -4,15 +4,6 @@ This document contains a comprehensive analysis of potential production flaws fo
 
 ## Critical Production Flaws Found
 
-### 3. **Inadequate Booking Cleanup Timer Logic (MEDIUM SEVERITY)**
-**Location**: `netlify/functions/cleanup-abandoned-bookings.ts` (lines 17-23)
-**Issue**: The cleanup function uses a fixed 7-minute timeout, but the frontend timer can be extended if the user is active. This mismatch can cause active bookings to be cancelled.
-```typescript
-// Line 22: Fixed 7-minute cutoff
-cutoffTime.setMinutes(cutoffTime.getMinutes() - 7)
-```
-**Impact**: Active users might have their bookings cancelled while still completing payment.
-
 ### 4. **Email Sending Without Proper Error Recovery (MEDIUM SEVERITY)**
 **Location**: `netlify/functions/stripe-webhook.ts` (lines 446-534)
 **Issue**: Email sending failures don't have a retry queue or dead letter mechanism.

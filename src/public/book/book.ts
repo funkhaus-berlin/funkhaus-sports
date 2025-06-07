@@ -7,17 +7,17 @@ import { debounceTime, distinctUntilChanged, filter, map, shareReplay, take, tak
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 import {
-	availabilityContext,
-	BookingFlowStep,
-	getBookingFlowSteps,
-	initializeAvailabilityContext,
+  availabilityContext,
+  BookingFlowStep,
+  getBookingFlowSteps,
+  initializeAvailabilityContext,
 } from 'src/availability-context'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
+import '../shared/components/venue-map'
 import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
 import './components'
-import '../shared/components/venue-map'
 import { BookingErrorService } from './components/errors/booking-error-service'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep, ErrorCategory } from './context'
 import { PaymentStatusHandler } from './payment-status-handler'
@@ -442,7 +442,7 @@ export class CourtBookingSystem extends $LitElement() {
 					>
 						<section class="max-w-3xl w-full   justify-self-center md:justify-end flex">
 							<schmancy-grid rows="auto 1fr"  flow="row" class="w-full   justify-self-end">
-								<section .hidden=${BookingProgressContext.value.currentStep < 5}>${this.renderProgressSteps()}</section>
+								<!-- <section .hidden=${BookingProgressContext.value.currentStep < 5}>${this.renderProgressSteps()}</section> -->
 								<!-- Error display component - shows errors from BookingProgressContext -->
 								<booking-error-display showRecoverySuggestion language="en"></booking-error-display>
 								<schmancy-scroll hide>${this.renderCurrentStep()}</schmancy-scroll>

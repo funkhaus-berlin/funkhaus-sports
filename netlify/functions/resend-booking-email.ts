@@ -8,10 +8,9 @@ import {
 } from './types/shared-types'
 import { db } from './_shared/firebase-admin'
 
-
 /**
  * Function to manually resend a booking confirmation email
- * This is a fallback in case the automatic email wasn't sent
+ * Supports both full email data request and simple bookingId-only request
  */
 const handler: Handler = async (event, context) => {
 	// Handle preflight request for CORS
@@ -34,7 +33,94 @@ const handler: Handler = async (event, context) => {
 
 	try {
 		// Parse the request body
-		const data = JSON.parse(event.body || '{}') as BookingEmailRequest
+		const body = JSON.parse(event.body || '{}')
+		
+		// Support both full BookingEmailRequest and simple bookingId-only request
+		let data: BookingEmailRequest
+		
+		if (typeof body.bookingId === 'string' && !body.customerEmail) {
+			// Simple retry request - fetch booking details from database
+			const bookingDoc = await db.collection('bookings').doc(body.bookingId).get()
+			
+			if (!bookingDoc.exists) {
+				return {
+					statusCode: 404,
+					headers: corsHeaders,
+					body: JSON.stringify({ success: false, error: 'Booking not found' }),
+				}
+			}
+			
+			const booking = bookingDoc.data()
+			
+			// Fetch court and venue data
+			let courtData = null
+			let venueData = null
+			
+			if (booking?.courtId) {
+				const courtDoc = await db.collection('courts').doc(booking.courtId).get()
+				if (courtDoc.exists) {
+					courtData = courtDoc.data()
+					
+					if (courtData?.venueId) {
+						const venueDoc = await db.collection('venues').doc(courtData.venueId).get()
+						if (venueDoc.exists) {
+							venueData = venueDoc.data()
+						}
+					}
+				}
+			}
+			
+			// Prepare email data
+			const vatRate = 0.07
+			const netAmount = booking?.price / (1 + vatRate) || 0
+			const vatAmount = (booking?.price || 0) - netAmount
+			
+			data = {
+				bookingId: body.bookingId,
+				customerEmail: booking?.customerEmail || booking?.userEmail,
+				customerName: booking?.userName || 'Customer',
+				customerPhone: booking?.customerPhone || '',
+				customerAddress: booking?.customerAddress || {},
+				bookingDetails: {
+					date: new Date(booking?.date).toLocaleDateString('en-US', {
+						weekday: 'long',
+						year: 'numeric',
+						month: 'long',
+						day: 'numeric',
+					}),
+					startTime: booking?.startTime,
+					endTime: booking?.endTime,
+					userTimezone: 'Europe/Berlin',
+					court: courtData?.name || 'Court',
+					courtType: courtData?.courtType || 'standard',
+					venue: venueData?.name || 'Funkhaus Sports',
+					price: booking?.price?.toFixed(2) || '0.00',
+					vatInfo: {
+						netAmount: netAmount.toFixed(2),
+						vatAmount: vatAmount.toFixed(2),
+						vatRate: '7%',
+					},
+					rawDate: booking?.date ? new Date(booking.date).toISOString().split('T')[0] : null,
+					isoStartDateTime: booking?.startTime || null,
+					isoEndDateTime: booking?.endTime || null,
+				},
+				venueInfo: venueData ? {
+					name: venueData.name,
+					address: venueData.address,
+					contactEmail: venueData.contactEmail,
+					contactPhone: venueData.contactPhone,
+					website: venueData.website,
+				} : null,
+				paymentInfo: {
+					paymentStatus: booking?.paymentStatus || 'paid',
+					paymentIntentId: booking?.paymentIntentId,
+				},
+				invoiceNumber: booking?.invoiceNumber || null,
+			}
+		} else {
+			// Full request with all data provided
+			data = body as BookingEmailRequest
+		}
 
 		// Validate required fields
 		if (!data.bookingId || !data.customerEmail || !data.bookingDetails) {
@@ -49,28 +135,15 @@ const handler: Handler = async (event, context) => {
 			}
 		}
 
-		// Check if booking exists
+		// Get booking reference
 		const bookingRef = db.collection('bookings').doc(data.bookingId)
-		const bookingDoc = await bookingRef.get()
-
-		if (!bookingDoc.exists) {
-			const response: BookingEmailResponse = {
-				success: false,
-				error: 'Booking not found'
-			}
-			return {
-				statusCode: 404,
-				headers: corsHeaders,
-				body: JSON.stringify(response),
-			}
-		}
 
 		// Import the email sending function to reuse its logic
 		const { handler: emailHandler } = require('./send-booking-email')
 
 		// Create a mock event to pass to the email sending function
 		const mockEvent = {
-			body: event.body,
+			body: JSON.stringify(data),
 			httpMethod: 'POST',
 			headers: {},
 		}
@@ -81,11 +154,18 @@ const handler: Handler = async (event, context) => {
 
 		if (emailResult.success) {
 			// Update the booking record to indicate email was sent
-			await bookingRef.update({
+			const updateData: any = {
 				emailSent: true,
 				emailSentAt: new Date().toISOString(),
 				emailResent: true, // Flag to indicate this was a manual resend
-			})
+			}
+			
+			// Clear any error fields
+			updateData.emailError = admin.firestore.FieldValue.delete()
+			updateData.emailFailedAt = admin.firestore.FieldValue.delete()
+			updateData.emailPermanentlyFailed = admin.firestore.FieldValue.delete()
+			
+			await bookingRef.update(updateData)
 
 			const response: BookingEmailResponse = {
 				success: true,
@@ -98,6 +178,17 @@ const handler: Handler = async (event, context) => {
 				body: JSON.stringify(response),
 			}
 		} else {
+			// Update booking with error information
+			const bookingDoc = await bookingRef.get()
+			const retryCount = bookingDoc.data()?.emailRetryCount || 0
+			
+			await bookingRef.update({
+				emailRetryCount: retryCount + 1,
+				emailFailedAt: new Date().toISOString(),
+				emailError: emailResult.error || 'Failed to send email',
+				lastRetryAt: new Date().toISOString()
+			})
+			
 			const response: BookingEmailResponse = {
 				success: false,
 				error: emailResult.error || 'Failed to resend email'

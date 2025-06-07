@@ -1230,6 +1230,7 @@ export class CourtSelectStep extends $LitElement(css`
 			'py-2': true,
 			'transition-all': true,
 			'duration-300': true,
+      "first:pl-2 last:pr-2":!this.isActive
 		}
 	}
 
@@ -1375,7 +1376,7 @@ export class CourtSelectStep extends $LitElement(css`
 			return html`
 				<schmancy-scroll>
 					<div
-						class="grid grid-cols-2 md:grid-cols-3 justify-between gap-2 first:pl-2 last:pr-2 ${classMap(this.getContainerClasses())}"
+						class="grid grid-cols-2 md:grid-cols-3 justify-between gap-2  ${classMap(this.getContainerClasses())}"
 						role="listbox"
 						aria-label="Available Courts"
 						aria-multiselectable="false"

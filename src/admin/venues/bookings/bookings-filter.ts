@@ -4,7 +4,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, css } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { BehaviorSubject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs'
-import { Booking } from 'src/types/booking/models'
+import { Booking } from 'src/types/booking/booking.types'
 import { bookingFilterContext, BookingsContext } from './bookings.context'
 
 /**

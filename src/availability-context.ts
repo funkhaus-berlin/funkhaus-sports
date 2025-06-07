@@ -13,7 +13,7 @@ import { Venue } from 'src/db/venue-collection'
 import { getUserTimezone, isTimeSlotInPast } from 'src/utils/timezone'
 import { bookingContext } from './public/book/context'
 import { Duration, TimeSlot } from './public/book/types'
-import type { Booking } from './types/booking/models'
+import type { Booking } from './types/booking/booking.types'
 
 /**
  * Interface for court selection preferences

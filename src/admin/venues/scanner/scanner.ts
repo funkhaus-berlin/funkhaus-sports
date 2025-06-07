@@ -11,7 +11,7 @@ import { catchError, filter, finalize, map, tap, throttleTime, timeout } from 'r
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Venue } from 'src/db/venue-collection'
 import { PermissionService } from 'src/firebase/permission.service'
-import { Booking } from 'src/types/booking/models'
+import { Booking } from 'src/types/booking/booking.types'
 import { userContext } from 'src/user.context'
 import { venueContext } from '../venue-context'
 import './booking-details-sheet'

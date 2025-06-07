@@ -10,12 +10,13 @@ import { combineLatest, debounceTime, distinctUntilChanged, filter, map, of, sta
 // Import our components directly
 import './bookings-filter'
 import './components/booking-day-view'
+import './components/email-failures-boat'
 
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
-import { Booking } from 'src/types/booking/models'
+import { Booking } from 'src/types/booking/booking.types'
 import { courtsContext } from '../courts/context'
 import { venueContext } from '../venue-context'
 import { bookingFilterContext, BookingsContext } from './bookings.context'
@@ -229,9 +230,12 @@ export class VenuBookingsList extends $LitElement() {
 		}
 
 		return html`
-			<schmancy-grid rows="auto 1fr" ${fullHeight()}>
+			<schmancy-grid rows="auto auto 1fr" ${fullHeight()}>
 				<!-- Simplified Booking Filter -->
 				<bookings-filter></bookings-filter>
+				
+				<!-- Email Failures Alert -->
+				<email-failures-boat .venueId=${this.venue?.id}></email-failures-boat>
 
 				<!-- Day View Calendar -->
 				<booking-day-view></booking-day-view>

@@ -1,6 +1,6 @@
 import { createContext } from '@mhmo91/schmancy'
 import dayjs from 'dayjs'
-import type { Booking } from '../../../types/booking/models'
+import type { Booking } from '../../../types/booking/booking.types'
 
 // Define default date range
 export const DEFAULT_DATE_RANGE = {

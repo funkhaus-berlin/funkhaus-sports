@@ -2,13 +2,13 @@
 
 import { createContext } from '@mhmo91/schmancy'
 import type { BookingError } from '../../types/booking/errors'
-import { Booking } from '../../types/booking/models'
-import { BookingStatus } from 'src/types/booking/models';
+import { Booking } from '../../types/booking/booking.types'
+import { BookingStatus } from 'src/types/booking/booking.types';
 
 // Export types directly from their source modules
 export { ErrorCategory } from '../../types/booking/errors'
 export type { BookingError, BookingErrorField } from '../../types/booking/errors'
-export type { Booking, BookingStatus } from '../../types/booking/models'
+export type { Booking, BookingStatus } from '../../types/booking/booking.types'
 
 // Create global context for booking information
 export const bookingContext = createContext<Booking>(

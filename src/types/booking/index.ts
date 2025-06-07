@@ -1,3 +1,3 @@
 export * from './errors';
-export * from './models';
+export * from './booking.types';
 export * from './progress';

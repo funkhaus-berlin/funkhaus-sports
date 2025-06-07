@@ -3,17 +3,6 @@
  * Frontend is the source of truth for these types
  */
 
-/**
- * Firebase Firestore Timestamp interface
- * Used for date/time fields stored in Firestore
- */
-export interface FirestoreTimestamp {
-	seconds: number
-	nanoseconds: number
-	toDate: () => Date
-	toMillis: () => number
-	valueOf: () => string
-}
 
 /**
  * Booking status types
@@ -38,15 +27,6 @@ export interface Address {
 	country: string
 }
 
-/**
- * Customer information interface
- */
-export interface Customer {
-	name: string
-	email: string
-	phone: string
-	address: Address
-}
 
 /**
  * The core Booking entity that represents a court booking
@@ -74,6 +54,12 @@ export interface Booking {
 	lastActive?: string // ISO string - tracks last user activity for holding status
 	emailSent?: boolean
 	emailSentAt?: string
+	emailError?: string // Error message if email failed
+	emailFailedAt?: string // When email last failed
+	emailRetryCount?: number // Number of retry attempts
+	emailPermanentlyFailed?: boolean // True after max retries reached
+	emailPermanentlyFailedAt?: string // When marked as permanently failed
+	lastRetryAt?: string // Last retry attempt timestamp
 	courtPreference?: 'indoor' | 'outdoor'
 	invoiceNumber?: string
 	invoiceGeneratedAt?: string
@@ -82,31 +68,4 @@ export interface Booking {
 	cancellationReason?: string // Track why bookings are cancelled
 }
 
-/**
- * Booking calendar details interface
- * For use with calendar integrations
- */
-export interface BookingCalendarDetails {
-	title: string
-	location: string
-	description: string
-	startTime: string
-	endTime: string
-	date: string
-	googleStartDate?: string
-	googleEndDate?: string
-}
 
-/**
- * Booking summary for display purposes
- */
-export interface BookingSummary {
-	bookingId: string
-	court: string
-	venue: string
-	date: string
-	startTime: string
-	endTime: string
-	price: string | number
-	status: BookingStatus
-}

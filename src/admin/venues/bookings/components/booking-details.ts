@@ -7,7 +7,7 @@ import { customElement, property, state } from 'lit/decorators.js'
 import { Court } from 'src/db/courts.collection'
 import { Venue } from 'src/db/venue-collection'
 import { resendBookingEmail } from 'src/public/book/components/services'
-import { Booking, BookingStatus } from 'src/types/booking/models'
+import { Booking, BookingStatus } from 'src/types/booking/booking.types'
 import { courtsContext } from '../../courts/context'
 import { venueContext } from '../../venue-context'
 

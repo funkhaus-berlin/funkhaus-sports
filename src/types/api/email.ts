@@ -1,7 +1,7 @@
 /**
  * Email API interface definitions
  */
-import { Address } from '../booking/models'
+import { Address } from '../booking/booking.types'
 
 /**
  * Common address type that can be a string or structured object

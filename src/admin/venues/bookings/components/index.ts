@@ -4,3 +4,4 @@
 export * from './booking-day-view'
 export * from './booking-details'
 export * from './booking-advanced-filter'
+export * from './email-failures-boat'

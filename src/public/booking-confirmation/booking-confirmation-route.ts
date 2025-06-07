@@ -8,7 +8,7 @@ import { catchError, EMPTY, filter, of, switchMap, takeUntil, tap } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Court } from 'src/db/courts.collection'
-import { Booking } from 'src/types/booking/models'
+import { Booking } from 'src/types/booking/booking.types'
 import { VenuesLandingPage } from '../venues/venues'
 import './booking-confirmation'
 
