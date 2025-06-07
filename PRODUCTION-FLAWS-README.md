@@ -61,10 +61,6 @@ const endTime = toUserTimezone(this.booking.startTime)
 **Issue**: Camera stream and animation frames might not be properly cleaned up.
 **Impact**: Memory consumption increases over time in scanner view.
 
-### 12. **No Circuit Breaker for External Services (MEDIUM SEVERITY)**
-**Location**: Email sending and Stripe operations
-**Issue**: No circuit breaker pattern to handle service outages gracefully.
-**Impact**: Cascading failures when external services are down.
 
 ### 13. **Missing Database Transaction for Slot Reservation (HIGH SEVERITY)**
 **Location**: `src/bookingServices/booking.service.ts` (lines 334-437)

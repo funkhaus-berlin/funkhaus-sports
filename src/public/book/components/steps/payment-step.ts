@@ -253,6 +253,36 @@ export class CheckoutForm extends $LitElement() {
 	}
 
 	/**
+	 * Generate idempotency key based on booking data
+	 * This ensures that if booking details change, a new payment intent is created
+	 */
+	private generateIdempotencyKey(booking: Booking): string {
+		// Include all critical booking details that would require a new payment intent if changed
+		const keyData = {
+			bookingId: booking.id,
+			amount: booking.price,
+			courtId: booking.courtId,
+			date: booking.date,
+			startTime: booking.startTime,
+			endTime: booking.endTime,
+			customerEmail: booking.customerEmail,
+			timestamp: Math.floor(Date.now() / 10000) // 10-second window for retries
+		}
+		
+		// Create a deterministic key from the booking data
+		const keyString = JSON.stringify(keyData)
+		// Simple hash function for the key (could use crypto.subtle.digest for better hash)
+		let hash = 0
+		for (let i = 0; i < keyString.length; i++) {
+			const char = keyString.charCodeAt(i)
+			hash = ((hash << 5) - hash) + char
+			hash = hash & hash // Convert to 32-bit integer
+		}
+		
+		return `booking_${booking.id}_${Math.abs(hash)}`
+	}
+
+	/**
 	 * Prepare payment data for Stripe
 	 */
 	private preparePaymentData(booking: Booking) {
@@ -273,6 +303,7 @@ export class CheckoutForm extends $LitElement() {
 			date: booking.date,
 			startTime: booking.startTime,
 			endTime: booking.endTime,
+			idempotencyKey: this.generateIdempotencyKey(booking),
 		}
 	}
 

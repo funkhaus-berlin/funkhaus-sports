@@ -54,6 +54,7 @@ const handler: Handler = async (event, context) => {
 			date,
 			startTime,
 			endTime,
+			idempotencyKey,
 		} = data
 
 		console.log('Received data:', data)
@@ -107,6 +108,15 @@ const handler: Handler = async (event, context) => {
 			}
 		}
 
+		// Validate idempotency key if provided
+		if (idempotencyKey && typeof idempotencyKey !== 'string') {
+			return {
+				statusCode: 400,
+				headers: corsHeaders,
+				body: JSON.stringify({ error: 'Invalid idempotency key format' }),
+			}
+		}
+
 		// Prepare metadata for the booking - include all critical fields
 		const metadata: Record<string, string> = {
 			userId: uid || 'anonymous',
@@ -129,6 +139,13 @@ const handler: Handler = async (event, context) => {
 		}`
 
 		try {
+			// Prepare Stripe options with idempotency key if provided
+			const stripeOptions: any = {}
+			if (idempotencyKey) {
+				stripeOptions.idempotencyKey = idempotencyKey
+				console.log('Using idempotency key:', idempotencyKey)
+			}
+
 			// Create a payment intent with retry logic for transient failures
 			const paymentIntent$ = from(
 				stripe.paymentIntents.create({
@@ -148,7 +165,7 @@ const handler: Handler = async (event, context) => {
 							country: country || '',
 						},
 					},
-				})
+				}, stripeOptions)
 			).pipe(
 				tap(() => console.log('Attempting to create payment intent...')),
 				retry({
