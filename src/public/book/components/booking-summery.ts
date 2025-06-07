@@ -78,15 +78,15 @@ export class BookingSummary extends $LitElement() {
 		const hasBookingDetails = this.booking?.date && this.booking?.startTime
 
 		return html`
-			<schmancy-surface type="containerHigh" rounded="all" class="p-3">
+			<schmancy-surface type="containerHigh" rounded="all" class="p-2 md:p-3">
 				<!-- Compact always-visible summary -->
-				<div class="flex items-center justify-between gap-4">
+				<div class="flex items-center justify-between gap-2">
 					<!-- Left side - booking info -->
 					<div class="flex-1 min-w-0">
 						${hasBookingDetails ? html`
 							<div class="flex items-center gap-4 flex-wrap">
 								<!-- Date & Time -->
-								<div class="flex items-center gap-1">
+								<div class="flex items-center gap-[4px]">
 									<schmancy-icon size="16px" class="text-primary-default">calendar_today</schmancy-icon>
 									<schmancy-typography type="body" token="sm" class="font-medium">
 										${this.formatDate(this.booking.date)}
@@ -95,7 +95,7 @@ export class BookingSummary extends $LitElement() {
 
                 	<!-- Court (if selected) -->
 								${court ? html`
-									<div class="flex items-center gap-1">
+									<div class="flex items-center gap-[4px]">
 										<schmancy-icon size="16px" class="text-primary-default">sports_tennis</schmancy-icon>
 										<schmancy-typography type="body" token="sm">
 											${court.name}
@@ -104,7 +104,7 @@ export class BookingSummary extends $LitElement() {
 								` : ''}
 								
 								<!-- Time Range -->
-								<div class="flex items-center gap-1">
+								<div class="flex items-center gap-[4px]">
 									<schmancy-icon size="16px" class="text-primary-default">schedule</schmancy-icon>
 									<schmancy-typography type="body" token="sm">
 										${this.formatTime(this.booking.startTime)} - ${this.formatTime(this.booking.endTime)}
