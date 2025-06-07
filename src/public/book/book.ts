@@ -444,8 +444,8 @@ export class CourtBookingSystem extends $LitElement() {
                   <schmancy-divider></schmancy-divider>
                   <schmancy-grid gap="sm">
                     <schmancy-typography type="body" token="sm" class="text-surface-onVariant">
-                      ${venueContext.value.address.street}<br>
-                      ${venueContext.value.address.city}, ${venueContext.value.address.postalCode}<br>
+                      ${venueContext.value.address.street},
+                      ${venueContext.value.address.city}, ${venueContext.value.address.postalCode},
                       ${venueContext.value.address.country}
                     </schmancy-typography>
                     
