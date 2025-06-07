@@ -14,7 +14,6 @@ import { availabilityContext, availabilityLoading$, BookingFlowType, getAvailabl
 import { BookingService } from 'src/bookingServices/booking.service'
 import { Court } from 'src/db/courts.collection'
 import { db } from 'src/firebase/firebase'
-import { toUserTimezone } from 'src/utils/timezone'
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { Duration } from '../../types'

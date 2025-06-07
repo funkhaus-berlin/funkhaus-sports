@@ -6,8 +6,8 @@ import jsQR from 'jsqr'
 import { css, html, nothing } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { animationFrames, fromEvent, merge, of, Subject, Subscription, timer } from 'rxjs'
-import { catchError, filter, finalize, map, switchMap, take, takeUntil, tap, throttleTime, timeout } from 'rxjs/operators'
+import { animationFrames, fromEvent, of, Subject, timer } from 'rxjs'
+import { catchError, filter, map, switchMap, takeUntil, tap, throttleTime, timeout } from 'rxjs/operators'
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Venue } from 'src/db/venue-collection'
 import { PermissionService } from 'src/firebase/permission.service'
@@ -92,7 +92,7 @@ export default class BookingScanner extends $LitElement(css`
 `) {
 	@property({ type: String }) venueId = ''
 
-	@state() private scannerStatus: 'idle' | 'scanning' | 'processing' | 'success' | 'error' = 'idle'
+	@state()  scannerStatus: 'idle' | 'scanning' | 'processing' | 'success' | 'error' = 'idle'
 	@state() private statusMessage = 'Initializing scanner...'
 	@state() private hasPermission = false
 	@state() private cameraError = false
