@@ -44,32 +44,13 @@ match /{document=**} {
 **Impact**: Vulnerability to abuse, potential cost overruns, and service degradation.
 
 
-### 10. **Inconsistent Time Zone Handling (MEDIUM SEVERITY)**
-**Location**: Multiple files
-**Issue**: Mixing of local time, UTC, and ISO strings without consistent conversion.
-**Example**: In `duration-select.ts` line 162:
-```typescript
-const endTime = toUserTimezone(this.booking.startTime)
-    .add(duration.value, 'minute')
-    .utc()
-    .toISOString()
-```
-**Impact**: Booking times may be incorrect for users in different time zones.
-
 ### 11. **Memory Leak Risk in QR Scanner (LOW SEVERITY)**
 **Location**: `src/scanner/scanner.ts`
 **Issue**: Camera stream and animation frames might not be properly cleaned up.
 **Impact**: Memory consumption increases over time in scanner view.
 
 
-### 13. **Missing Database Transaction for Slot Reservation (HIGH SEVERITY)**
-**Location**: `src/bookingServices/booking.service.ts` (lines 334-437)
-**Issue**: When transitioning from holding to confirmed, slot reservation can fail after payment is already confirmed.
-```typescript
-// Line 289: Slot reservation happens after payment status update
-if (paymentStatus === 'paid' && booking.status === 'holding') {
-    return this.reserveSlotsForBooking(booking).pipe(
-```
+
 **Impact**: Paid bookings without reserved slots, leading to double bookings.
 
 ### 14. **No Distributed Lock for Concurrent Bookings (HIGH SEVERITY)**

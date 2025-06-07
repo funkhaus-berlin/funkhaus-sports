@@ -157,9 +157,9 @@ export class DurationSelectionStep extends $LitElement(css`
 	private handleDurationSelect(duration: Duration): void {
 		if (!this.booking?.startTime) return
 		
-		const endTime = toUserTimezone(this.booking.startTime)
+		// Simply add duration to the UTC start time - no timezone conversion needed
+		const endTime = dayjs(this.booking.startTime)
 			.add(duration.value, 'minute')
-			.utc()
 			.toISOString()
 		
 		bookingContext.set({ endTime, price: duration.price }, true)

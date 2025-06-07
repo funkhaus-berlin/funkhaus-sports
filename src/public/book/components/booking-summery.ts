@@ -6,6 +6,7 @@ import { customElement, property } from 'lit/decorators.js'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext } from 'src/admin/venues/venue-context'
 import { Court } from 'src/db/courts.collection'
+import { toUserTimezone } from 'src/utils/timezone'
 import { Booking, bookingContext, BookingProgressContext, BookingStep } from '../context'
 
 /**
@@ -40,7 +41,8 @@ export class BookingSummary extends $LitElement() {
 
 	private formatTime(timeStr: string): string {
 		if (!timeStr) return 'TBD'
-		return dayjs(timeStr).format('HH:mm')
+		// Convert from UTC to user's local timezone for display
+		return toUserTimezone(timeStr).format('HH:mm')
 	}
 
 
