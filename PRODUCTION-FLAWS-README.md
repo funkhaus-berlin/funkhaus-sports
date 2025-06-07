@@ -3,30 +3,6 @@
 This document contains a comprehensive analysis of potential production flaws found in the Funkhaus Sports booking system codebase.
 
 
-### 5. **Missing Transaction Rollback on Payment Failure (HIGH SEVERITY)**
-**Location**: `src/public/book/components/steps/payment-step.ts` (lines 316-440)
-**Issue**: If payment processing fails after booking creation, the booking remains in "holding" status without proper cleanup.
-```typescript
-// Lines 426-438: Error handling doesn't clean up the holding booking
-catchError(error => {
-    console.error('Payment or booking error:', error)
-    // Let Stripe handle payment errors directly in its UI
-    return of({ success: false, booking: bookingData, error })
-})
-```
-**Impact**: Database accumulates orphaned bookings that block time slots.
-
-### 6. **Insufficient Validation in Payment Intent Creation (HIGH SEVERITY)**
-**Location**: `netlify/functions/create-payment-intent.ts` (lines 74-89)
-**Issue**: Missing validation for booking metadata that's crucial for webhook processing.
-```typescript
-// Missing validation for critical fields like venueId
-if (bookingId) metadata.bookingId = bookingId
-if (courtId) metadata.courtId = courtId
-if (date) metadata.date = date
-// No validation that these required fields exist
-```
-**Impact**: Webhook processing can fail if metadata is incomplete, causing payment confirmation failures.
 
 ### 7. **Firestore Security Rules Too Permissive (CRITICAL SEVERITY)**
 **Location**: `firestore.rules` (lines 3-8)
@@ -42,16 +18,6 @@ match /{document=**} {
 **Location**: All Netlify functions
 **Issue**: No rate limiting implemented on payment intent creation or booking endpoints.
 **Impact**: Vulnerability to abuse, potential cost overruns, and service degradation.
-
-
-### 11. **Memory Leak Risk in QR Scanner (LOW SEVERITY)**
-**Location**: `src/scanner/scanner.ts`
-**Issue**: Camera stream and animation frames might not be properly cleaned up.
-**Impact**: Memory consumption increases over time in scanner view.
-
-
-
-**Impact**: Paid bookings without reserved slots, leading to double bookings.
 
 ### 14. **No Distributed Lock for Concurrent Bookings (HIGH SEVERITY)**
 **Location**: Booking creation and slot reservation logic

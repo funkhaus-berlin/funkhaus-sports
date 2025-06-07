@@ -1,13 +1,13 @@
-import { select, sheet } from '@mhmo91/schmancy'
+import { $notify, select, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import jsQR from 'jsqr'
-import { css, html } from 'lit'
+import { css, html, nothing } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { animationFrames, of, Subscription, timer } from 'rxjs'
-import { catchError, filter, finalize, map, tap, throttleTime, timeout } from 'rxjs/operators'
+import { animationFrames, fromEvent, merge, of, Subject, Subscription, timer } from 'rxjs'
+import { catchError, filter, finalize, map, switchMap, take, takeUntil, tap, throttleTime, timeout } from 'rxjs/operators'
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Venue } from 'src/db/venue-collection'
 import { PermissionService } from 'src/firebase/permission.service'
@@ -38,23 +38,56 @@ export default class BookingScanner extends $LitElement(css`
 		-webkit-touch-callout: none;
 	}
 	
-	@keyframes splash-in {
-		0% {
-			transform: scale(0) rotate(0deg);
-			opacity: 0;
-		}
-		50% {
-			transform: scale(1.5) rotate(180deg);
-			opacity: 1;
-		}
-		100% {
-			transform: scale(1) rotate(360deg);
-			opacity: 0.8;
-		}
+	/* Fullscreen video preview */
+	video {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100vw;
+		height: 100vh;
+		object-fit: cover;
+		z-index: 1;
 	}
 	
-	.splash-animation {
-		animation: splash-in 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+	.splash {
+		position: fixed;
+		inset: 0;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		opacity: 0;
+		visibility: hidden;
+		transition: opacity 0.5s ease-in-out, visibility 0s 0.5s;
+		z-index: 9999;
+	}
+	
+	.splash.show {
+		opacity: 1;
+		visibility: visible;
+		transition: opacity 0.5s ease-in-out;
+	}
+	
+	.splash.green {
+		background: radial-gradient(circle, rgba(0, 255, 0, 0.5) 20%, rgba(0, 128, 0, 0.7) 100%);
+	}
+	
+	.splash.yellow {
+		background: radial-gradient(circle, rgba(255, 255, 0, 0.5) 20%, rgba(128, 128, 0, 0.7) 100%);
+	}
+	
+	.splash.red {
+		background: radial-gradient(circle, rgba(255, 0, 0, 0.5) 20%, rgba(128, 0, 0, 0.7) 100%);
+	}
+	
+	.status-bar {
+		position: fixed;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		z-index: 10;
+		background: rgba(0, 0, 0, 0.5);
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
 	}
 `) {
 	@property({ type: String }) venueId = ''
@@ -63,13 +96,15 @@ export default class BookingScanner extends $LitElement(css`
 	@state() private statusMessage = 'Initializing scanner...'
 	@state() private hasPermission = false
 	@state() private cameraError = false
-	@state() private showResult = false
-	@state() private resultType: 'success' | 'warning' | 'error' = 'success'
-	@state() private resultMessage = ''
-	@state() private resultDetails = ''
 	@state() private permissionState: PermissionState = 'prompt'
 	@state() private showSplash = false
-	@state() private splashColor = ''
+	@state() private splashColor = 'green'
+	@state() private validBooking = false
+	@state() private bookingInfo?: Booking
+	@state() private checkedIn = false
+	@state() private reason?: string
+	@state() private isReadyToScan = true
+	@state() private isBusy = false
 
 	@query('#video')
 	private videoElement!: HTMLVideoElement
@@ -77,8 +112,8 @@ export default class BookingScanner extends $LitElement(css`
 	@select(venueContext)
 	venue!: Partial<Venue>
 
-	private qrScanSubscription?: Subscription
-	private audioContext?: AudioContext
+	private destroyed$ = new Subject<void>()
+	private mediaStream?: MediaStream
 
 	connectedCallback() {
 		super.connectedCallback()
@@ -111,11 +146,9 @@ export default class BookingScanner extends $LitElement(css`
 			return
 		}
 
-		// Initialize audio context for feedback sounds
-		this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-
 		this.statusMessage = 'Ready to scan'
 		this.scannerStatus = 'scanning'
+		this.isReadyToScan = true
 	}
 
 	private getVenueId(): string {
@@ -152,15 +185,18 @@ export default class BookingScanner extends $LitElement(css`
 					// Update permission state
 					this.permissionState = permissionStatus.state
 					
-					// Listen for permission changes
-					permissionStatus.addEventListener('change', () => {
-						console.log('Camera permission changed to:', permissionStatus.state)
-						this.permissionState = permissionStatus.state
-						if (permissionStatus.state === 'granted') {
-							// Automatically retry if permission is granted
-							this.retryCamera()
-						}
-					})
+					// Listen for permission changes using RxJS to ensure cleanup
+					fromEvent(permissionStatus, 'change').pipe(
+						takeUntil(this.destroyed$),
+						tap(() => {
+							console.log('Camera permission changed to:', permissionStatus.state)
+							this.permissionState = permissionStatus.state
+							if (permissionStatus.state === 'granted') {
+								// Automatically retry if permission is granted
+								this.retryCamera()
+							}
+						})
+					).subscribe()
 					
 					// If denied, show appropriate message
 					if (permissionStatus.state === 'denied') {
@@ -181,6 +217,8 @@ export default class BookingScanner extends $LitElement(css`
 				},
 			})
 
+			// Store stream reference for cleanup
+			this.mediaStream = stream
 			this.videoElement.srcObject = stream
 			await this.videoElement.play()
 
@@ -218,15 +256,15 @@ export default class BookingScanner extends $LitElement(css`
 	}
 
 	private startScanning() {
-		this.qrScanSubscription?.unsubscribe()
-
-		this.qrScanSubscription = animationFrames()
+		// Use RxJS pipeline with proper cleanup
+		animationFrames()
 			.pipe(
-				filter(() => this.scannerStatus === 'scanning'),
+				takeUntil(this.destroyed$),
+				filter(() => this.isReadyToScan && !this.isBusy),
 				map(() => this.scanFrame()),
 				filter(code => code !== null),
-				throttleTime(2000, undefined, { leading: true, trailing: false }),
-				tap(code => this.processQRCode(code!)),
+				throttleTime(1500, undefined, { leading: true, trailing: false }),
+				switchMap(code => this.processQRCodeRx(code!))
 			)
 			.subscribe()
 	}
@@ -253,7 +291,7 @@ export default class BookingScanner extends $LitElement(css`
 		return code?.data || null
 	}
 
-	private processQRCode(qrData: string) {
+	private processQRCodeRx(qrData: string) {
 		console.log('QR Code scanned:', qrData)
 
 		// Parse the QR code data
@@ -274,70 +312,102 @@ export default class BookingScanner extends $LitElement(css`
 			console.log('Using raw QR data as booking ID:', bookingId)
 		}
 
+		// Validate QR code format
 		if (!this.isValidBookingId(bookingId)) {
-			this.showError('Invalid QR code format')
-			return
-		}
-
-		this.scannerStatus = 'processing'
-		this.statusMessage = 'Verifying booking...'
-		console.log('Fetching booking from DB with ID:', bookingId)
-
-		BookingsDB.get(bookingId)
-			.pipe(
-				timeout(5000),
-				tap(booking => {
-					if (!booking) {
-						throw new Error('Booking not found')
-					}
-					this.validateAndProcessBooking(booking)
-				}),
-				catchError(error => {
-					this.showError(error.message || 'Failed to retrieve booking')
-					return of(null)
-				}),
-				finalize(() => {
-					// Reset to scanning after delay
-					timer(3000).subscribe(() => {
-						if (this.scannerStatus !== 'error') {
-							this.resetScanner()
-						}
-					})
-				}),
+			console.error('Invalid QR code format:', bookingId)
+			this.validBooking = false
+			this.splashColor = 'red'
+			this.reason = 'Invalid QR Code format'
+			this.showSplash = true
+			return timer(750).pipe(
+				takeUntil(this.destroyed$),
+				tap(() => {
+					this.showSplash = false
+					this.isReadyToScan = true
+					this.isBusy = false
+				})
 			)
-			.subscribe()
+		}
+
+		// Block further scans until processing is complete
+		this.isReadyToScan = false
+		this.isBusy = true
+		this.statusMessage = 'Verifying booking...'
+
+		return BookingsDB.get(bookingId).pipe(
+			timeout(2000),
+			tap(booking => {
+				this.isBusy = false
+				
+				if (!booking) {
+					this.validBooking = false
+					this.splashColor = 'red'
+					this.reason = 'Booking not found'
+					this.showSplash = true
+					return
+				}
+
+				// Venue validation
+				if (booking.venueId !== this.venueId) {
+					this.validBooking = false
+					this.splashColor = 'red'
+					this.reason = 'Booking is for a different venue'
+					this.showSplash = true
+					return
+				}
+
+				// Status validation
+				if (['cancelled', 'refunded', 'no-show'].includes(booking.status)) {
+					this.validBooking = false
+					this.splashColor = 'red'
+					this.reason = `Booking is ${booking.status}`
+					this.showSplash = true
+					return
+				}
+
+				// Already checked in
+				if (booking.status === 'completed') {
+					this.validBooking = true
+					this.checkedIn = true
+					this.bookingInfo = booking
+					this.splashColor = 'yellow'
+					this.reason = `Already checked in ${dayjs(booking.updatedAt).fromNow()}`
+					this.showSplash = true
+				} else {
+					// Valid for check-in
+					this.validBooking = true
+					this.checkedIn = false
+					this.bookingInfo = booking
+					this.splashColor = 'green'
+					this.showSplash = true
+					// Play success sound only (no UI notification)
+					this.playSuccessSound()
+				}
+			}),
+			catchError(error => {
+				console.error('Error retrieving booking:', error)
+				this.validBooking = false
+				this.splashColor = 'red'
+				this.reason = 'Error fetching booking data'
+				this.showSplash = true
+				this.isBusy = false
+				return of(null)
+			}),
+			// Reset after showing result
+			switchMap(() => timer(this.validBooking ? 1000 : 750).pipe(
+				takeUntil(this.destroyed$),
+				tap(() => {
+					this.showSplash = false
+					this.isReadyToScan = true
+					// Show booking details for valid bookings
+					if (this.validBooking && this.bookingInfo) {
+						this.showBookingDetails(this.bookingInfo)
+					}
+				})
+			))
+		)
 	}
 
-	private validateAndProcessBooking(booking: Booking) {
-		// Venue validation
-		if (booking.venueId !== this.venueId) {
-			this.showError('Booking is for a different venue')
-			return
-		}
-
-		// Status validation
-		if (['cancelled', 'refunded', 'no-show'].includes(booking.status)) {
-			this.showError(`Booking is ${booking.status}`)
-			return
-		}
-
-		// Already checked in
-		if (booking.status === 'completed') {
-			this.showWarning('Already checked in', `Checked in ${dayjs(booking.updatedAt).fromNow()}`)
-			this.playFeedback('warning')
-		} else {
-			// Valid for check-in
-			this.showSuccess('Valid booking', booking.userName || 'Guest')
-			this.playFeedback('success')
-			// Trigger success splash
-			this.triggerSplash('success')
-		}
-
-		// Show booking details after a brief delay
-		timer(1000).subscribe(() => {
-			this.showBookingDetails(booking)
-		})
-	}
 
 	private showBookingDetails(booking: Booking) {
 		const detailsSheet = document.createElement('booking-details-sheet') as any
@@ -349,76 +419,14 @@ export default class BookingScanner extends $LitElement(css`
 		})
 	}
 
-	private showSuccess(message: string, details: string) {
-		this.resultType = 'success'
-		this.resultMessage = message
-		this.resultDetails = details
-		this.showResult = true
-		this.scannerStatus = 'success'
-	}
-
-	private showWarning(message: string, details: string) {
-		this.resultType = 'warning'
-		this.resultMessage = message
-		this.resultDetails = details
-		this.showResult = true
-		this.scannerStatus = 'success'
-	}
-
-	private showError(message: string) {
-		this.resultType = 'error'
-		this.resultMessage = message
-		this.resultDetails = ''
-		this.showResult = true
-		this.scannerStatus = 'error'
-		this.playFeedback('error')
-
-		// Trigger color splash for errors
-		this.triggerSplash('error')
-
-		// Auto-reset after showing error
-		timer(3000).subscribe(() => {
-			this.resetScanner()
-		})
-	}
-
-	private resetScanner() {
-		this.showResult = false
-		this.scannerStatus = 'scanning'
-		this.statusMessage = 'Point camera at QR code'
-	}
-
-	private playFeedback(type: 'success' | 'warning' | 'error') {
-		if (!this.audioContext) return
-
-		const oscillator = this.audioContext.createOscillator()
-		const gainNode = this.audioContext.createGain()
-
-		oscillator.connect(gainNode)
-		gainNode.connect(this.audioContext.destination)
-
-		// Different tones for different results
-		switch (type) {
-			case 'success':
-				oscillator.frequency.setValueAtTime(880, this.audioContext.currentTime) // A5
-				break
-			case 'warning':
-				oscillator.frequency.setValueAtTime(660, this.audioContext.currentTime) // E5
-				break
-			case 'error':
-				oscillator.frequency.setValueAtTime(440, this.audioContext.currentTime) // A4
-				break
-		}
-
-		gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime)
-		gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3)
-
-		oscillator.start()
-		oscillator.stop(this.audioContext.currentTime + 0.3)
-	}
 
 	private isValidBookingId(id: string): boolean {
 		return !!id && id.trim().length > 0 && !id.includes('/')
+	}
+
+	private playSuccessSound(): void {
+		// Use $notify with empty message and very short duration to play just the sound
+		$notify.success('', { duration: 1 })
 	}
 
 	private async retryCamera() {
@@ -430,31 +438,29 @@ export default class BookingScanner extends $LitElement(css`
 		await this.startCamera()
 	}
 
-	private triggerSplash(type: 'success' | 'error') {
-		// Set splash color based on type
-		this.splashColor = type === 'error' ? 'bg-error-default' : 'bg-primary-default'
-		this.showSplash = true
-		
-		// Hide splash after animation
-		timer(800).subscribe(() => {
-			this.showSplash = false
-		})
-	}
 
 	disconnectedCallback() {
 		super.disconnectedCallback()
 
-		// Clean up camera
-		const stream = this.videoElement?.srcObject as MediaStream
-		if (stream) {
-			stream.getTracks().forEach(track => track.stop())
+		// Signal that component is being destroyed
+		this.destroyed$.next()
+		this.destroyed$.complete()
+
+		// Clean up camera stream
+		if (this.mediaStream) {
+			this.mediaStream.getTracks().forEach(track => {
+				track.stop()
+				console.log('Stopped camera track:', track.kind)
+			})
+			this.mediaStream = undefined
 		}
 
-		// Clean up subscriptions
-		this.qrScanSubscription?.unsubscribe()
+		// Clear video element to release resources
+		if (this.videoElement) {
+			this.videoElement.srcObject = null
+			this.videoElement.load() // Force cleanup
+		}
 
-		// Close audio context
-		this.audioContext?.close()
 	}
 
 	render() {
@@ -542,72 +548,54 @@ export default class BookingScanner extends $LitElement(css`
 
 		// Main scanner view
 		return html`
-			<div class="fixed w-full h-screen overflow-hidden bg-black touch-none select-none">
-				<video
-					id="video"
-					playsinline
-					autoplay
-					muted
-					class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full object-cover touch-none"
-				></video>
-
-				<!-- Scanning overlay with gradient -->
-				<div
-					class="absolute inset-0 pointer-events-none bg-gradient-radial from-transparent via-transparent to-black/60"
-				></div>
-
-				<!-- Color splash effect -->
-				${when(
-					this.showSplash,
-					() => html`
-						<div class="absolute inset-0 pointer-events-none splash-animation">
-							<div class="absolute inset-0 ${this.splashColor} opacity-70"></div>
-							<div class="absolute inset-0 ${this.splashColor} opacity-50 blur-3xl scale-110"></div>
-							<div class="absolute inset-0 bg-gradient-radial from-white/20 via-transparent to-transparent"></div>
-						</div>
-					`
-				)}
-
-			</div>
+			<!-- Video element for camera preview -->
+			<video playsinline muted id="video"></video>
 
 			<!-- Status bar -->
-			<div class="fixed bottom-0 left-0 right-0 z-10 backdrop-blur-xl bg-blend-color-burn bg-gradient-to-br bg-primary-default/50 text-primary-on">
-				<div class="  rounded-2xl p-4">
+			<div class="status-bar">
+				<div class="p-4">
 					<schmancy-flex justify="between" align="center">
 						<schmancy-grid gap="xs">
-							<schmancy-typography type="display"  class="text-onSurfaceVariant-default">
+							<schmancy-typography type="headline" class="text-white">
 								${this.venue?.name || 'Scanner'}
 							</schmancy-typography>
-							<schmancy-typography type="body" token="md"> ${this.statusMessage} </schmancy-typography>
+							<schmancy-typography type="body" token="md" class="text-white/80"> 
+								${this.isBusy ? 'Processing...' : this.statusMessage} 
+							</schmancy-typography>
 						</schmancy-grid>
 						${when(
-							this.scannerStatus === 'processing',
-							() => html` <schmancy-circular-progress size="24"></schmancy-circular-progress> `,
+							this.isBusy,
+							() => html` <schmancy-circular-progress size="24" class="text-white"></schmancy-circular-progress> `,
 						)}
 					</schmancy-flex>
 				</div>
 			</div>
 
-			<!-- Result splash -->
-			<div
-				class="fixed inset-0 flex justify-center items-center transition-all duration-300 z-[100] ${this.showResult ? 'opacity-100 visible' : 'opacity-0 invisible'}"
-			>
-				<div class=" backdrop-blur-md rounded-3xl p-8 m-4 max-w-md w-full">
-					<schmancy-grid gap="lg" align="center">
-						<schmancy-icon size="64px" class="text-onSurface-default">
-							${this.resultType === 'success' ? 'check_circle' : this.resultType === 'warning' ? 'warning' : 'error'}
-						</schmancy-icon>
-						<schmancy-typography type="headline" align="center"> ${this.resultMessage} </schmancy-typography>
-						${when(
-							this.resultDetails,
-							() => html`
-								<schmancy-typography type="body" align="center" class="text-onSurfaceVariant-default">
-									${this.resultDetails}
-								</schmancy-typography>
-							`,
-						)}
-					</schmancy-grid>
-				</div>
+			<!-- Color splash with result -->
+			<div class="overscroll-none overflow-hidden splash ${this.showSplash ? 'show' : ''} ${this.splashColor}">
+				${this.validBooking
+					? html`
+						<schmancy-grid justify="center" align="center" gap="sm">
+							<schmancy-typography type="display">
+								${this.checkedIn ? 'Already Checked In' : 'Valid Booking'}
+							</schmancy-typography>
+							<schmancy-typography type="headline">
+								${this.bookingInfo?.userName}
+							</schmancy-typography>
+							${this.checkedIn && this.reason
+								? html`<schmancy-typography type="body">${this.reason}</schmancy-typography>`
+								: nothing}
+						</schmancy-grid>
+					`
+					: html`
+						<schmancy-grid justify="center" align="center" gap="md">
+							<schmancy-typography type="display">Invalid Booking</schmancy-typography>
+							${when(
+								this.reason,
+								() => html`<schmancy-typography type="headline">Reason: ${this.reason}</schmancy-typography>`,
+							)}
+						</schmancy-grid>
+					`}
 			</div>
 		`
 	}
