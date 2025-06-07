@@ -332,7 +332,7 @@ export class CourtBookingSystem extends $LitElement() {
 		return html`
 				<schmancy-grid ${fullHeight()} rows="auto 1fr">
 					<page-header-banner
-          class="h-[15vh] sm:h-[20vh] md:h-[25vh]  md:block"
+          class="h-[15vh] sm:h-[20vh] lg:h-[25vh]  lg:block"
 						.title=${venueContext.value.name ?? ''}
 						description="EXPERIENCE BERLIN'S FIRST PICKLEBALL CLUB!"
 						imageSrc="/assets/still02.jpg"
@@ -341,11 +341,11 @@ export class CourtBookingSystem extends $LitElement() {
 					<schmancy-grid
 						.rcols=${{
 							sm: '1fr',
-              md:"2fr 1fr"
+              lg:"2fr 1fr"
 						}}
-						gap="lg"
+				
 					>
-						<section class="max-w-3xl w-full   justify-self-center md:justify-end flex">
+						<section class="max-w-3xl w-full   justify-self-center lg:justify-end flex">
 							<schmancy-grid rows="auto 1fr"  flow="row" class="w-full   justify-self-end">
 								<!-- Error display component - shows errors from BookingProgressContext -->
 								<booking-error-display showRecoverySuggestion language="en"></booking-error-display>
@@ -418,7 +418,7 @@ export class CourtBookingSystem extends $LitElement() {
           
             type="container"
             
-            class="max-w-md w-full hidden md:block mr-auto"> 
+            class="max-w-lg w-full hidden lg:block mx-auto"> 
               <schmancy-grid gap="md" class="p-4">
                 <!-- Venue Name Header -->
                 <schmancy-flex align="center" gap="sm">

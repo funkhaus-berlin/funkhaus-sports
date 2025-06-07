@@ -147,7 +147,7 @@ export class TimeSelectionStep extends $LitElement(css`
 	@state() isActive = false
   @state() isExpanded = false
 	@state() isCompact = false
-	@state() isDesktopOrTablet = window.innerWidth >= 384
+	@state() isDesktopOrTablet = window.innerWidth >= 768
 	@state() shouldUseGridView = false
 
 	// Simple transition state
@@ -207,10 +207,10 @@ export class TimeSelectionStep extends $LitElement(css`
 
 	// Stream setup methods
 	private setupStateStreams(): void {
-		// Screen size stream
+		// Screen size stream - check for md breakpoint (768px)
 		this.isDesktopOrTablet$ = fromEvent(window, 'resize').pipe(
 			startWith(null),
-			map(() => window.innerWidth >= 384),
+			map(() => window.innerWidth >= 768),
 			distinctUntilChanged(),
 			shareReplay(1),
 		)
@@ -853,7 +853,7 @@ export class TimeSelectionStep extends $LitElement(css`
 			<selection-tile
 				${ref(timeSlotRef)}
 				?selected=${isSelected}
-				?compact=${this.isCompact}
+				?compact=${!this.isDesktopOrTablet}
 				type="time"
 				icon="schedule"
 				label=${slot.label}

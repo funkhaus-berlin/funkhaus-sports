@@ -51,6 +51,7 @@ export class DurationSelectionStep extends $LitElement(css`
 	@state() private isExpanded = false
 	@state() private isCompact = false
 	@state() private isCreatingBooking = false
+	@state() private isMobileScreen = false
 	
 	private scrollContainerRef = createRef<HTMLElement>()
 	private durationRefs = new Map<number, HTMLElement>()
@@ -59,6 +60,18 @@ export class DurationSelectionStep extends $LitElement(css`
 
 	connectedCallback(): void {
 		super.connectedCallback()
+		
+		// Set up responsive behavior
+		const checkScreenSize = () => {
+			// Tailwind's md breakpoint is 768px
+			this.isMobileScreen = window.innerWidth < 768
+		}
+		
+		// Check on mount
+		checkScreenSize()
+		
+		// Listen for resize
+		window.addEventListener('resize', checkScreenSize)
 		
 		// Progress state
 		BookingProgressContext.$.pipe(
@@ -115,6 +128,8 @@ export class DurationSelectionStep extends $LitElement(css`
 	disconnectedCallback(): void {
 		super.disconnectedCallback()
 		this.durationRefs.clear()
+		// Clean up resize listener
+		window.removeEventListener('resize', () => {})
 	}
 
 	private getCurrentDuration(): number {
@@ -339,7 +354,7 @@ export class DurationSelectionStep extends $LitElement(css`
 			<selection-tile
 				${ref(el => el && this.durationRefs.set(duration.value, el as HTMLElement))}
 				?selected=${isSelected}
-				?compact=${this.isCompact}
+				?compact=${this.isMobileScreen}
 				icon=${isDisabled ? 'timer_off' : 'timer'}
 				label=${label}
 				.dataValue=${duration.value.toString()}
@@ -391,7 +406,7 @@ export class DurationSelectionStep extends $LitElement(css`
 					</div>
 				`)}
 				
-				${when(!this.isCompact && durations.length > 0, () => html`
+				${when(!this.hasValidSelection() && durations.length > 0, () => html`
 					<div class="mb-2">
 						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
 							Select Duration
@@ -407,7 +422,7 @@ export class DurationSelectionStep extends $LitElement(css`
 					${this.renderDurations(durations)}
 				</div>
 				
-				${when(!this.isCompact, () => html`
+				${when(!this.hasValidSelection(), () => html`
 					<div class="text-center text-xs pb-2">
 						<p class="text-surface-on-variant">All prices include VAT</p>
 						${when(isEstimated, () => html`

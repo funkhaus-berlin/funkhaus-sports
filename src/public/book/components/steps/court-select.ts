@@ -250,6 +250,12 @@ export class CourtSelectStep extends $LitElement(css`
 			}),
 			filter(() => !this.isTransitioning),
 		).subscribe(isActive => {
+			// Don't expand if a court is already selected
+			if (this.booking?.courtId && isActive && !this.isActive) {
+				// Keep it collapsed if trying to expand with a court already selected
+				return
+			}
+			
 			// Set transitioning flag to enable smooth animations
 			this.isTransitioning = true
 
@@ -1133,6 +1139,11 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Toggle between list and map view modes
 	 */
 	private toggleViewMode(mode: ViewMode): void {
+		// Don't allow view mode changes if a court is already selected
+		if (this.booking?.courtId) {
+			return
+		}
+		
 		this.viewMode = mode
 		this.requestUpdate()
 	}
