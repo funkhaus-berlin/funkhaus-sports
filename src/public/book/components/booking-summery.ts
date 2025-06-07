@@ -43,28 +43,8 @@ export class BookingSummary extends $LitElement() {
 		return dayjs(timeStr).format('HH:mm')
 	}
 
-	private formatDuration(): string {
-		if (!this.booking?.startTime || !this.booking?.endTime) {
-			return 'TBD'
-		}
 
-		const duration = dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute')
-		const hours = Math.floor(duration / 60)
-		const minutes = duration % 60
 
-		if (hours > 0) {
-			return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
-		}
-		return `${minutes}m`
-	}
-
-	private formatPrice(price: number): string {
-		if (price === null || price === undefined) {
-			return '€0.00'
-		}
-
-		return `€${price.toFixed(2)}`
-	}
 
 	/**
 	 * Handle edit button click - go back to the previous completed step
@@ -148,7 +128,7 @@ export class BookingSummary extends $LitElement() {
 							@click=${() => this.handleEdit()}
 						>
 							<schmancy-icon size="20px">edit</schmancy-icon>
-							Change
+							<span class="hidden sm:block">Change</span>
 						</schmancy-button>
 					</div>
 				</div>

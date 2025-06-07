@@ -330,9 +330,9 @@ export class CourtBookingSystem extends $LitElement() {
 		const flowSteps = getBookingFlowSteps()
 		
 		return html`
-				<schmancy-grid ${fullHeight()} rows="auto 10fr" gap="md">
+				<schmancy-grid ${fullHeight()} rows="auto 1fr">
 					<page-header-banner
-          class="h-[20vh] md:h-[25vh]  md:block"
+          class="h-[15vh] sm:h-[20vh] md:h-[25vh]  md:block"
 						.title=${venueContext.value.name ?? ''}
 						description="EXPERIENCE BERLIN'S FIRST PICKLEBALL CLUB!"
 						imageSrc="/assets/still02.jpg"

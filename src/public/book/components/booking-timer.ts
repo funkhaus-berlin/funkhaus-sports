@@ -98,9 +98,9 @@ export class BookingTimer extends $LitElement() {
 			<schmancy-surface 
 				type="container" 
         rounded="all"
-				class="mb-4 ${isCritical ? 'bg-error-default text-error-on' : 'bg-warning-container text-warning-on'}"
+				class="py-2 ${isCritical ? 'bg-error-default text-error-on' : 'bg-warning-container text-warning-on'}"
 			>
-				<div class="flex items-center gap-2 p-3 text-sm">
+				<div class="flex items-center gap-2 text-sm">
 					<schmancy-icon>${isCritical ? 'timer_off' : 'timer'}</schmancy-icon>
 					<span>Booking reserved for</span>
 					<span class="font-mono font-semibold">${time}</span>
