@@ -950,7 +950,7 @@ export class TimeSelectionStep extends $LitElement(css`
 		return html`
 			<div
 				class="
-					w-full bg-surface-low rounded-lg transition-all duration-300 p-2
+					w-full bg-surface-low/50 rounded-lg transition-all duration-300 p-2
 					${this.isExpanded ? 'block' : 'hidden'}
 					${this.isActive ? 'opacity-100' : 'opacity-90'}
 				"

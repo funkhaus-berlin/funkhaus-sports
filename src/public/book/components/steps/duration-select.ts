@@ -399,7 +399,7 @@ export class DurationSelectionStep extends $LitElement(css`
 			this.durations.every((d, i) => d === this.getEstimatedDurations()[i])
 		
 		return html`
-			<div class="w-full bg-surface-low rounded-lg transition-all duration-300 p-2">
+			<div class="w-full bg-surface-low/50 rounded-lg transition-all duration-300 p-2">
 				${when(this.error, () => html`
 					<div class="bg-error-container p-2 rounded-t-lg text-error-on-container text-sm text-center mb-3">
 						${this.error}

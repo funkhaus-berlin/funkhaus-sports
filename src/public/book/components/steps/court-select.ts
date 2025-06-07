@@ -1,5 +1,5 @@
 // src/public/book/components/steps/court-select.ts
-import { select } from '@mhmo91/schmancy'
+import { $notify, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { css, html } from 'lit'
@@ -807,6 +807,20 @@ export class CourtSelectStep extends $LitElement(css`
 		// Update booking context with selected court
 		const bookingUpdate: Partial<Booking> = {
 			courtId: court.id,
+		}
+
+		// Check if we need to clear duration for non-fully available courts
+		const availabilityStatus = this.getCourtAvailabilityStatus(court.id)
+		
+		// If court is not fully available and duration was previously selected, clear it
+		if (availabilityStatus !== 'full' && this.isDurationSelected() && !timeSlot) {
+			bookingUpdate.endTime = ''
+			bookingUpdate.price = 0
+			
+			// Notify user that duration was cleared
+			$notify.info('Duration selection cleared. This court has limited availability.', {
+				duration: 3000
+			})
 		}
 
 		// If time slot is provided (for partial availability), update time and duration
