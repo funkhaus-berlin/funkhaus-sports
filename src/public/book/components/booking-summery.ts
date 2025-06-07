@@ -148,7 +148,7 @@ export class BookingSummary extends $LitElement() {
 							@click=${() => this.handleEdit()}
 						>
 							<schmancy-icon size="20px">edit</schmancy-icon>
-							Edit
+							Change
 						</schmancy-button>
 					</div>
 				</div>
