@@ -335,7 +335,7 @@ async function handlePaymentIntentSucceededRx(paymentIntent: Stripe.PaymentInten
 	console.log('Payment succeeded:', paymentIntent.id)
 
 	// Extract booking information from payment intent metadata
-	const { bookingId, courtId, date, userId } = paymentIntent.metadata || {}
+	const { bookingId, courtId, date, userId, venueId } = paymentIntent.metadata || {}
 
 	// Early validation
 	if (!bookingId) {
@@ -354,7 +354,7 @@ async function handlePaymentIntentSucceededRx(paymentIntent: Stripe.PaymentInten
 				return processExistingBooking(bookingDoc, paymentIntent, bookingId)
 			} else {
 				console.warn(`Booking ${bookingId} not found after retries, creating emergency booking`)
-				return createEmergencyBooking(paymentIntent, bookingId, courtId, date, userId)
+				return createEmergencyBooking(paymentIntent, bookingId, courtId, date, userId, venueId)
 			}
 		}),
 		// Log success
@@ -365,7 +365,7 @@ async function handlePaymentIntentSucceededRx(paymentIntent: Stripe.PaymentInten
 			// Special handling for missing booking document errors
 			if (error.code === 5 || error.message?.includes('No document to update')) {
 				console.error(`Booking ${bookingId} disappeared during processing, attempting recovery`)
-				return createEmergencyBooking(paymentIntent, bookingId, courtId, date, userId).pipe(
+				return createEmergencyBooking(paymentIntent, bookingId, courtId, date, userId, venueId).pipe(
 					catchError(recoveryError => {
 						console.error('Recovery also failed:', recoveryError)
 						return from(logPaymentTransaction(paymentIntent, 'error', `Booking missing and recovery failed: ${error.message}`)).pipe(
@@ -536,7 +536,7 @@ function sendBookingConfirmationEmail(bookingData: any, bookingId: string, payme
 /**
  * Create an emergency booking when original booking is missing
  */
-function createEmergencyBooking(paymentIntent: Stripe.PaymentIntent, bookingId: string, courtId?: string, date?: string, userId?: string) {
+function createEmergencyBooking(paymentIntent: Stripe.PaymentIntent, bookingId: string, courtId?: string, date?: string, userId?: string, venueId?: string) {
 	const customerEmail = paymentIntent.receipt_email
 	const customerName = paymentIntent.shipping?.name || 'Guest User'
 	const startTime = paymentIntent.metadata?.startTime
@@ -552,6 +552,7 @@ function createEmergencyBooking(paymentIntent: Stripe.PaymentIntent, bookingId: 
 			const newBooking = {
 				id: bookingId,
 				courtId: courtId || 'unknown',
+				venueId: venueId || null,
 				date: date || new Date().toISOString().split('T')[0],
 				startTime: startTime || null,
 				endTime: endTime || null,

@@ -743,7 +743,7 @@ export class DateSelectionStep extends $LitElement(css`
 					</div>
 
 					<!-- Compact View -->
-					<div class="compact-view p-2" role="grid">
+					<div class="compact-view md:p-2" role="grid">
 						<!-- Horizontal scroll for compact view -->
 						<div class="flex gap-0 overflow-x-auto scrollbar-hide snap-x py-1" role="row">
 							${repeat(

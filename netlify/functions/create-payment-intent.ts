@@ -48,6 +48,7 @@ const handler: Handler = async (event, context) => {
 			city,
 			country,
 			courtId,
+			venueId,
 			uid,
 			bookingId,
 			date,
@@ -73,18 +74,54 @@ const handler: Handler = async (event, context) => {
 			}
 		}
 
-		// Prepare metadata for the booking - include all relevant fields
+		// Validate critical booking metadata fields
+		if (!bookingId) {
+			return {
+				statusCode: 400,
+				headers: corsHeaders,
+				body: JSON.stringify({ error: 'Booking ID is required' }),
+			}
+		}
+
+		if (!courtId) {
+			return {
+				statusCode: 400,
+				headers: corsHeaders,
+				body: JSON.stringify({ error: 'Court ID is required' }),
+			}
+		}
+
+		if (!date) {
+			return {
+				statusCode: 400,
+				headers: corsHeaders,
+				body: JSON.stringify({ error: 'Booking date is required' }),
+			}
+		}
+
+		if (!startTime || !endTime) {
+			return {
+				statusCode: 400,
+				headers: corsHeaders,
+				body: JSON.stringify({ error: 'Start and end times are required' }),
+			}
+		}
+
+		// Prepare metadata for the booking - include all critical fields
 		const metadata: Record<string, string> = {
 			userId: uid || 'anonymous',
 			email: email!,
+			// Include all critical fields that are required for webhook processing
+			bookingId: bookingId,
+			courtId: courtId,
+			date: date,
+			startTime: typeof startTime === 'string' ? startTime : new Date(startTime).toISOString(),
+			endTime: typeof endTime === 'string' ? endTime : new Date(endTime).toISOString(),
 		}
 
-		// Add booking details to metadata if available
-		if (bookingId) metadata.bookingId = bookingId
-		if (courtId) metadata.courtId = courtId
-		if (date) metadata.date = date
-		if (startTime) metadata.startTime = typeof startTime === 'string' ? startTime : new Date(startTime).toISOString()
-		if (endTime) metadata.endTime = typeof endTime === 'string' ? endTime : new Date(endTime).toISOString()
+		// Add optional fields to metadata if available
+		if (venueId) metadata.venueId = venueId
+		if (name) metadata.customerName = name
 
 		// Format description including booking details
 		const description = `Court Booking - ${courtId ? `Court ${courtId}` : 'Tennis Court'} - ${
