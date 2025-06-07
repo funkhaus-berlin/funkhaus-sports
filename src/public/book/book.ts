@@ -8,9 +8,8 @@ import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 import {
   availabilityContext,
-  BookingFlowStep,
   getBookingFlowSteps,
-  initializeAvailabilityContext,
+  initializeAvailabilityContext
 } from 'src/availability-context'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
 import { Court } from 'src/db/courts.collection'
@@ -325,109 +324,15 @@ export class CourtBookingSystem extends $LitElement() {
 		window.location.href = confirmationUrl
 	}
 
-	private renderProgressSteps() {
-		return html` <funkhaus-booking-steps></funkhaus-booking-steps> `
-	}
-
-	// Key updates for src/public/book/book.ts
-
-	/**
-	 * Render steps dynamically based on the current flow
-	 */
-	private renderCurrentStep() {
-		const currentStep = this.bookingProgress.currentStep
-
-		// If we're at the payment step, render the payment form
-		if (currentStep === 5) {
-			// Using numeric values now instead of enum
-			return html`
-				<funkhaus-checkout-form .booking=${this.booking} .selectedCourt=${this.selectedCourt}>
-					<slot slot="stripe-element" name="stripe-element"></slot>
-				</funkhaus-checkout-form>
-			`
-		}
-
-		// Otherwise, render the booking steps in the order defined by the flow
-		if (!this.availability?.bookingFlowType) {
-			// If flow isn't available yet, render just the date step
-			return html` <date-selection-step class="max-w-full sticky top-0 block my-2 z-0"></date-selection-step> `
-		}
-
-		// Get all steps in current flow as numeric values
-		const flowSteps = getBookingFlowSteps()
-
-		// Render components in the correct order
-		return html`
-			${flowSteps.map(step => {
-				// Only render steps that should be shown based on position in flow
-				if (this.shouldShowStep(step)) {
-					return this.renderStepComponent(step)
-				}
-				return html``
-			})}
-		`
-	}
-
-	/**
-	 * Determine if a step should be shown based on current booking flow and progress
-	 * Modified to implement sequential step display with expanded steps tracking
-	 * Further modified to hide Duration step if no time is selected
-	 */
-	private shouldShowStep(step: BookingFlowStep): boolean {
-		if (!this.availability?.bookingFlowType) return true
-
-		const flowSteps = getBookingFlowSteps()
-		const stepIndex = flowSteps.indexOf(step)
-		const isExpanded = this.bookingProgress.expandedSteps.includes(step.step)
-		const currentStepIndex = flowSteps.findIndex(s => s.step === this.bookingProgress.currentStep)
-
-		// If Date step is current and expanded, only show Date step
-		const dateStep = flowSteps.find(s => s.label === 'Date')
-		if (
-			dateStep &&
-			this.bookingProgress.currentStep === dateStep.step &&
-			this.bookingProgress.expandedSteps.includes(dateStep.step)
-		) {
-			return step.step === dateStep.step
-		}
-
-		if (currentStepIndex > this.bookingProgress.maxStepReached) {
-			BookingProgressContext.set({
-				maxStepReached: currentStepIndex,
-			})
-		}
-
-		// Special case for Duration step - only show if time is selected
-		if (step.label === 'Duration' && !this.booking.startTime) {
-			return false
-		}
-
-		return stepIndex !== -1 && isExpanded
-	}
-	/**
-	 * Render a step component based on step number
-	 */
-	private renderStepComponent(step: BookingFlowStep) {
-		const stepLabel = step.label
-		switch (stepLabel) {
-			case 'Date': // Date (was BookingStep.Date)
-				return html` <date-selection-step class="max-w-full sticky top-0 block z-10"></date-selection-step> `
-			case 'Court': // Court (was BookingStep.Court)
-				return html` <court-select-step class="max-w-full block mt-2 z-10"></court-select-step> `
-			case 'Time': // Time (was BookingStep.Time)
-				return html` <time-selection-step class="max-w-full sticky top-0 block mt-2 z-10"></time-selection-step> `
-			case 'Duration': // Duration (was BookingStep.Duration)
-				return html` <duration-selection-step class="max-w-full mt-2 block"></duration-selection-step> `
-			default:
-				return html``
-		}
-	}
-
 	render() {
+		// Get current step and flow steps for rendering
+		const currentStep = this.bookingProgress.currentStep
+		const flowSteps = getBookingFlowSteps()
+		
 		return html`
 				<schmancy-grid ${fullHeight()} rows="auto 10fr" gap="md">
 					<page-header-banner
-          class="h-[30vh] hidden md:block"
+          class="h-[20vh] md:h-[25vh]  md:block"
 						.title=${venueContext.value.name ?? ''}
 						description="EXPERIENCE BERLIN'S FIRST PICKLEBALL CLUB!"
 						imageSrc="/assets/still02.jpg"
@@ -442,10 +347,70 @@ export class CourtBookingSystem extends $LitElement() {
 					>
 						<section class="max-w-3xl w-full   justify-self-center md:justify-end flex">
 							<schmancy-grid rows="auto 1fr"  flow="row" class="w-full   justify-self-end">
-								<!-- <section .hidden=${BookingProgressContext.value.currentStep < 5}>${this.renderProgressSteps()}</section> -->
 								<!-- Error display component - shows errors from BookingProgressContext -->
 								<booking-error-display showRecoverySuggestion language="en"></booking-error-display>
-								<schmancy-scroll hide>${this.renderCurrentStep()}</schmancy-scroll>
+								<schmancy-scroll hide>
+									<!-- All UI content directly in render function - no separate functions -->
+									${currentStep === 5 ? html`
+										<!-- Payment step -->
+										<funkhaus-checkout-form .booking=${this.booking} .selectedCourt=${this.selectedCourt}>
+											<slot slot="stripe-element" name="stripe-element"></slot>
+										</funkhaus-checkout-form>
+									` : !this.availability?.bookingFlowType ? html`
+										<!-- Default date step if flow not ready -->
+										<date-selection-step class="max-w-full sticky top-0 block my-2 z-0"></date-selection-step>
+									` : html`
+										<!-- Render booking steps based on flow -->
+										${flowSteps.map(step => {
+											// Check if step should be shown - all logic inline
+											if (!this.availability?.bookingFlowType) return html``
+
+											const stepIndex = flowSteps.indexOf(step)
+											const isExpanded = this.bookingProgress.expandedSteps.includes(step.step)
+											const currentStepIndex = flowSteps.findIndex(s => s.step === this.bookingProgress.currentStep)
+
+											// If Date step is current and expanded, only show Date step
+											const dateStep = flowSteps.find(s => s.label === 'Date')
+											if (
+												dateStep &&
+												this.bookingProgress.currentStep === dateStep.step &&
+												this.bookingProgress.expandedSteps.includes(dateStep.step)
+											) {
+												if (step.step !== dateStep.step) return html``
+											}
+
+											if (currentStepIndex > this.bookingProgress.maxStepReached) {
+												BookingProgressContext.set({
+													maxStepReached: currentStepIndex,
+												})
+											}
+
+											// Special case for Duration step - only show if time is selected
+											if (step.label === 'Duration' && !this.booking.startTime) {
+												return html``
+											}
+
+											// Check if step should be shown
+											const shouldShow = stepIndex !== -1 && isExpanded
+											if (!shouldShow) return html``
+
+											// Render the appropriate step component based on label
+											const stepLabel = step.label
+											switch (stepLabel) {
+												case 'Date':
+													return html` <date-selection-step class="max-w-full sticky top-0 block z-10"></date-selection-step> `
+												case 'Court':
+													return html` <court-select-step class="max-w-full block mt-2 z-10"></court-select-step> `
+												case 'Time':
+													return html` <time-selection-step class="max-w-full sticky top-0 block mt-2 z-10"></time-selection-step> `
+												case 'Duration':
+													return html` <duration-selection-step class="max-w-full mt-2 block"></duration-selection-step> `
+												default:
+													return html``
+											}
+										})}
+									`}
+								</schmancy-scroll>
 							</schmancy-grid>
 						</section>
             <schmancy-surface
@@ -509,8 +474,8 @@ export class CourtBookingSystem extends $LitElement() {
                 ` : ''}
               </schmancy-grid>
             </schmancy-surface>
+						</schmancy-grid>
 					</schmancy-grid>
-				</schmancy-grid>
 		`
 	}
 }

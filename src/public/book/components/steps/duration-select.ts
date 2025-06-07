@@ -253,14 +253,15 @@ export class DurationSelectionStep extends $LitElement(css`
 		})
 		
 		// Validate we have all required fields before proceeding
-		if (!this.booking.courtId || !this.booking.date || !this.booking.startTime || !this.booking.endTime || !this.booking.price || this.booking.price <= 0) {
+		if (!this.booking.courtId || !this.booking.date || !this.booking.startTime || !this.booking.endTime || !this.booking.price || this.booking.price <= 0 || !this.booking.venueId) {
 			console.error('Missing or invalid required fields:', {
 				courtId: this.booking.courtId,
 				date: this.booking.date,
 				startTime: this.booking.startTime,
 				endTime: this.booking.endTime,
 				price: this.booking.price,
-				priceValid: this.booking.price > 0
+				priceValid: this.booking.price > 0,
+				venueId: this.booking.venueId
 			})
 			$notify.error('Please complete all booking details before proceeding')
 			this.isCreatingBooking = false
@@ -273,7 +274,8 @@ export class DurationSelectionStep extends $LitElement(css`
 			status: 'holding',
 			paymentStatus: 'pending',
 			createdAt: new Date().toISOString(),
-			lastActive: new Date().toISOString()
+			lastActive: new Date().toISOString(),
+			venueId: this.booking.venueId // Explicitly include venueId
 		}
 		
 		// Debug: Log booking data being sent

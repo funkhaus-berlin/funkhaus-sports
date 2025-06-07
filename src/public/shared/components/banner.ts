@@ -38,7 +38,7 @@ export class PageHeaderBanner extends $LitElement(css`
 				<section
 					class="text-white absolute inset-0 ${blurClass} flex flex-col items-start justify-end px-5 md:px-8 lg:px-[5%] pb-8 mt-[16px] sm:mt-0 pt-unset h-full"
 				>
-					<schmancy-typography type="display" token="lg" class="mb-4"> ${this.title} </schmancy-typography>
+					<schmancy-typography type="display" token="lg"> ${this.title} </schmancy-typography>
 					<schmancy-typography type="body" token="lg" class="${maxWidthClass}">
 						${this.description}
 					</schmancy-typography>

@@ -10,7 +10,7 @@ import { combineLatest, debounceTime, distinctUntilChanged, filter, map, of, sta
 // Import our components directly
 import './bookings-filter'
 import './components/booking-day-view'
-import './components/email-failures-boat'
+import './components/booking-issues-alert'
 
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { BookingsDB } from 'src/db/bookings.collection'
@@ -19,7 +19,7 @@ import { Venue } from 'src/db/venue-collection'
 import { Booking } from 'src/types/booking/booking.types'
 import { courtsContext } from '../courts/context'
 import { venueContext } from '../venue-context'
-import { bookingFilterContext, BookingsContext } from './bookings.context'
+import { AllBookingsContext, bookingFilterContext, BookingsContext } from './bookings.context'
 
 // Extend dayjs with isBetween plugin
 dayjs.extend(isBetween)
@@ -131,10 +131,23 @@ export class VenuBookingsList extends $LitElement() {
 						},
 					]).pipe(
 						map(bookings => {
-							console.log(`Fetched ${bookings.size} bookings for venue ${this.venue.id}`)
+							console.log(`[BookingsDB] Received ${bookings.size} bookings from Firebase for venue ${this.venue.id}`)
+							
+							// Count bookings by status before filtering
+							const statusCounts: Record<string, number> = { holding: 0, confirmed: 0, cancelled: 0, completed: 0 }
+							bookings.forEach(booking => {
+								if (booking.status in statusCounts) {
+									statusCounts[booking.status as keyof typeof statusCounts]++
+								}
+							})
+							console.log('[BookingsDB] Status counts:', statusCounts)
 
+							// Store all bookings for counting purposes
+							AllBookingsContext.replace(bookings)
+							
 							// Apply any additional filtering needed (status, search)
 							const filteredBookings = this.applyAdditionalFilters(bookings, filter)
+							console.log(`[BookingsDB] After filtering: ${filteredBookings.size} bookings`)
 
 							return filteredBookings
 						}),
@@ -173,11 +186,21 @@ export class VenuBookingsList extends $LitElement() {
 
 		return new Map(
 			Array.from(bookings.entries()).filter(([id, booking]) => {
-				// Status filter - treat completed and confirmed as the same
+				// Status filter
 				if (filter.status && filter.status !== 'all') {
 					if (filter.status === 'confirmed') {
 						// Include both confirmed and completed bookings when filtering for confirmed
 						if (booking.status !== 'confirmed' && booking.status !== 'completed') {
+							return false
+						}
+					} else if (filter.status === 'holding') {
+						// Show holding bookings
+						if (booking.status !== 'holding') {
+							return false
+						}
+					} else if (filter.status === 'cancelled') {
+						// Show cancelled bookings
+						if (booking.status !== 'cancelled') {
 							return false
 						}
 					} else if (booking.status !== filter.status) {
@@ -234,8 +257,8 @@ export class VenuBookingsList extends $LitElement() {
 				<!-- Simplified Booking Filter -->
 				<bookings-filter></bookings-filter>
 				
-				<!-- Email Failures Alert -->
-				<email-failures-boat .venueId=${this.venue?.id}></email-failures-boat>
+				<!-- Booking Issues Alert -->
+				<booking-issues-alert .venueId=${this.venue?.id}></booking-issues-alert>
 
 				<!-- Day View Calendar -->
 				<booking-day-view></booking-day-view>

@@ -4,17 +4,6 @@ This document contains a comprehensive analysis of potential production flaws fo
 
 ## Critical Production Flaws Found
 
-### 4. **Email Sending Without Proper Error Recovery (MEDIUM SEVERITY)**
-**Location**: `netlify/functions/stripe-webhook.ts` (lines 446-534)
-**Issue**: Email sending failures don't have a retry queue or dead letter mechanism.
-```typescript
-// Line 528-533: Errors are caught but not queued for retry
-catchError(error => {
-    console.error(`Error sending confirmation email for booking ${bookingId}:`, error)
-    // Don't fail the entire process if email fails
-    return of(null)
-})
-```
 **Impact**: Users may not receive booking confirmations despite successful payment.
 
 ### 5. **Missing Transaction Rollback on Payment Failure (HIGH SEVERITY)**

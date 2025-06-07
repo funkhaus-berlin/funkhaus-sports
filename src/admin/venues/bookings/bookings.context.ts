@@ -20,12 +20,15 @@ export interface TBookingFilter {
 
 export const BookingsContext = createContext<Map<string, Booking>>(new Map(), 'indexeddb', 'bookings')
 
+// Create context for all bookings (unfiltered) - used for counting
+export const AllBookingsContext = createContext<Map<string, Booking>>(new Map(), 'memory', 'all-bookings')
+
 // Create booking filter context
 export const bookingFilterContext = createContext<TBookingFilter>(
 	{
 		dateFrom: DEFAULT_DATE_RANGE.dateFrom,
 		dateTo: DEFAULT_DATE_RANGE.dateTo,
-		status: 'confirmed', // Changed default from 'all' to 'confirmed'
+		status: 'all', // Default to showing all bookings including holding
 		courts: [],
 		search: '',
 		user: '',

@@ -1,11 +1,11 @@
 // src/admin/venues/bookings/bookings-filter.ts
 import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
-import { html, css } from 'lit'
+import { css, html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { BehaviorSubject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs'
 import { Booking } from 'src/types/booking/booking.types'
-import { bookingFilterContext, BookingsContext } from './bookings.context'
+import { AllBookingsContext, bookingFilterContext, BookingsContext } from './bookings.context'
 
 /**
  * Simplified bookings filter component with just status and search
@@ -52,9 +52,15 @@ export class BookingsFilter extends $LitElement(css`
   }
 `) {
   @select(BookingsContext) bookings!: Map<string, Booking>
+  @select(AllBookingsContext) allBookings!: Map<string, Booking>
   @select(bookingFilterContext) filter!: { status?: string, search?: string }
   
-  @state() statusList = ['all', 'confirmed', 'holding', 'cancelled']
+  @state() statusList = [
+    { value: 'all', label: 'All', icon: 'view_list' },
+    { value: 'confirmed', label: 'Confirmed', icon: 'check_circle' },
+    { value: 'holding', label: 'Holding', icon: 'hourglass_empty' },
+    { value: 'cancelled', label: 'Cancelled', icon: 'cancel' }
+  ]
   
   // Search query behavior subject for debouncing
   private searchSubject = new BehaviorSubject<string>('')
@@ -67,6 +73,14 @@ export class BookingsFilter extends $LitElement(css`
       .pipe(debounceTime(300), distinctUntilChanged(), takeUntil(this.disconnecting))
       .subscribe(searchValue => {
         this.updateFilter({ search: searchValue })
+      })
+    
+    // Force re-render when AllBookingsContext updates to ensure counts are updated
+    AllBookingsContext.$
+      .pipe(takeUntil(this.disconnecting))
+      .subscribe(() => {
+        console.log('[BookingsFilter] AllBookingsContext updated, requesting re-render')
+        this.requestUpdate()
       })
   }
   
@@ -85,7 +99,8 @@ export class BookingsFilter extends $LitElement(css`
   /**
    * Handle status filter change
    */
-  private handleStatusChange(status: string) {
+  private handleStatusChange(e:CustomEvent<string>) {
+    const status = e.detail ?? 'all'
     this.updateFilter({ status })
   }
   
@@ -102,7 +117,7 @@ export class BookingsFilter extends $LitElement(css`
    */
   private clearFilters() {
     this.updateFilter({
-      status: 'confirmed', // Changed default from 'all' to 'confirmed'
+      status: 'all', // Show all bookings by default to include holding
       search: ''
     })
     this.requestUpdate()
@@ -115,19 +130,21 @@ export class BookingsFilter extends $LitElement(css`
     const counts: Record<string, number> = {
       all: 0,
       confirmed: 0,
-      pending: 0,
+      holding: 0,
       cancelled: 0
     }
     
-    // Count bookings by status
-    this.bookings.forEach(booking => {
+    // Count bookings by status from all bookings (unfiltered)
+    this.allBookings.forEach(booking => {
       counts.all++
       
       // Treat completed as confirmed
       if (booking.status === 'completed' || booking.status === 'confirmed') {
         counts.confirmed++
-      } else if (booking.status && counts[booking.status] !== undefined) {
-        counts[booking.status]++
+      } else if (booking.status === 'holding') {
+        counts.holding++
+      } else if (booking.status === 'cancelled') {
+        counts.cancelled++
       }
     })
     
@@ -136,7 +153,7 @@ export class BookingsFilter extends $LitElement(css`
   
   render() {
     const statusCounts = this.getStatusCounts()
-    const currentStatus = this.filter?.status || 'confirmed' // Changed default from 'all' to 'confirmed'
+    const currentStatus = this.filter?.status || 'all' // Show all by default to include holding
     const currentSearch = this.filter?.search || ''
     
     return html`
@@ -144,16 +161,22 @@ export class BookingsFilter extends $LitElement(css`
         <div class="filter-container">
           <!-- Status filters -->
           <div class="status-filters">
-            ${this.statusList.map(status => html`
-              <schmancy-chip
-                variant=${currentStatus === status ? 'filled' : 'outlined'}
-                @click=${() => this.handleStatusChange(status)}
-                ?disabled=${statusCounts[status] === 0 && status !== 'all'}
-              >
-                ${status.charAt(0).toUpperCase() + status.slice(1)} 
-                ${statusCounts[status] > 0 ? html`<span>(${statusCounts[status]})</span>` : ''}
-              </schmancy-chip>
-            `)}
+            <schmancy-chips
+              label="Status"
+              .value=${currentStatus}
+              @change=${this.handleStatusChange}
+            >
+              ${this.statusList.map(status => html`
+                <schmancy-chip 
+                  .value=${status.value}
+                  ?disabled=${statusCounts[status.value] === 0 && status.value !== 'all'}
+                >
+                  <schmancy-icon slot="prefix" size="20px">${status.icon}</schmancy-icon>
+                  ${status.label} 
+                  ${statusCounts[status.value] > 0 ? html`<span>(${statusCounts[status.value]})</span>` : ''}
+                </schmancy-chip>
+              `)}
+            </schmancy-chips>
           </div>
           
           <!-- Search -->
@@ -177,7 +200,7 @@ export class BookingsFilter extends $LitElement(css`
           </div>
           
           <!-- Reset filters -->
-          ${(currentStatus !== 'confirmed' || currentSearch) ? html`
+          ${(currentStatus !== 'all' || currentSearch) ? html`
             <schmancy-button
               variant="text"
               @click=${this.clearFilters}
