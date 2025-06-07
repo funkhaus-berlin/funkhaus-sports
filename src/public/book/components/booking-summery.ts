@@ -36,7 +36,10 @@ export class BookingSummary extends $LitElement() {
 
 	private formatDate(dateStr: string): string {
 		if (!dateStr) return 'TBD'
-		return dayjs(dateStr).format('ddd, MMM D')
+		// More compact format on mobile
+		return window.innerWidth < 768 
+			? dayjs(dateStr).format('M/D') 
+			: dayjs(dateStr).format('ddd, MMM D')
 	}
 
 	private formatTime(timeStr: string): string {
@@ -80,38 +83,40 @@ export class BookingSummary extends $LitElement() {
 		const hasBookingDetails = this.booking?.date && this.booking?.startTime
 
 		return html`
-			<schmancy-surface type="containerHigh" rounded="all" class="p-2 md:p-3">
+			<schmancy-surface type="containerHigh" rounded="all" class="p-1.5 md:p-3">
 				<!-- Compact always-visible summary -->
-				<div class="flex items-center justify-between gap-2">
+				<div class="flex items-center justify-between gap-1 md:gap-2">
 					<!-- Left side - booking info -->
 					<div class="flex-1 min-w-0">
 						${hasBookingDetails ? html`
-							<div class="flex items-center gap-4 flex-wrap">
+							<div class="flex items-center gap-2 md:gap-4 flex-wrap">
 								<!-- Date & Time -->
-								<div class="flex items-center gap-[4px]">
-									<schmancy-icon size="16px" class="text-primary-default">calendar_today</schmancy-icon>
-									<schmancy-typography type="body" token="sm" class="font-medium">
+								<div class="flex items-center gap-[2px] md:gap-[4px]">
+									<schmancy-icon size="14px" class="text-primary-default md:text-[16px]">calendar_today</schmancy-icon>
+									<schmancy-typography type="body" token="sm" class="font-medium text-xs md:text-sm">
 										${this.formatDate(this.booking.date)}
 									</schmancy-typography>
 								</div>
 
                 	<!-- Court (if selected) -->
 								${court ? html`
-									<div class="flex items-center gap-[4px]">
-										<schmancy-icon size="16px" class="text-primary-default">sports_tennis</schmancy-icon>
-										<schmancy-typography type="body" token="sm">
+									<div class="flex items-center gap-[2px] md:gap-[4px]">
+										<schmancy-icon size="14px" class="text-primary-default md:text-[16px]">sports_tennis</schmancy-icon>
+										<schmancy-typography type="body" token="sm" class="text-xs md:text-sm">
 											${court.name}
 										</schmancy-typography>
 									</div>
 								` : ''}
 								
 								<!-- Time Range -->
-								<div class="flex items-center gap-[4px]">
-									<schmancy-icon size="16px" class="text-primary-default">schedule</schmancy-icon>
-									<schmancy-typography type="body" token="sm">
-										${this.formatTime(this.booking.startTime)} - ${this.formatTime(this.booking.endTime)}
+								<div class="flex items-center gap-[2px] md:gap-[4px]">
+									<schmancy-icon size="14px" class="text-primary-default md:text-[16px]">schedule</schmancy-icon>
+									<schmancy-typography type="body" token="sm" class="text-xs md:text-sm">
+										${this.formatTime(this.booking.startTime)}-${this.formatTime(this.booking.endTime)}
 									</schmancy-typography>
 								</div>
+
+                <slot></slot>
 								
 							
 							</div>
@@ -123,14 +128,15 @@ export class BookingSummary extends $LitElement() {
 					</div>
 					
 					<!-- Right side - edit button -->
-					<div class="flex items-center gap-2">
+					<div class="flex items-center">
 						<schmancy-button
 							size="sm"
 							variant="filled tonal"
 							@click=${() => this.handleEdit()}
+							class="px-2 md:px-3"
 						>
-							<schmancy-icon size="20px">edit</schmancy-icon>
-							<span class="hidden sm:block">Change</span>
+							<schmancy-icon size="18px" class="md:text-[20px]">edit</schmancy-icon>
+							<span class="hidden sm:block ml-1">Change</span>
 						</schmancy-button>
 					</div>
 				</div>

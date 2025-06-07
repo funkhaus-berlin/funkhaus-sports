@@ -23,73 +23,7 @@ dayjs.extend(relativeTime)
  * QR code scanner component for booking check-in
  */
 @customElement('booking-scanner')
-export default class BookingScanner extends $LitElement(css`
-	:host {
-		display: block;
-		position: fixed;
-		top: 0;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		overflow: hidden;
-		touch-action: none;
-		-webkit-user-select: none;
-		user-select: none;
-		-webkit-touch-callout: none;
-	}
-	
-	/* Fullscreen video preview */
-	video {
-		position: fixed;
-		top: 0;
-		left: 0;
-		width: 100vw;
-		height: 100vh;
-		object-fit: cover;
-		z-index: 1;
-	}
-	
-	.splash {
-		position: fixed;
-		inset: 0;
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		opacity: 0;
-		visibility: hidden;
-		transition: opacity 0.5s ease-in-out, visibility 0s 0.5s;
-		z-index: 9999;
-	}
-	
-	.splash.show {
-		opacity: 1;
-		visibility: visible;
-		transition: opacity 0.5s ease-in-out;
-	}
-	
-	.splash.green {
-		background: radial-gradient(circle, rgba(0, 255, 0, 0.5) 20%, rgba(0, 128, 0, 0.7) 100%);
-	}
-	
-	.splash.yellow {
-		background: radial-gradient(circle, rgba(255, 255, 0, 0.5) 20%, rgba(128, 128, 0, 0.7) 100%);
-	}
-	
-	.splash.red {
-		background: radial-gradient(circle, rgba(255, 0, 0, 0.5) 20%, rgba(128, 0, 0, 0.7) 100%);
-	}
-	
-	.status-bar {
-		position: fixed;
-		bottom: 0;
-		left: 0;
-		right: 0;
-		z-index: 10;
-		background: rgba(0, 0, 0, 0.5);
-		backdrop-filter: blur(10px);
-		-webkit-backdrop-filter: blur(10px);
-	}
-`) {
+export default class BookingScanner extends $LitElement() {
 	@property({ type: String }) venueId = ''
 
 	@state()  scannerStatus: 'idle' | 'scanning' | 'processing' | 'success' | 'error' = 'idle'
@@ -117,6 +51,17 @@ export default class BookingScanner extends $LitElement(css`
 
 	connectedCallback() {
 		super.connectedCallback()
+		
+		// Apply host styles
+		this.style.display = 'block'
+		this.style.position = 'fixed'
+		this.style.inset = '0'
+		this.style.overflow = 'hidden'
+		this.style.touchAction = 'none'
+		this.style.userSelect = 'none'
+		// Webkit-specific styles
+		;(this.style as any).webkitUserSelect = 'none'
+		;(this.style as any).webkitTouchCallout = 'none'
 
 		this.initializeScanner()
 	}
@@ -322,6 +267,8 @@ export default class BookingScanner extends $LitElement(css`
 			return timer(750).pipe(
 				takeUntil(this.destroyed$),
 				tap(() => {
+					this.animateSplash(false)
+					this.animateSplash(false)
 					this.showSplash = false
 					this.isReadyToScan = true
 					this.isBusy = false
@@ -344,6 +291,8 @@ export default class BookingScanner extends $LitElement(css`
 					this.splashColor = 'red'
 					this.reason = 'Booking not found'
 					this.showSplash = true
+					this.animateSplash(true)
+				this.animateSplash(true)
 					return
 				}
 
@@ -353,6 +302,8 @@ export default class BookingScanner extends $LitElement(css`
 					this.splashColor = 'red'
 					this.reason = 'Booking is for a different venue'
 					this.showSplash = true
+					this.animateSplash(true)
+				this.animateSplash(true)
 					return
 				}
 
@@ -362,6 +313,8 @@ export default class BookingScanner extends $LitElement(css`
 					this.splashColor = 'red'
 					this.reason = `Booking is ${booking.status}`
 					this.showSplash = true
+					this.animateSplash(true)
+				this.animateSplash(true)
 					return
 				}
 
@@ -373,6 +326,8 @@ export default class BookingScanner extends $LitElement(css`
 					this.splashColor = 'yellow'
 					this.reason = `Already checked in ${dayjs(booking.updatedAt).fromNow()}`
 					this.showSplash = true
+					this.animateSplash(true)
+				this.animateSplash(true)
 				} else {
 					// Valid for check-in
 					this.validBooking = true
@@ -380,6 +335,8 @@ export default class BookingScanner extends $LitElement(css`
 					this.bookingInfo = booking
 					this.splashColor = 'green'
 					this.showSplash = true
+					this.animateSplash(true)
+				this.animateSplash(true)
 					// Play success sound only (no UI notification)
 					this.playSuccessSound()
 				}
@@ -390,6 +347,7 @@ export default class BookingScanner extends $LitElement(css`
 				this.splashColor = 'red'
 				this.reason = 'Error fetching booking data'
 				this.showSplash = true
+				this.animateSplash(true)
 				this.isBusy = false
 				return of(null)
 			}),
@@ -397,6 +355,7 @@ export default class BookingScanner extends $LitElement(css`
 			switchMap(() => timer(this.validBooking ? 1000 : 750).pipe(
 				takeUntil(this.destroyed$),
 				tap(() => {
+					this.animateSplash(false)
 					this.showSplash = false
 					this.isReadyToScan = true
 					// Show booking details for valid bookings
@@ -427,6 +386,32 @@ export default class BookingScanner extends $LitElement(css`
 	private playSuccessSound(): void {
 		// Use $notify with empty message and very short duration to play just the sound
 		$notify.success('', { duration: 1 })
+	}
+	
+	private animateSplash(show: boolean): void {
+		// Use Web Animation API for splash animation
+		const splash = this.shadowRoot?.getElementById('splash')
+		if (!splash) return
+		
+		if (show) {
+			splash.animate([
+				{ opacity: 0, transform: 'scale(0.95)' },
+				{ opacity: 1, transform: 'scale(1)' }
+			], {
+				duration: 500,
+				easing: 'ease-out',
+				fill: 'forwards'
+			})
+		} else {
+			splash.animate([
+				{ opacity: 1, transform: 'scale(1)' },
+				{ opacity: 0, transform: 'scale(0.95)' }
+			], {
+				duration: 500,
+				easing: 'ease-in',
+				fill: 'forwards'
+			})
+		}
 	}
 
 	private async retryCamera() {
@@ -549,10 +534,15 @@ export default class BookingScanner extends $LitElement(css`
 		// Main scanner view
 		return html`
 			<!-- Video element for camera preview -->
-			<video playsinline muted id="video"></video>
+			<video 
+				playsinline 
+				muted 
+				id="video"
+				class="fixed top-0 left-0 w-screen h-screen object-cover z-[1]"
+			></video>
 
 			<!-- Status bar -->
-			<div class="status-bar">
+			<div class="fixed bottom-0 left-0 right-0 z-10 bg-black/50 backdrop-blur-[10px]">
 				<div class="p-4">
 					<schmancy-flex justify="between" align="center">
 						<schmancy-grid gap="xs">
@@ -572,7 +562,19 @@ export default class BookingScanner extends $LitElement(css`
 			</div>
 
 			<!-- Color splash with result -->
-			<div class="overscroll-none overflow-hidden splash ${this.showSplash ? 'show' : ''} ${this.splashColor}">
+			<div 
+				id="splash"
+				class="fixed inset-0 flex justify-center items-center z-[9999] transition-all duration-500 ${
+					this.showSplash ? 'opacity-100 visible' : 'opacity-0 invisible' 
+				}"
+				style="background: radial-gradient(circle, ${
+					this.splashColor === 'green'
+						? 'rgba(34, 197, 94, 0.5) 20%, rgba(22, 163, 74, 0.7) 100%'
+						: this.splashColor === 'yellow'
+						? 'rgba(250, 204, 21, 0.5) 20%, rgba(202, 138, 4, 0.7) 100%'
+						: 'rgba(239, 68, 68, 0.5) 20%, rgba(185, 28, 28, 0.7) 100%'
+				}); ${this.showSplash ? '' : 'transition-delay: 0s, 500ms'}"
+			>
 				${this.validBooking
 					? html`
 						<schmancy-grid justify="center" align="center" gap="sm">

@@ -95,20 +95,19 @@ export class BookingTimer extends $LitElement() {
 		const isCritical = this.seconds <= criticalThreshold
 		
 		return html`
-			<schmancy-surface 
-				type="container" 
+			<section 
         rounded="all"
-				class="py-2 ${isCritical ? 'bg-error-default text-error-on' : 'bg-warning-container text-warning-on'}"
+				class="p-2 ${isCritical ? 'text-error-default' : ''}"
 			>
 				<div class="flex items-center gap-2 text-sm">
-					<schmancy-icon>${isCritical ? 'timer_off' : 'timer'}</schmancy-icon>
-					<span>Booking reserved for</span>
+          	<schmancy-icon size="16px" class="text-primary-default">${isCritical ? 'timer_off' : 'timer'}</schmancy-icon>
+					<span>Reserved for</span>
 					<span class="font-mono font-semibold">${time}</span>
 					${this.extensionApplied ? html`
 						<schmancy-icon class="text-success-default animate-pulse ml-auto" title="Timer extended due to activity">schedule</schmancy-icon>
 					` : ''}
 				</div>
-			</schmancy-surface>
+			</section>
 		`
 	}
 }

@@ -3,6 +3,7 @@
 import { $notify, SchmancyAutocompleteChangeEvent, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { Stripe, StripeElements } from '@stripe/stripe-js'
+import dayjs from 'dayjs'
 import { collection, doc, updateDoc } from 'firebase/firestore'
 import { html, PropertyValues } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
@@ -26,19 +27,18 @@ import {
 	takeUntil,
 	tap,
 } from 'rxjs'
-import dayjs from 'dayjs'
 import countries from 'src/assets/countries'
 import { BookingService } from 'src/bookingServices/booking.service'
 import { Court } from 'src/db/courts.collection'
 import { auth, db } from 'src/firebase/firebase'
 import stripePromise, { $stripeElements } from 'src/public/stripe'
-import { createPaymentIntent } from '../../../stripe'
 import '../../../booking-confirmation/booking-confirmation' // Import booking confirmation component
 import { FunkhausSportsTermsAndConditions } from '../../../shared/components/terms-and-conditions'
+import { createPaymentIntent } from '../../../stripe'
 import { Booking, bookingContext, BookingProgressContext, BookingStep } from '../../context'
 import { FormValidator } from '../../form-validator'
-import '../booking-timer' // Import timer component
 import '../booking-summery' // Import booking summary component
+import '../booking-timer' // Import timer component
 
 /**
  * Checkout form component with Stripe integration
@@ -266,19 +266,19 @@ export class CheckoutForm extends $LitElement() {
 			startTime: booking.startTime,
 			endTime: booking.endTime,
 			customerEmail: booking.customerEmail,
-			timestamp: Math.floor(Date.now() / 10000) // 10-second window for retries
+			timestamp: Math.floor(Date.now() / 10000), // 10-second window for retries
 		}
-		
+
 		// Create a deterministic key from the booking data
 		const keyString = JSON.stringify(keyData)
 		// Simple hash function for the key (could use crypto.subtle.digest for better hash)
 		let hash = 0
 		for (let i = 0; i < keyString.length; i++) {
 			const char = keyString.charCodeAt(i)
-			hash = ((hash << 5) - hash) + char
+			hash = (hash << 5) - hash + char
 			hash = hash & hash // Convert to 32-bit integer
 		}
-		
+
 		return `booking_${booking.id}_${Math.abs(hash)}`
 	}
 
@@ -722,17 +722,14 @@ export class CheckoutForm extends $LitElement() {
 
 			<div
 				class="
-					w-full  rounded-lg transition-all duration-300 p-2
+					w-full  rounded-lg transition-all duration-300 md:p-2
 					${this.isActive ? 'scale-100' : 'scale-95'}
 				"
 			>
 				<!-- Booking Summary - only show when timer hasn't expired -->
 				${when(
 					!this.timerExpired,
-					() => html`
-               <booking-summary  .selectedCourt=${this.selectedCourt}></booking-summary>
-          
-          `,
+					() => html` <booking-summary .selectedCourt=${this.selectedCourt}> </booking-summary> `,
 				)}
 
 				<!-- Timer display -->
@@ -862,6 +859,7 @@ export class CheckoutForm extends $LitElement() {
 										</schmancy-typography>
 										<schmancy-typography class="mb-0" type="label"> Includes: 7% VAT </schmancy-typography>
 									</schmancy-grid>
+
 									<schmancy-button class="h-[3rem] pb-2" type="submit" variant="filled" ?disabled=${this.processing}>
 										<schmancy-typography class="px-4" type="title" token="lg">
 											Pay &euro;${this.booking.price.toFixed(2)}
