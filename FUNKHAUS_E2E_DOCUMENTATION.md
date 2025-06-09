@@ -174,8 +174,6 @@ All endpoints are serverless Netlify Functions:
 
 #### Protected Endpoints
 - `POST /api/create-user` - Create/update users (requires auth)
-- `POST /api/schedule-availability` - Maintenance tasks (API key)
-- `GET /api/booking-recovery` - Recovery operations (API key)
 
 ### Error Handling
 

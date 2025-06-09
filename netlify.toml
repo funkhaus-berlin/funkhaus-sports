@@ -48,11 +48,6 @@
   force = true
 
 
-[[redirects]]
-  from = "/api/schedule-availability"
-  to = "/.netlify/functions/schedule-availability"
-  status = 200
-  force = true
 
 [[redirects]]
   from = "/api/resend-booking-email"
