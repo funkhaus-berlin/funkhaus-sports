@@ -9,17 +9,12 @@ import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import {
-  BehaviorSubject,
-  combineLatest,
   debounceTime,
   distinctUntilChanged,
   filter,
   fromEvent,
   map,
-  Observable,
-  shareReplay,
   startWith,
-  take,
   takeUntil,
   tap,
 } from 'rxjs'
@@ -126,38 +121,16 @@ export class TimeSelectionStep extends $LitElement(css`
 	@select(availabilityContext)
 	availability!: AvailabilityData
 
-	// Core state streams
-	private state$ = new BehaviorSubject<{
-		timeSlots: TimeSlot[]
-		loading: boolean
-		error: string | null
-		autoScrollAttempted: boolean
-		viewMode: 'grid' | 'list'
-		showingEstimatedPrices: boolean
-	}>({
-		timeSlots: [],
-		loading: true,
-		error: null,
-		autoScrollAttempted: false,
-		viewMode: 'grid',
-		showingEstimatedPrices: false,
-	})
-
-	// State properties derived from observables
+	// Simplified state management
+	@state() timeSlots: TimeSlot[] = []
+	@state() loading = true
+	@state() error: string | null = null
 	@state() isActive = false
-  @state() isExpanded = false
+	@state() isExpanded = false
 	@state() isCompact = false
 	@state() isDesktopOrTablet = window.innerWidth >= 768
-	@state() shouldUseGridView = false
-
-	// Simple transition state
-	@state() isTransitioning = false
-
-	// Observables for reactive state management
-	private isActive$!: Observable<boolean>
-	private isCompact$!: Observable<boolean>
-	private isDesktopOrTablet$!: Observable<boolean>
-	private shouldUseGridView$!: Observable<boolean>
+	@state() viewMode: 'grid' | 'list' = 'grid'
+	@state() autoScrollAttempted = false
 
 	// User preferences
 	private userTimezone = getUserTimezone()
@@ -208,155 +181,71 @@ export class TimeSelectionStep extends $LitElement(css`
 		this.timeSlotRefs.clear()
 	}
 
-	// Stream setup methods
+	// Simplified stream setup
 	private setupStateStreams(): void {
-		// Screen size stream - check for md breakpoint (768px)
-		this.isDesktopOrTablet$ = fromEvent(window, 'resize').pipe(
+		// Screen size changes
+		fromEvent(window, 'resize').pipe(
 			startWith(null),
 			map(() => window.innerWidth >= 768),
 			distinctUntilChanged(),
-			shareReplay(1),
-		)
+			takeUntil(this.disconnecting)
+		).subscribe(isDesktopOrTablet => {
+			this.isDesktopOrTablet = isDesktopOrTablet
+			// Update view mode when screen size changes
+			if (!isDesktopOrTablet && this.viewMode === 'grid') {
+				this.viewMode = 'list'
+			}
+			this.requestUpdate()
+		})
 
-		// Active state from BookingProgressContext
-		this.isActive$ = BookingProgressContext.$.pipe(
-			map(progress => {
-				// Find the position of Time step in the steps array
-				const timeStepIndex = progress.steps.findIndex(s => s.step === BookingStep.Time)
-				// Check if this position matches the current step
-				return progress.currentStep === timeStepIndex +1
-			}),
-			startWith(this.active),
-			distinctUntilChanged(),
-			filter(() => !this.isTransitioning),
-			shareReplay(1),
-		)
-
-    // Add new expanded state stream
-    const isExpanded$ = BookingProgressContext.$.pipe(
-      map(progress => progress.expandedSteps.includes(BookingStep.Time)),
-      distinctUntilChanged(),
-      shareReplay(1)
-    )
-
-    // Subscribe to isExpanded changes
-    isExpanded$.pipe(takeUntil(this.disconnecting)).subscribe(isExpanded => {
-      this.isExpanded = isExpanded
-      this.requestUpdate()
-    })
-
-		// Subscribe to isActive changes with animation handling
-		this.isActive$.pipe(takeUntil(this.disconnecting)).subscribe(isActive => {
-			if (this.isActive !== isActive) {
-				// Set transitioning flag to enable smooth animations
-				this.isTransitioning = true
+		// Booking progress state
+		BookingProgressContext.$.pipe(
+			takeUntil(this.disconnecting),
+			tap(progress => {
+				// Update expanded state
+				this.isExpanded = progress.expandedSteps.includes(BookingStep.Time)
 				
 				// Update active state
-				this.isActive = isActive
+				const timeStepIndex = progress.steps.findIndex(s => s.step === BookingStep.Time)
+				this.isActive = progress.currentStep === timeStepIndex + 1
 				
-				// Reset transitioning flag after animation time
-				setTimeout(() => {
-					this.isTransitioning = false
-					this.requestUpdate()
-				}, 350)
-				
-				this.requestUpdate()
-			}
-		})
-
-		// Compact mode stream
-		this.isCompact$ = BookingProgressContext.$.pipe(
-			map(progress => progress.currentStep !== BookingStep.Time),
-			distinctUntilChanged(),
-			shareReplay(1),
-		)
-
-		// Calculate view mode based on screen size and active state
-		combineLatest([this.isDesktopOrTablet$, this.isActive$, bookingContext.$.pipe(map(booking => !!booking?.startTime))])
-			.pipe(
-				map(([isDesktop, isActive, hasSelection]) => {
-					// If not active, always use list view
-					if (!isActive) return 'list'
-
-					// If selection is made, switch to list view
-					if (hasSelection) return 'list'
-
-					// If switching to mobile, always use list
-					if (!isDesktop) return 'list'
-
-					// If switching from inactive to active on desktop, use grid
-					if (isActive && isDesktop) return 'grid'
-
-					// Default to current mode
-					return this.state$.value.viewMode
-				}),
-				distinctUntilChanged(),
-				takeUntil(this.disconnecting),
-			)
-			.subscribe(viewMode => {
-				// Set transition flag
-				this.isTransitioning = true
-
-				// Update state with new view mode
-				this.updateState({ viewMode })
-
-				// Reset transition flag after animation
-				this.isTransitioning = false
-
-				// Handle auto-scrolling for list view
-				if (viewMode === 'list') {
-					setTimeout(() => {
-						// If booking start time is set, scroll to it
-						if (this.booking.startTime) {
-							this.scrollToTime(this.booking.startTime)
-						}
-						// If no start time and auto-scroll not attempted, scroll to first available time
-						else if (!this.state$.value.autoScrollAttempted) {
-							this.updateState({ autoScrollAttempted: true })
-							this.scrollToFirstAvailableTime()
-						}
-					}, 250)
-				}
+				// Update compact mode
+				this.isCompact = progress.currentStep !== BookingStep.Time
 			})
+		).subscribe()
 
-		// Should use grid view - derived from other streams
-		this.shouldUseGridView$ = combineLatest([
-			this.isActive$,
-			this.isDesktopOrTablet$,
-			this.state$.pipe(map(state => state.viewMode)),
-		]).pipe(
-			map(([isActive, isDesktop, viewMode]) => isActive && isDesktop && viewMode === 'grid'),
+		// View mode management based on booking state
+		bookingContext.$.pipe(
+			map(booking => !!booking?.startTime),
 			distinctUntilChanged(),
-			shareReplay(1),
-		)
-
-		// Subscribe to all observables and update component properties
-		this.isCompact$.pipe(takeUntil(this.disconnecting)).subscribe(isCompact => {
-			this.isCompact = isCompact
-			this.requestUpdate()
-		})
-
-		this.isDesktopOrTablet$.pipe(takeUntil(this.disconnecting)).subscribe(isDesktopOrTablet => {
-			this.isDesktopOrTablet = isDesktopOrTablet
-			this.requestUpdate()
-		})
-
-		this.shouldUseGridView$.pipe(takeUntil(this.disconnecting)).subscribe(shouldUseGridView => {
-			this.shouldUseGridView = shouldUseGridView
+			takeUntil(this.disconnecting)
+		).subscribe(hasSelection => {
+			// Update view mode
+			if (hasSelection || !this.isDesktopOrTablet) {
+				this.viewMode = 'list'
+				// Schedule scroll after view update
+				setTimeout(() => {
+					if (this.booking.startTime) {
+						this.scrollToTime(this.booking.startTime)
+					} else if (!this.autoScrollAttempted) {
+						this.autoScrollAttempted = true
+						this.scrollToFirstAvailableTime()
+					}
+				}, 250)
+			} else if (this.isActive && this.isDesktopOrTablet) {
+				this.viewMode = 'grid'
+			}
 			this.requestUpdate()
 		})
 	}
 
 	private setupResizeObserver(): void {
 		this.resizeObserver = new ResizeObserver(() => {
-			const isDesktopOrTablet = window.innerWidth >= 384
-			this.isDesktopOrTablet$
-				.pipe(
-					takeUntil(this.disconnecting),
-					filter(current => current !== isDesktopOrTablet),
-					take(1),
-				)
-				.subscribe()
+			const newIsDesktopOrTablet = window.innerWidth >= 768
+			if (this.isDesktopOrTablet !== newIsDesktopOrTablet) {
+				this.isDesktopOrTablet = newIsDesktopOrTablet
+				this.requestUpdate()
+			}
 		})
 
 		// Observe document body for size changes
@@ -369,11 +258,9 @@ export class TimeSelectionStep extends $LitElement(css`
 			takeUntil(this.disconnecting),
 			filter(booking => !!booking.date && !!booking.venueId),
 			tap(() => {
-				this.updateState({
-					autoScrollAttempted: false,
-					loading: true,
-					error: null,
-				})
+				this.autoScrollAttempted = false
+				this.loading = true
+				this.error = null
 			}),
 			// Listen for changes to date, venue, or court ID to refresh time slots
 			distinctUntilChanged((prev, curr) => 
@@ -381,7 +268,6 @@ export class TimeSelectionStep extends $LitElement(css`
 				prev.venueId === curr.venueId &&
 				prev.courtId === curr.courtId
 			),
-			shareReplay(1),
 		).subscribe(() => {
 			// Reload time slots when booking data changes (including court selection)
 			this.loadTimeSlots()
@@ -403,7 +289,7 @@ export class TimeSelectionStep extends $LitElement(css`
 		const timeValue = localStartTime.hour() * 60 + localStartTime.minute()
 		
 		// Find this time in our current time slots
-		const selectedSlot = this.state$.value.timeSlots.find(slot => slot.value === timeValue)
+		const selectedSlot = this.timeSlots.find((slot: TimeSlot) => slot.value === timeValue)
 		
 		// If the selected time is now unavailable, clear the selection
 		if (selectedSlot && !selectedSlot.available) {
@@ -430,11 +316,11 @@ export class TimeSelectionStep extends $LitElement(css`
 	private subscribeToProgressContext(): void {
 		BookingProgressContext.$.pipe(takeUntil(this.disconnecting)).subscribe(progress => {
 			if (progress.currentStep === BookingStep.Time) {
-				this.updateState({ autoScrollAttempted: false })
+				this.autoScrollAttempted = false
 
 				// Try to scroll to first available after DOM update
 				this.updateComplete.then(() => {
-					if (this.state$.value.viewMode === 'list') {
+					if (this.viewMode === 'list') {
 						this.scrollToFirstAvailableTime()
 					}
 				})
@@ -460,34 +346,25 @@ export class TimeSelectionStep extends $LitElement(css`
 
 		// Subscribe to loading state
 		availabilityLoading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
-			this.updateState({ loading })
+			this.loading = loading
+			this.requestUpdate()
 		})
 	}
 
-	// State management helper
-	private updateState(partialState: Partial<typeof this.state$.value>): void {
-		this.state$.next({
-			...this.state$.value,
-			...partialState,
-		})
-		this.requestUpdate()
-	}
 
 	/**
 	 * Load time slots based on the current booking flow
 	 */
 	private loadTimeSlots(): void {
 		// Set initial loading state
-		this.updateState({
-			loading: true,
-			error: null,
-		})
+		this.loading = true
+		this.error = null
 
 		// Safety check to make sure booking object exists
 		if (!this.booking) {
 			console.warn('Booking object not available, using estimated times')
 			this.generateDefaultTimeSlots()
-			this.updateState({ loading: false })
+			this.loading = false
 			return
 		}
 
@@ -506,40 +383,33 @@ export class TimeSelectionStep extends $LitElement(css`
 			}
 
 			if (timeSlots.length > 0) {
-				this.updateState({
-					timeSlots,
-					showingEstimatedPrices: false,
-					loading: false,
-					error: this.availability.error,
-				})
+				this.timeSlots = timeSlots
+				this.loading = false
+				this.error = this.availability.error
 
 				this.announceForScreenReader(`${timeSlots.filter(s => s.available).length} time slots available`)
 			} else {
 				// No valid times available - use estimated times as fallback
-				this.updateState({
-					error: 'No valid time options available for this date. Please select a different date.',
-					timeSlots: [],
-					loading: false,
-				})
+				this.error = 'No valid time options available for this date. Please select a different date.'
+				this.timeSlots = []
+				this.loading = false
 				this.generateDefaultTimeSlots()
 			}
 		} catch (error) {
 			console.error('Error getting available time slots:', error)
-			this.updateState({
-				error: 'Error determining available times. Using estimates instead.',
-				timeSlots: [],
-				loading: false,
-			})
+			this.error = 'Error determining available times. Using estimates instead.'
+			this.timeSlots = []
+			this.loading = false
 			this.generateDefaultTimeSlots()
 		}
 
 		// After data is loaded, try to scroll to appropriate position
 		this.updateComplete.then(() => {
-			if (this.state$.value.viewMode === 'list') {
+			if (this.viewMode === 'list') {
 				if (this.booking.startTime) {
 					setTimeout(() => this.scrollToTime(this.booking.startTime), 150)
-				} else if (!this.state$.value.autoScrollAttempted) {
-					this.updateState({ autoScrollAttempted: true })
+				} else if (!this.autoScrollAttempted) {
+					this.autoScrollAttempted = true
 					setTimeout(() => this.scrollToFirstAvailableTime(), 150)
 				}
 			}
@@ -575,11 +445,9 @@ export class TimeSelectionStep extends $LitElement(css`
 
 			// If we're past operating hours, show message
 			if (startHour >= 22) {
-				this.updateState({
-					timeSlots: [],
-					error: 'No more available slots today',
-					loading: false,
-				})
+				this.timeSlots = []
+				this.error = 'No more available slots today'
+				this.loading = false
 				return
 			}
 		}
@@ -608,11 +476,9 @@ export class TimeSelectionStep extends $LitElement(css`
 			}
 		}
 
-		this.updateState({
-			timeSlots: slots,
-			loading: false,
-			error: 'Using estimated availability - actual availability may vary',
-		})
+		this.timeSlots = slots
+		this.loading = false
+		this.error = 'Using estimated availability - actual availability may vary'
 
 		this.announceForScreenReader(`${slots.length} estimated time slots loaded`)
 	}
@@ -710,7 +576,7 @@ export class TimeSelectionStep extends $LitElement(css`
 			)
 		} catch (error) {
 			console.error('Error handling time selection:', error)
-			this.updateState({ error: 'Failed to select time. Please try again.' })
+			this.error = 'Failed to select time. Please try again.'
 		}
 	}
 
@@ -720,17 +586,17 @@ export class TimeSelectionStep extends $LitElement(css`
 
 	// UPDATED: Refactored scrolling methods without using querySelector
 	private scrollToFirstAvailableTime(): void {
-		if (this.state$.value.viewMode !== 'list') return
+		if (this.viewMode !== 'list') return
 
 		// Find the first available time slot
-		const firstAvailable = this.state$.value.timeSlots.find(slot => slot.available)
+		const firstAvailable = this.timeSlots.find(slot => slot.available)
 		if (!firstAvailable) return
 
 		this.scrollToTimeValue(firstAvailable.value, true)
 	}
 
 	private scrollToTime(timeString: string): void {
-		if (this.state$.value.viewMode !== 'list') return
+		if (this.viewMode !== 'list') return
 
 		// Check if the time has changed
 		if (this.previousSelectedTime === timeString) {
@@ -967,7 +833,7 @@ export class TimeSelectionStep extends $LitElement(css`
 		if (this.hidden) return nothing;
 
 		// Get current state values
-		const { timeSlots, loading, error, viewMode } = this.state$.value;
+		const { timeSlots, loading, error, viewMode } = this;
 
 		// Show empty state if no time slots
 		if (!loading && timeSlots.length === 0) {
