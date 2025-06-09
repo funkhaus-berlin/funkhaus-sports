@@ -414,13 +414,7 @@ export class CourtBookingSystem extends $LitElement() {
             
             class="max-w-lg w-full hidden lg:block mx-auto"> 
               <schmancy-grid gap="md" class="p-4">
-                <!-- Venue Name Header -->
-                <schmancy-flex align="center" gap="sm">
-                  <schmancy-icon class="text-primary-default">location_on</schmancy-icon>
-                  <schmancy-typography type="headline" token="sm">
-                    ${venueContext.value?.name || 'Venue Location'}
-                  </schmancy-typography>
-                </schmancy-flex>
+               
                 
                 <!-- Map Component -->
                 <venue-map
@@ -437,11 +431,18 @@ export class CourtBookingSystem extends $LitElement() {
                 ${venueContext.value?.address ? html`
                   <schmancy-divider></schmancy-divider>
                   <schmancy-grid gap="sm">
-                    <schmancy-typography type="body" token="sm" class="text-surface-onVariant">
+                     <schmancy-flex align="center" gap="sm">
+                  <schmancy-icon class="text-primary-default">location_on</schmancy-icon>
+                  <schmancy-typography type="headline" token="sm">
+                    ${venueContext.value?.name || 'Venue Location'}
+                  </schmancy-typography>
+                        <schmancy-typography type="body" token="sm" class="text-surface-onVariant">
                       ${venueContext.value.address.street},
                       ${venueContext.value.address.city}, ${venueContext.value.address.postalCode},
                       ${venueContext.value.address.country}
                     </schmancy-typography>
+                </schmancy-flex>
+              
                     
                     <schmancy-button 
                       variant="outlined" 

@@ -4,15 +4,15 @@ import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
 import { css, html, nothing, PropertyValues } from 'lit'
-import { customElement, property, state, query } from 'lit/decorators.js'
+import { customElement, property, query, state } from 'lit/decorators.js'
 import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { takeUntil } from 'rxjs'
 import {
-	availabilityContext,
-	AvailabilityData,
-	availabilityLoading$,
-	getAvailableTimeSlots,
+  availabilityContext,
+  AvailabilityData,
+  availabilityLoading$,
+  getAvailableTimeSlots,
 } from 'src/availability-context'
 import { BookingFlowType } from 'src/types'
 import { toUTC } from 'src/utils/timezone'

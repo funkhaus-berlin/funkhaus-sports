@@ -6,9 +6,7 @@ import { css, html, nothing } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { createRef, ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
-import { when } from 'lit/directives/when.js'
-import { catchError, combineLatest, debounceTime, distinctUntilChanged, filter, map, of, switchMap, takeUntil } from 'rxjs'
-import { tap } from 'rxjs/operators'
+import { catchError, of, takeUntil, tap } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { availabilityContext, availabilityLoading$, getAvailableDurations } from 'src/availability-context'
 import { BookingService } from 'src/bookingServices/booking.service'
@@ -32,125 +30,114 @@ const DURATION_LABELS: Record<number, { full: string; compact: string }> = {
 	300: { full: '5 hours', compact: '5h' },
 }
 
+/**
+ * Simplified duration selection component
+ */
 @customElement('duration-selection-step')
 export class DurationSelectionStep extends $LitElement(css`
-	:host { display: block; }
-	.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-	.scrollbar-hide::-webkit-scrollbar { display: none; }
+	:host {
+		display: block;
+	}
+	.scrollbar-hide {
+		-ms-overflow-style: none;
+		scrollbar-width: none;
+	}
+	.scrollbar-hide::-webkit-scrollbar {
+		display: none;
+	}
 `) {
 	@property({ type: Boolean }) hidden = false
-	
+
 	@select(bookingContext) booking!: Booking
 	@select(courtsContext) courts!: Map<string, Court>
 	@select(BookingProgressContext) bookingProgress!: BookingProgress
 	@select(availabilityContext) availability!: any
-	
-	@state() private durations: Duration[] = []
-	@state() private loading = true
-	@state() private error: string | null = null
-	@state() private isExpanded = false
-	@state() private isCompact = false
-	@state() private isCreatingBooking = false
-	@state() private isMobileScreen = false
-	
+
+	// Core state
+	@state() durations: Duration[] = []
+	@state() loading = true
+	@state() error: string | null = null
+	@state() isExpanded = false
+	@state() isCreatingBooking = false
+	@state() isMobileScreen = window.innerWidth < 768
+
+	// DOM refs
 	private scrollContainerRef = createRef<HTMLElement>()
 	private durationRefs = new Map<number, HTMLElement>()
-	private lastSuccessfulDurations: Duration[] = []
 	private bookingService = new BookingService()
 
 	connectedCallback(): void {
 		super.connectedCallback()
-		
-		// Set up responsive behavior
-		const checkScreenSize = () => {
-			// Tailwind's md breakpoint is 768px
-			this.isMobileScreen = window.innerWidth < 768
-		}
-		
-		// Check on mount
-		checkScreenSize()
-		
-		// Listen for resize
-		window.addEventListener('resize', checkScreenSize)
-		
-		// Progress state
-		BookingProgressContext.$.pipe(
-			takeUntil(this.disconnecting),
-			map(progress => ({
-				isExpanded: progress.expandedSteps.includes(BookingStep.Duration),
-				isCompact: progress.currentStep !== BookingStep.Duration
-			}))
-		).subscribe(({ isExpanded, isCompact }) => {
-			this.isExpanded = isExpanded
-			this.isCompact = isCompact
-		})
-		
-		// Scroll to selected duration when it changes
-		bookingContext.$.pipe(
-			takeUntil(this.disconnecting),
-			map(b => b?.endTime),
-			distinctUntilChanged(),
-			filter(endTime => !!endTime)
-		).subscribe(() => {
-			setTimeout(() => this.scrollToSelectedDuration(), 250)
-		})
-		
-		// Load durations
-		combineLatest([
-			bookingContext.$,
-			availabilityContext.$,
-			availabilityLoading$
-		]).pipe(
-			takeUntil(this.disconnecting),
-			filter(([booking]) => !!booking?.date && !!booking?.startTime),
-			debounceTime(100),
-			switchMap(([booking, availability, loading]) => {
-				if (loading) return of({ durations: this.lastSuccessfulDurations, loading: true })
-				
-				const courtId = availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION 
-					? booking.courtId : undefined
-				const durations = getAvailableDurations(booking.startTime, courtId)
-				
-				return of({ 
-					durations: durations.length > 0 ? durations : this.getEstimatedDurations(), 
-					loading: false 
-				})
-			}),
-			catchError(() => of({ durations: this.getEstimatedDurations(), loading: false }))
-		).subscribe(({ durations, loading }) => {
-			this.durations = durations
-			this.loading = loading
-			if (durations.length > 0) this.lastSuccessfulDurations = durations
-			this.validateCurrentSelection(durations)
-		})
+		this.setupObservers()
 	}
 
 	disconnectedCallback(): void {
 		super.disconnectedCallback()
 		this.durationRefs.clear()
-		// Clean up resize listener
-		window.removeEventListener('resize', () => {})
 	}
 
-	private getCurrentDuration(): number {
-		if (!this.booking?.startTime || !this.booking?.endTime) return 0
-		return Math.max(0, dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute'))
-	}
-
-	private validateCurrentSelection(durations: Duration[]): void {
-		const currentDuration = this.getCurrentDuration()
-		if (!currentDuration) return
-		
-		const isValid = durations.some(d => d.value === currentDuration) && 
-			!this.wouldExceedClosingTime({ value: currentDuration } as Duration)
-		
-		if (!isValid) {
-			bookingContext.set({ endTime: '', price: 0 }, true)
-			this.announceForScreenReader('Duration unselected as it\'s no longer available')
+	private setupObservers(): void {
+		// Watch screen size changes
+		const checkScreenSize = () => {
+			const newIsMobile = window.innerWidth < 768
+			if (this.isMobileScreen !== newIsMobile) {
+				this.isMobileScreen = newIsMobile
+			}
 		}
+		window.addEventListener('resize', checkScreenSize)
+
+		// Watch booking progress
+		BookingProgressContext.$.pipe(takeUntil(this.disconnecting)).subscribe(progress => {
+			this.isExpanded = progress.expandedSteps.includes(BookingStep.Duration)
+		})
+
+		// Watch booking context for data changes and load durations
+		bookingContext.$.pipe(takeUntil(this.disconnecting)).subscribe(booking => {
+			if (booking?.date && booking?.startTime) {
+				this.loadDurations()
+			}
+			if (booking?.endTime) {
+				setTimeout(() => this.scrollToSelectedDuration(), 250)
+			}
+		})
+
+		// Watch availability loading state
+		availabilityLoading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
+			this.loading = loading
+		})
 	}
 
-	private getEstimatedDurations(): Duration[] {
+	private loadDurations(): void {
+		if (!this.booking?.startTime) return
+
+		this.loading = true
+		this.error = null
+
+		try {
+			const courtId = this.availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION 
+				? this.booking.courtId : undefined
+			
+			const durations = getAvailableDurations(this.booking.startTime, courtId)
+			
+			if (durations.length > 0) {
+				this.durations = durations
+			} else {
+				this.durations = this.generateEstimatedDurations()
+				this.error = 'Using estimated pricing - actual prices may vary'
+			}
+		} catch (error) {
+			console.error('Error loading durations:', error)
+			this.durations = this.generateEstimatedDurations()
+			this.error = 'Error loading durations. Using estimates instead.'
+		} finally {
+			this.loading = false
+		}
+
+		// Validate current selection
+		this.validateCurrentSelection()
+	}
+
+	private generateEstimatedDurations(): Duration[] {
 		const baseRate = this.getAverageHourlyRate()
 		return [30, 60, 90, 120, 150, 180, 210, 240, 270, 300].map(minutes => ({
 			label: DURATION_LABELS[minutes]?.compact || `${minutes}m`,
@@ -169,10 +156,40 @@ export class DurationSelectionStep extends $LitElement(css`
 		return Math.round(totalRate / activeCourts.length)
 	}
 
+	private getCurrentDuration(): number {
+		if (!this.booking?.startTime || !this.booking?.endTime) return 0
+		return Math.max(0, dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute'))
+	}
+
+	private validateCurrentSelection(): void {
+		const currentDuration = this.getCurrentDuration()
+		if (!currentDuration) return
+		
+		const isValid = this.durations.some(d => d.value === currentDuration) && 
+			!this.wouldExceedClosingTime({ value: currentDuration } as Duration)
+		
+		if (!isValid) {
+			bookingContext.set({ endTime: '', price: 0 }, true)
+		}
+	}
+
+	private wouldExceedClosingTime(duration: Duration): boolean {
+		if (!this.booking?.startTime || !this.booking?.date) return false
+		
+		const endTime = dayjs(this.booking.startTime).add(duration.value, 'minute')
+		const dayOfWeek = dayjs(this.booking.date).format('dddd').toLowerCase()
+		const closeTime = this.availability?.venue?.operatingHours?.[dayOfWeek]?.close
+		
+		const closingTime = closeTime
+			? dayjs(this.booking.date).hour(+closeTime.split(':')[0]).minute(+closeTime.split(':')[1] || 0)
+			: dayjs(this.booking.date).hour(22).minute(0)
+		
+		return endTime.isAfter(closingTime)
+	}
+
 	private handleDurationSelect(duration: Duration): void {
 		if (!this.booking?.startTime) return
 		
-		// Simply add duration to the UTC start time - no timezone conversion needed
 		const endTime = dayjs(this.booking.startTime)
 			.add(duration.value, 'minute')
 			.toISOString()
@@ -181,14 +198,14 @@ export class DurationSelectionStep extends $LitElement(css`
 		
 		this.animateElement(this.durationRefs.get(duration.value))
 		setTimeout(() => this.scrollToSelectedDuration(), 150)
-		
-		const label = DURATION_LABELS[duration.value]?.full || `${duration.value} minutes`
-		this.announceForScreenReader(`Selected ${label} for €${duration.price.toFixed(2)}`)
 	}
 
 	private scrollToSelectedDuration(): void {
 		const duration = this.getCurrentDuration()
-		if (duration) this.scrollToElement(this.durationRefs.get(duration))
+		if (duration) {
+			const element = this.durationRefs.get(duration)
+			this.scrollToElement(element)
+		}
 	}
 
 	private scrollToElement(element?: HTMLElement): void {
@@ -214,110 +231,47 @@ export class DurationSelectionStep extends $LitElement(css`
 		], { duration: 400, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' })
 	}
 
-	private announceForScreenReader(message: string): void {
-		const announcement = document.createElement('div')
-		announcement.setAttribute('aria-live', 'assertive')
-		announcement.setAttribute('class', 'sr-only')
-		announcement.textContent = message
-		document.body.appendChild(announcement)
-		setTimeout(() => document.body.removeChild(announcement), 1000)
-	}
-
-	private wouldExceedClosingTime(duration: Duration): boolean {
-		if (!this.booking?.startTime || !this.booking?.date) return false
-		
-		const endTime = dayjs(this.booking.startTime).add(duration.value, 'minute')
-		const dayOfWeek = dayjs(this.booking.date).format('dddd').toLowerCase()
-		const closeTime = this.availability?.venue?.operatingHours?.[dayOfWeek]?.close
-		
-		const closingTime = closeTime
-			? dayjs(this.booking.date).hour(+closeTime.split(':')[0]).minute(+closeTime.split(':')[1] || 0)
-			: dayjs(this.booking.date).hour(22).minute(0)
-		
-		return endTime.isAfter(closingTime)
-	}
-	
 	private hasValidSelection(): boolean {
 		return !!this.booking?.endTime && !!this.booking?.price && this.getCurrentDuration() > 0
 	}
-	
+
 	private proceedToPayment(): void {
-		if (!this.hasValidSelection()) {
-			this.announceForScreenReader('Please select a duration before proceeding')
-			return
-		}
+		if (!this.hasValidSelection() || this.isCreatingBooking) return
 		
-		// Prevent multiple clicks
-		if (this.isCreatingBooking) {
+		// Validate required fields
+		if (!this.booking.courtId || !this.booking.date || !this.booking.startTime || 
+			!this.booking.endTime || !this.booking.price || this.booking.price <= 0 || 
+			!this.booking.venueId) {
+			$notify.error('Please complete all booking details before proceeding')
 			return
 		}
 		
 		this.isCreatingBooking = true
 		
-		// Debug: Log current booking data
-		console.log('Current booking data before creating temporary booking:', {
-			courtId: this.booking.courtId,
-			date: this.booking.date,
-			startTime: this.booking.startTime,
-			endTime: this.booking.endTime,
-			price: this.booking.price,
-			venueId: this.booking.venueId,
-			userId: this.booking.userId,
-			userName: this.booking.userName,
-			fullBookingObject: this.booking
-		})
-		
-		// Validate we have all required fields before proceeding
-		if (!this.booking.courtId || !this.booking.date || !this.booking.startTime || !this.booking.endTime || !this.booking.price || this.booking.price <= 0 || !this.booking.venueId) {
-			console.error('Missing or invalid required fields:', {
-				courtId: this.booking.courtId,
-				date: this.booking.date,
-				startTime: this.booking.startTime,
-				endTime: this.booking.endTime,
-				price: this.booking.price,
-				priceValid: this.booking.price > 0,
-				venueId: this.booking.venueId
-			})
-			$notify.error('Please complete all booking details before proceeding')
-			this.isCreatingBooking = false
-			return
-		}
-		
-		// Prepare booking data with holding status
-		const bookingData: Booking = {
-			...this.booking,
-			status: 'holding',
-			paymentStatus: 'pending',
-			createdAt: new Date().toISOString(),
-			lastActive: new Date().toISOString(),
-			venueId: this.booking.venueId // Explicitly include venueId
-		}
-		
-		// Debug: Log booking data being sent
-		console.log('Booking data being sent to createBooking:', bookingData)
-		
-		// Generate a new booking ID
+		// Generate booking ID and prepare data
 		const bookingsRef = collection(db, 'bookings')
 		const newBookingRef = doc(bookingsRef)
 		const bookingId = newBookingRef.id
 		
-		// Add the ID to booking data
-		const bookingWithId = { ...bookingData, id: bookingId }
+		const bookingData: Booking = {
+			...this.booking,
+			id: bookingId,
+			status: 'holding',
+			paymentStatus: 'pending',
+			createdAt: new Date().toISOString(),
+			lastActive: new Date().toISOString(),
+		}
 		
-		// Create temporary booking using BookingService with conflict checking
-		this.bookingService.createBooking(bookingWithId)
+		// Create temporary booking
+		this.bookingService.createBooking(bookingData)
 			.pipe(
 				tap(() => console.log(`Successfully created booking ${bookingId}`)),
 				catchError(error => {
 					console.error('Failed to create temporary booking:', error)
 					
-					// Check if the error is due to time slot conflict
 					if (error.message?.includes('already booked')) {
-						// Show the error message from the service (it already has a good message)
 						$notify.error(error.message, { duration: 5000 })
-						
-						
-						// Clear the current time selection
+						// Clear time selection on conflict
 						bookingContext.set({
 							...this.booking,
 							startTime: undefined,
@@ -325,7 +279,6 @@ export class DurationSelectionStep extends $LitElement(css`
 							price: 0
 						}, true)
 					} else {
-						// For other errors, show a generic message
 						$notify.error(error.message || 'Failed to reserve booking. Please try again.')
 					}
 					
@@ -335,10 +288,7 @@ export class DurationSelectionStep extends $LitElement(css`
 			)
 			.subscribe(createdBooking => {
 				if (createdBooking) {
-					// Update booking context with the created booking data
 					bookingContext.set(createdBooking, true)
-					
-					// Transition to payment step
 					transitionToNextStep('Duration')
 				}
 				this.isCreatingBooking = false
@@ -363,17 +313,29 @@ export class DurationSelectionStep extends $LitElement(css`
 				?disabled=${isDisabled}
 				description=${isDisabled ? 'Exceeds closing time' : ''}
 				@click=${() => !isDisabled && this.handleDurationSelect(duration)}
-				type="duration"
-			></selection-tile>
+				type="duration">
+			</selection-tile>
 		`
+	}
+
+	private renderDurations(durations: Duration[]) {
+		// Ensure minimum 4 items for consistent layout
+		const items = [...durations]
+		while (items.length < 4) items.push({ placeholder: true } as any)
+		
+		return repeat(
+			items,
+			(item, idx) => 'placeholder' in item ? `ph-${idx}` : item.value,
+			(item) => 'placeholder' in item 
+				? html`<div class="w-20 h-20 invisible"></div>`
+				: this.renderDurationOption(item)
+		)
 	}
 
 	render() {
 		if (this.hidden || !this.isExpanded) return nothing
 		
-		const durations = this.durations.length > 0 ? this.durations : this.lastSuccessfulDurations
-		
-		if (this.loading && durations.length === 0) {
+		if (this.loading && this.durations.length === 0) {
 			return html`
 				<div class="text-center py-6">
 					<div class="inline-block w-8 h-8 border-3 border-primary-default border-t-transparent rounded-full animate-spin"></div>
@@ -384,64 +346,58 @@ export class DurationSelectionStep extends $LitElement(css`
 			`
 		}
 		
-		if (!this.loading && durations.length === 0) {
+		if (!this.loading && this.durations.length === 0) {
 			return html`
 				<div class="text-center py-6 grid gap-4 justify-center">
 					<schmancy-icon size="48px" class="text-surface-on-variant opacity-50">timer_off</schmancy-icon>
-					<schmancy-typography type="body" token="md" class="mt-2">
-						No duration options available for this time.
-					</schmancy-typography>
+					<schmancy-typography type="body" token="md">No duration options available for this time.</schmancy-typography>
 				</div>
 			`
 		}
 		
-		const isEstimated = this.durations.length === 0 || 
-			this.durations.every((d, i) => d === this.getEstimatedDurations()[i])
-		
 		return html`
 			<div class="w-full bg-surface-low/50 rounded-lg transition-all duration-300 p-2">
-				${when(this.error, () => html`
+				${this.error ? html`
 					<div class="bg-error-container p-2 rounded-t-lg text-error-on-container text-sm text-center mb-3">
 						${this.error}
 					</div>
-				`)}
+				` : nothing}
 				
-				${when(!this.hasValidSelection() && durations.length > 0, () => html`
+				${!this.hasValidSelection() && this.durations.length > 0 ? html`
 					<div class="mb-2">
 						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
 							Select Duration
 						</schmancy-typography>
 						<div class="text-xs text-surface-on-variant mt-1">Choose how long you'd like to play</div>
 					</div>
-				`)}
+				` : nothing}
 				
 				<div ${ref(this.scrollContainerRef)} 
-					class="flex py-2 overflow-x-auto scrollbar-hide ${this.isCompact ? 'gap-2' : 'gap-3'}" 
+					class="flex py-2 overflow-x-auto scrollbar-hide gap-3" 
 					role="listbox"
 					aria-label="Available Duration Options">
-					${this.renderDurations(durations)}
+					${this.renderDurations(this.durations)}
 				</div>
 				
-				${when(!this.hasValidSelection(), () => html`
+				${!this.hasValidSelection() ? html`
 					<div class="text-center text-xs pb-2">
 						<p class="text-surface-on-variant">All prices include VAT</p>
-						${when(isEstimated, () => html`
+						${this.error ? html`
 							<p class="text-warning-default mt-1">
 								<schmancy-icon class="mr-1" size="12px">info</schmancy-icon>
 								Estimated prices. Actual price may vary.
 							</p>
-						`)}
+						` : nothing}
 					</div>
-				`)}
+				` : nothing}
 				
-				${when(this.hasValidSelection(), () => html`
+				${this.hasValidSelection() ? html`
 					<div class="mt-4 flex justify-center">
 						<schmancy-button 
 							variant="filled" 
 							@click=${() => this.proceedToPayment()}
 							class="min-w-[200px]"
-							?disabled=${this.isCreatingBooking}
-						>
+							?disabled=${this.isCreatingBooking}>
 							${this.isCreatingBooking ? html`
 								<span class="flex items-center gap-2">
 									<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -453,22 +409,8 @@ export class DurationSelectionStep extends $LitElement(css`
 							`}
 						</schmancy-button>
 					</div>
-				`)}
+				` : nothing}
 			</div>
 		`
-	}
-	
-	private renderDurations(durations: Duration[]) {
-		const minCount = 4
-		const items = [...durations]
-		while (items.length < minCount) items.push({ placeholder: true } as any)
-		
-		return repeat(
-			items,
-			(item, idx) => 'placeholder' in item ? `ph-${idx}` : item.value,
-			(item) => 'placeholder' in item 
-				? html`<div class="w-20 h-20 invisible"></div>`
-				: this.renderDurationOption(item)
-		)
 	}
 }
