@@ -2,7 +2,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { css, html } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
-import { CourtTypeEnum } from 'src/db/courts.collection'
+import { CourtTypeEnum } from 'src/types/booking/court.types'
 
 // Import SVGs as raw strings
 import padelSVG from '/public/svg/padel-court.svg?raw'

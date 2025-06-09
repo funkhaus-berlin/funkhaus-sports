@@ -29,7 +29,7 @@ import {
 } from 'rxjs'
 import countries from 'src/assets/countries'
 import { BookingService } from 'src/bookingServices/booking.service'
-import { Court } from 'src/db/courts.collection'
+import { Court } from 'src/types/booking/court.types'
 import { auth, db } from 'src/firebase/firebase'
 import stripePromise, { $stripeElements } from 'src/public/stripe'
 import '../../../booking-confirmation/booking-confirmation' // Import booking confirmation component

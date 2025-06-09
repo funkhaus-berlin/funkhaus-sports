@@ -1,7 +1,7 @@
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
-import { FacilityEnum, Venue } from 'src/db/venue-collection'
+import { FacilityEnum, Venue } from 'src/types/booking/venue.types'
 import { formatEnum } from './venue-form'
 
 @customElement('venue-info-card')

@@ -4,7 +4,8 @@ import admin from 'firebase-admin'
 import { corsHeaders } from './_shared/cors'
 import {
   BookingEmailRequest,
-  BookingEmailResponse
+  BookingEmailResponse,
+  Court
 } from './types/shared-types'
 import { db } from './_shared/firebase-admin'
 
@@ -12,7 +13,7 @@ import { db } from './_shared/firebase-admin'
  * Function to manually resend a booking confirmation email
  * Supports both full email data request and simple bookingId-only request
  */
-const handler: Handler = async (event, context) => {
+const handler: Handler = async (event) => {
 	// Handle preflight request for CORS
 	if (event.httpMethod === 'OPTIONS') {
 		return {
@@ -53,34 +54,39 @@ const handler: Handler = async (event, context) => {
 			const booking = bookingDoc.data()
 			
 			// Fetch court and venue data
-			let courtData = null
-			let venueData = null
+			let courtData: Court | null = null
+			let venueData: { name: string; address?: string; city?: string; postalCode?: string; country?: string } | null = null
 			
 			if (booking?.courtId) {
 				const courtDoc = await db.collection('courts').doc(booking.courtId).get()
 				if (courtDoc.exists) {
-					courtData = courtDoc.data()
+					courtData = courtDoc.data() as Court
 					
 					if (courtData?.venueId) {
 						const venueDoc = await db.collection('venues').doc(courtData.venueId).get()
 						if (venueDoc.exists) {
-							venueData = venueDoc.data()
+							const data = venueDoc.data()
+							if (data) {
+								venueData = {
+									name: data.name || 'Funkhaus Sports',
+									address: data.address || '',
+									city: data.city,
+									postalCode: data.postalCode,
+									country: data.country
+								}
+							}
 						}
 					}
 				}
 			}
 			
 			// Prepare email data
-			const vatRate = 0.07
-			const netAmount = booking?.price / (1 + vatRate) || 0
-			const vatAmount = (booking?.price || 0) - netAmount
 			
 			data = {
 				bookingId: body.bookingId,
 				customerEmail: booking?.customerEmail || booking?.userEmail,
 				customerName: booking?.userName || 'Customer',
 				customerPhone: booking?.customerPhone || '',
-				customerAddress: booking?.customerAddress || {},
 				bookingDetails: {
 					date: new Date(booking?.date).toLocaleDateString('en-US', {
 						weekday: 'long',
@@ -92,30 +98,17 @@ const handler: Handler = async (event, context) => {
 					endTime: booking?.endTime,
 					userTimezone: 'Europe/Berlin',
 					court: courtData?.name || 'Court',
-					courtType: courtData?.courtType || 'standard',
 					venue: venueData?.name || 'Funkhaus Sports',
 					price: booking?.price?.toFixed(2) || '0.00',
-					vatInfo: {
-						netAmount: netAmount.toFixed(2),
-						vatAmount: vatAmount.toFixed(2),
-						vatRate: '7%',
-					},
-					rawDate: booking?.date ? new Date(booking.date).toISOString().split('T')[0] : null,
-					isoStartDateTime: booking?.startTime || null,
-					isoEndDateTime: booking?.endTime || null,
 				},
 				venueInfo: venueData ? {
 					name: venueData.name,
-					address: venueData.address,
-					contactEmail: venueData.contactEmail,
-					contactPhone: venueData.contactPhone,
-					website: venueData.website,
-				} : null,
-				paymentInfo: {
-					paymentStatus: booking?.paymentStatus || 'paid',
-					paymentIntentId: booking?.paymentIntentId,
+					address: venueData.address || '',
+				} : {
+					name: 'Funkhaus Sports',
+					address: 'Nalepastrasse 18, 12459 Berlin, Germany'
 				},
-				invoiceNumber: booking?.invoiceNumber || null,
+				invoiceNumber: booking?.invoiceNumber,
 			}
 		} else {
 			// Full request with all data provided

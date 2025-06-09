@@ -12,8 +12,8 @@ import {
   initializeAvailabilityContext
 } from 'src/availability-context'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
-import { Court } from 'src/db/courts.collection'
-import { Venue } from 'src/db/venue-collection'
+import { Court } from 'src/types/booking/court.types'
+import { Venue } from 'src/types/booking/venue.types'
 import '../shared/components/venue-map'
 import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
 import './components'

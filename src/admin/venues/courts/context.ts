@@ -1,6 +1,6 @@
 import { createContext } from '@mhmo91/schmancy'
 import { combineLatest, map, Observable } from 'rxjs'
-import { Court } from 'src/db/courts.collection'
+import { Court } from 'src/types/booking/court.types'
 import { venueContext } from '../venue-context'
 
 export const courtsContext = createContext<Map<string, Court>>(new Map(), 'indexeddb', 'courts')

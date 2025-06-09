@@ -170,7 +170,6 @@ All endpoints are serverless Netlify Functions:
 - `POST /api/create-payment-intent` - Initialize Stripe payment
 - `POST /api/stripe-webhook` - Handle Stripe webhooks
 - `POST /api/send-booking-email` - Send confirmation emails
-- `GET /api/payment-status` - Check payment/booking status
 - `POST /api/generate-wallet-pass` - Generate wallet passes
 
 #### Protected Endpoints

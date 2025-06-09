@@ -13,6 +13,7 @@ This file provides comprehensive instructions for Claude when working with the F
    - Always double check models, types, and interface definitions
    - Reference the exact types used in the codebase
    - Don't rely on memory or assumptions about type structures
+   - **NEVER use `any` type** - always use proper types or create appropriate interfaces
 
 3. **Component-Based Architecture**: 
    - Components must fully encapsulate their logic

@@ -4,7 +4,7 @@ import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { BehaviorSubject, EMPTY, from, fromEvent, Observable, of } from 'rxjs'
 import { catchError, debounceTime, distinctUntilChanged, filter, finalize, map, switchMap, take, takeUntil, tap } from 'rxjs/operators'
-import { Address } from 'src/db/venue-collection'
+import { VenueAddress } from 'src/types/booking/venue.types'
 
 // Define the Google Maps API types we need
 declare global {
@@ -62,7 +62,7 @@ export class VenueMap extends $LitElement(css`
 		border-radius: 12px;
 	}
 `) {
-	@property({ type: Object }) address?: Address
+	@property({ type: Object }) address?: VenueAddress
 	@property({ type: String }) venueName = ''
 	@property({ type: String }) apiKey?: string
 	@property({ type: Number }) zoom = 15
@@ -89,7 +89,7 @@ export class VenueMap extends $LitElement(css`
 	
 	// RxJS subjects for reactive state management
 	private mapLoaded$ = new BehaviorSubject<boolean>(false)
-	private address$ = new BehaviorSubject<Address | undefined>(undefined)
+	private address$ = new BehaviorSubject<VenueAddress | undefined>(undefined)
 
 	connectedCallback() {
 		super.connectedCallback()
@@ -318,7 +318,7 @@ export class VenueMap extends $LitElement(css`
 	 * Geocode address to get coordinates using RxJS
 	 * Returns null if geocoding fails
 	 */
-	private geocodeAddress(address: Address): Observable<{ lat: number; lng: number } | null> {
+	private geocodeAddress(address: VenueAddress): Observable<{ lat: number; lng: number } | null> {
 		if (!window.google?.maps) {
 			throw new Error('Google Maps not loaded')
 		}

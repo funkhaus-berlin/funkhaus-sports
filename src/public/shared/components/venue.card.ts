@@ -5,7 +5,7 @@ import { customElement, property, query, state } from 'lit/decorators.js'
 import { styleMap } from 'lit/directives/style-map.js'
 import { when } from 'lit/directives/when.js'
 import { delay, fromEvent, merge, startWith, takeUntil } from 'rxjs'
-import { Venue } from 'src/db/venue-collection'
+import { Venue } from 'src/types/booking/venue.types'
 import '../logo'
 
 // Define golden ratio constant

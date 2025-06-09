@@ -1,7 +1,7 @@
 import { css, html, LitElement } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { CourtMapCoordinates } from 'src/db/courts.collection'
+import { CourtMapCoordinates } from 'src/types/booking/court.types'
 
 // Define global Leaflet interface to handle dynamic loading
 declare global {

@@ -40,12 +40,6 @@
   status = 200
   force = true
 
-[[redirects]]
-  from = "/api/payment-status"
-  to = "/.netlify/functions/payment-status"
-  status = 200
-  force = true
-
 
 [[redirects]]
   from = "/api/generate-wallet-pass"

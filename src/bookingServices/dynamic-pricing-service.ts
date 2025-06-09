@@ -1,6 +1,6 @@
 // src/bookingServices/pricing.service.ts
 import dayjs from 'dayjs'
-import { Court } from 'src/db/courts.collection'
+import { Court } from 'src/types/booking/court.types'
 
 /**
  * Service for calculating prices based on court pricing structure

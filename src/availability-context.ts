@@ -8,45 +8,13 @@ import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
 import { BookingsDB } from 'src/db/bookings.collection'
-import { CourtTypeEnum, SportTypeEnum } from 'src/db/courts.collection'
-import { Venue } from 'src/db/venue-collection'
+import { Venue } from 'src/types/booking/venue.types'
+import { BookingFlowConfig, BookingFlowType, StepLabel } from 'src/types/booking'
 import { getUserTimezone, isTimeSlotInPast } from 'src/utils/timezone'
 import { bookingContext } from './public/book/context'
 import { Duration, TimeSlot } from './public/book/types'
 import type { Booking } from './types/booking/booking.types'
 
-/**
- * Interface for court selection preferences
- * Used to filter courts in the court selection step
- */
-export interface CourtPreferences {
-	courtTypes?: CourtTypeEnum[] // Indoor/outdoor preferences
-	sportTypes?: SportTypeEnum[] // Sport preferences
-	playerCount?: number // Number of players (2, 4, 6+)
-	amenities?: string[] // Required amenities
-}
-
-// src/availability-context.ts - Key updates only
-
-// Other imports remain the same
-
-// Define booking flow type enumeration
-export enum BookingFlowType {
-	DATE_COURT_TIME_DURATION = 'date_court_time_duration',
-	DATE_TIME_DURATION_COURT = 'date_time_duration_court',
-	DATE_TIME_COURT_DURATION = 'date_time_court_duration',
-}
-
-// Updated interface for step objects
-
-export type StepLabel = 'Date' | 'Court' | 'Time' | 'Duration' | 'Payment'
-export interface BookingFlowStep {
-	step: number
-	label: StepLabel
-	icon: string
-}
-
-export type BookingFlowConfig = BookingFlowStep[]
 
 // Updated BOOKING_FLOWS constant with the new structure
 export const BOOKING_FLOWS: Record<BookingFlowType, BookingFlowConfig> = {
@@ -441,8 +409,6 @@ export function getAvailableTimeSlots(courtId?: string): TimeSlot[] {
 	// Use courtId parameter or fall back to selected court in booking
 	const effectiveCourtId = courtId || booking.courtId
 
-	// Check for specific flow type
-	const isDateCourtTimeFlow = availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION
 
 	// If we have a specific court ID and it's the DATE_COURT_TIME_DURATION flow
 	// Or if a court is already selected in any flow

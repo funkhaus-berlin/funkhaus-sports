@@ -5,10 +5,11 @@ import { html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { takeUntil } from 'rxjs'
-import { Venue, VenuesDB } from 'src/db/venue-collection'
+import { VenuesDB } from 'src/db/venue-collection'
+import { Venue } from 'src/types/booking/venue.types'
 import { confirm } from 'src/schmancy'
 import './admin-venue-card'; // Import admin venue card
-import { VenueForm } from './components/venue-form'
+import './components/venue-form' // Import venue-form component
 import { venueContext, venuesContext } from './venue-context'
 import { VenueDetailView } from './venue-detail'
 // --- Venue Management Component ---
@@ -36,8 +37,9 @@ export class VenueManagement extends $LitElement() {
 						<schmancy-icon-button
 							variant="outlined"
 							@click=${() => {
+								const formComponent = document.createElement('venue-form')
 								area.push({
-									component: VenueForm,
+									component: formComponent,
 									area: 'admin',
 								})
 							}}
@@ -90,15 +92,16 @@ export class VenueManagement extends $LitElement() {
 						@click=${() => {
 							venueContext.set(venue)
 
-							// Use setTimeout to ensure context is updated before navigation
-							setTimeout(() => {
-								area.push({
-									component: new VenueForm(venue),
-									area: 'admin',
-									// Pass venue data in params for better context persistence
-									state: { venueId: venue.id },
-								})
-							}, 50)
+							// Create form component and set venue property
+							const formComponent = document.createElement('venue-form') as any
+							formComponent.venue = venue
+							
+							area.push({
+								component: formComponent,
+								area: 'admin',
+								// Pass venue data in params for better context persistence
+								state: { venueId: venue.id },
+							})
 						}}
 						title="Edit Venue"
 					>

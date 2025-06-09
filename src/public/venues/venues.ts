@@ -5,7 +5,7 @@ import { customElement, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
-import { Venue } from 'src/db/venue-collection'
+import { Venue } from 'src/types/booking/venue.types'
 import { CourtBookingSystem } from 'src/public/book/book'
 import { bookingContext, BookingProgressContext, BookingStep } from '../book/context'
 

@@ -4,8 +4,9 @@ import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { takeUntil } from 'rxjs'
-import { Court } from 'src/db/courts.collection'
-import { Venue } from 'src/db/venue-collection'
+import { Court } from 'src/types/booking/court.types'
+import { createCourt } from 'src/db/courts.collection'
+import { Venue } from 'src/types/booking/venue.types'
 import { formatEnum } from '../components/venue-form'
 import { venueContext, venuesContext } from '../venue-context'
 import { courtsContext, selectedCourtContext, selectMyCourts } from './context'
@@ -113,10 +114,10 @@ export class VenueCourts extends $LitElement() {
 
 	// Method to navigate to the court detail page for a new court
 	addNewCourt() {
-		selectedCourtContext.set(new Court(this.venueId))
+		selectedCourtContext.set(createCourt(this.venueId))
 
 		area.push({
-			component: new CourtForm(new Court(this.venueId)),
+			component: new CourtForm(createCourt(this.venueId)),
 
 			area: 'venue',
 		})

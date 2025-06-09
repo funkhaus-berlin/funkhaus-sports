@@ -2,7 +2,7 @@ import { select, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit' // Removed CSS import since we're not using custom CSS
 import { customElement, property } from 'lit/decorators.js'
-import { Venue } from 'src/db/venue-collection'
+import { Venue } from 'src/types/booking/venue.types'
 import { venueContext } from '../venue-context'
 import { VenueForm } from './venue-form'
 

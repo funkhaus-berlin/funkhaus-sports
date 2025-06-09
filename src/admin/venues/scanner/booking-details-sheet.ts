@@ -8,7 +8,7 @@ import { when } from 'lit/directives/when.js'
 import { of } from 'rxjs'
 import { catchError, finalize, take, tap } from 'rxjs/operators'
 import { BookingsDB } from 'src/db/bookings.collection'
-import { Court } from 'src/db/courts.collection'
+import { Court } from 'src/types/booking/court.types'
 import { Booking, BookingStatus } from 'src/types/booking/booking.types'
 import { courtsContext } from '../courts/context'
 

@@ -4,7 +4,7 @@ import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
 import qrcode from 'qrcode-generator'
-import { Court } from 'src/db/courts.collection'
+import { Court } from 'src/types/booking/court.types'
 import { Booking } from './context'
 
 // Set up dayjs plugins

@@ -17,7 +17,7 @@ import {
   CourtPreferences,
   getAllCourtsAvailability,
 } from 'src/availability-context'
-import { Court, CourtTypeEnum, SportTypeEnum } from 'src/db/courts.collection'
+import { Court, CourtTypeEnum, SportTypeEnum } from 'src/types/booking/court.types'
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import './court-availability-dialog'

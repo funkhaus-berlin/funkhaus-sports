@@ -5,7 +5,7 @@ import { html } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { availabilityContext, AvailabilityData, CourtAvailabilityStatus } from 'src/availability-context'
-import { Court } from 'src/db/courts.collection'
+import { Court } from 'src/types/booking/court.types'
 import { Booking, bookingContext } from '../../context'
 
 /**

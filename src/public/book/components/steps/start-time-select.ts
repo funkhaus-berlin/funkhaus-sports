@@ -27,9 +27,9 @@ import {
   availabilityContext,
   AvailabilityData,
   availabilityLoading$,
-  BookingFlowType,
   getAvailableTimeSlots,
 } from 'src/availability-context'
+import { BookingFlowType } from 'src/types'
 import { toUTC } from 'src/utils/timezone'
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'

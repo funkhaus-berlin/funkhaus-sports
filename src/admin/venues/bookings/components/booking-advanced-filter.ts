@@ -4,7 +4,7 @@ import dayjs from 'dayjs'
 import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { BehaviorSubject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs'
-import { Court } from 'src/db/courts.collection'
+import { Court } from 'src/types/booking/court.types'
 import { BookingStatus } from 'src/types/booking/booking.types'
 import { bookingFilterContext, DEFAULT_DATE_RANGE, TBookingFilter } from '../bookings.context'
 

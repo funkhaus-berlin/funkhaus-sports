@@ -5,7 +5,7 @@ import { html } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext } from 'src/admin/venues/venue-context'
-import { Court } from 'src/db/courts.collection'
+import { Court } from 'src/types/booking/court.types'
 import { toUserTimezone } from 'src/utils/timezone'
 import { Booking, bookingContext, BookingProgressContext, BookingStep } from '../context'
 
@@ -37,9 +37,7 @@ export class BookingSummary extends $LitElement() {
 	private formatDate(dateStr: string): string {
 		if (!dateStr) return 'TBD'
 		// More compact format on mobile
-		return window.innerWidth < 768 
-			? dayjs(dateStr).format('M/D') 
-			: dayjs(dateStr).format('ddd, MMM D')
+		return  dayjs(dateStr).format('ddd, MMM D')
 	}
 
 	private formatTime(timeStr: string): string {
@@ -93,7 +91,7 @@ export class BookingSummary extends $LitElement() {
 								<!-- Date & Time -->
 								<div class="flex items-center gap-[2px] md:gap-[4px]">
 									<schmancy-icon size="14px" class="text-primary-default md:text-[16px]">calendar_today</schmancy-icon>
-									<schmancy-typography type="body" token="sm" class="font-medium text-xs md:text-sm">
+									<schmancy-typography type="body" token="sm" class="font-medium text-sm md:text-md">
 										${this.formatDate(this.booking.date)}
 									</schmancy-typography>
 								</div>
@@ -102,7 +100,7 @@ export class BookingSummary extends $LitElement() {
 								${court ? html`
 									<div class="flex items-center gap-[2px] md:gap-[4px]">
 										<schmancy-icon size="14px" class="text-primary-default md:text-[16px]">sports_tennis</schmancy-icon>
-										<schmancy-typography type="body" token="sm" class="text-xs md:text-sm">
+										<schmancy-typography type="body" token="sm" class="text-sm md:text-md">
 											${court.name}
 										</schmancy-typography>
 									</div>
@@ -111,7 +109,7 @@ export class BookingSummary extends $LitElement() {
 								<!-- Time Range -->
 								<div class="flex items-center gap-[2px] md:gap-[4px]">
 									<schmancy-icon size="14px" class="text-primary-default md:text-[16px]">schedule</schmancy-icon>
-									<schmancy-typography type="body" token="sm" class="text-xs md:text-sm">
+									<schmancy-typography type="body" token="sm" class="text-sm md:text-md">
 										${this.formatTime(this.booking.startTime)}-${this.formatTime(this.booking.endTime)}
 									</schmancy-typography>
 								</div>
@@ -130,7 +128,6 @@ export class BookingSummary extends $LitElement() {
 					<!-- Right side - edit button -->
 					<div class="flex items-center">
 						<schmancy-button
-							size="sm"
 							variant="filled tonal"
 							@click=${() => this.handleEdit()}
 							class="px-2 md:px-3"
