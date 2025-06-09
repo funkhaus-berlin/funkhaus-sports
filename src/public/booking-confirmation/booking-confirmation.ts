@@ -434,7 +434,7 @@ export class BookingConfirmation extends $LitElement() {
 									</schmancy-grid>
 
 									<!-- Social Buttons -->
-									<div class="fixed inset-x-0 bottom-4 mx-0 lg:flex  justify-center">
+									<div class="fixed lg:hidden inset-x-0 bottom-4 mx-0  justify-center">
                     <sch-flex justify="center" class="w-full">
 										<social-buttons></social-buttons>
 
@@ -445,7 +445,7 @@ export class BookingConfirmation extends $LitElement() {
 						</section>
 
 						<!-- Right Column - Venue Map (Desktop Only) -->
-						<schmancy-surface rounded="all" type="container" class="max-w-lg w-full hidden lg:block mx-auto m-4">
+						<schmancy-surface rounded="all" type="surface" class="max-w-lg w-full hidden lg:block mx-auto m-4">
 							<schmancy-grid gap="md" class="p-4">
 								<!-- Map Component -->
 								<venue-map
@@ -484,6 +484,8 @@ export class BookingConfirmation extends $LitElement() {
 											</schmancy-grid>
 										`
 									: ''}
+										<social-buttons></social-buttons>
+                  
 							</schmancy-grid>
 						</schmancy-surface>
 					</schmancy-grid>
