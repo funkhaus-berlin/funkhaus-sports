@@ -1,5 +1,5 @@
 // Example updated booking confirmation with wallet pass integration
-import { $dialog, $notify, area, SchmancyInputChangeEventV2 } from '@mhmo91/schmancy'
+import { $dialog, $notify, area, fullHeight, SchmancyInputChangeEventV2 } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
@@ -8,13 +8,15 @@ import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
+import { VenuesLandingPage } from 'src/public/venues/venues'
 import { Court } from 'src/types/booking/court.types'
 import { Venue } from 'src/types/booking/venue.types'
-import { VenuesLandingPage } from 'src/public/venues/venues'
 import { BookingUtils } from '../book/booking-utils'
 import { resendBookingEmail } from '../book/components/services'
 import { Booking, bookingContext, BookingProgressContext } from '../book/context'
+import '../shared/components/banner'
 import '../shared/components/social-buttons'
+import '../shared/components/venue-map'
 
 // Set up dayjs plugins
 dayjs.extend(utc)
@@ -111,11 +113,11 @@ export class BookingConfirmation extends $LitElement() {
 	private formatTime(start: string, end: string): string {
 		// Import timezone utilities
 		const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin'
-		
+
 		// Convert UTC times to user's timezone for display
 		const startLocal = dayjs(start).tz(userTimezone).format('HH:mm')
 		const endLocal = dayjs(end).tz(userTimezone).format('HH:mm')
-		
+
 		return `${startLocal} - ${endLocal}`
 	}
 
@@ -209,7 +211,7 @@ export class BookingConfirmation extends $LitElement() {
 					bookingDetails: {
 						date: this.booking.date,
 						startTime: this.booking.startTime, // Send full ISO string
-						endTime: this.booking.endTime,     // Send full ISO string
+						endTime: this.booking.endTime, // Send full ISO string
 						userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin',
 						price: this.booking.price.toString(),
 						court: this.selectedCourt?.name || 'Court',
@@ -256,146 +258,237 @@ export class BookingConfirmation extends $LitElement() {
 		const venueName = this.venue?.name || 'Venue'
 
 		return html`
-			<schmancy-scroll class="h-screen bg-surface-default">
-				<div class="min-h-screen flex items-center justify-center p-2">
-					<div class="w-full max-w-2xl">
-						<!-- Main vertical flow container -->
-						<div class="flex flex-col items-center gap-2">
-							<!-- Logo -->
-							<img
-								src="/logo.svg"
-								alt="Funkhaus Sports Logo"
+			<schmancy-grid ${fullHeight()} rows="auto 1fr" class="bg-surface-default">
+				<!-- Banner - same as book page -->
+				<page-header-banner
+					class="h-[15vh] sm:h-[20vh] lg:h-[25vh] lg:block"
+					.title=${venueName}
+					description="BOOKING CONFIRMED!"
+					imageSrc="/assets/still02.jpg"
+				>
+     
+                       <div class="absolute right-0 top-[1vh] lg:top-[5vh] my-auto">
+                           <img
+											src="/logo.svg"
+											alt="Funkhaus Sports Logo"
+											class="cursor-pointer h-[15vh] lg:h-[20vh] w-auto"
+											@click=${() => this.returnToHome()}
+										/>
+        </div>
+				</page-header-banner>
+
+				<!-- Main Content Grid -->
+				<schmancy-scroll>
+					<schmancy-grid
+						.rcols=${{
+							sm: '1fr',
+							lg: '2fr 1fr',
+						}}
+						class="min-h-0"
+					>
+						<!-- Left Column - Confirmation Details -->
+						<section class="max-w-3xl w-full justify-self-center lg:justify-end flex">
+							<schmancy-scroll hide class="w-full">
+								<div class="p-4 lg:p-6">
 								
-								class="cursor-pointer size-1/6"
-								@click=${() => this.returnToHome()}
-							/>
 
-							<!-- Title -->
-							<schmancy-grid gap="xs" class="text-center">
-								<schmancy-typography type="title" token="lg">Booking Confirmed!</schmancy-typography>
-							</schmancy-grid>
-
-							<!-- QR Code -->
-							<schmancy-surface type="containerLow" rounded="all" class="p-4">
-								<schmancy-grid gap="sm" align="center">
-									<img
-										src=${BookingUtils.generateQRCodeDataUrl(this.booking, this.selectedCourt)}
-										alt="Booking QR Code"
-										width="160"
-										height="160"
-										class="block"
-									/>
-									<sch-flex gap="2" align="center" justify="between" class="w-full">
-										<schmancy-typography> Check-in QR code </schmancy-typography>
-										<schmancy-icon-button
-											size="sm"
-											variant="outlined"
-											@click=${() => this.downloadQRCode()}
-											.disabled=${this.downloading}
-										>
-											download
-										</schmancy-icon-button>
-									</sch-flex>
-								</schmancy-grid>
-							</schmancy-surface>
-							<schmancy-flex align="center" justify="center" gap="sm">
-								<schmancy-grid>
-									<schmancy-typography type="label" class="text-surface-onVariant"> Email sent to </schmancy-typography>
-									<sch-flex align="center" gap="2">
-										<schmancy-typography> ${this.customerEmail}</schmancy-typography>
-
-										<schmancy-icon-button
-											variant="text"
-											size="sm"
-											@click=${() => this.handleResendEmail()}
-											.disabled=${this.resendingEmail}
-											title="Resend email"
-										>
-											${this.resendingEmail ? 'hourglass_empty' : 'undo'}
-										</schmancy-icon-button>
-									</sch-flex>
-								</schmancy-grid>
-							</schmancy-flex>
-
-							<!-- Booking Details Card -->
-							<schmancy-card class="w-full max-w-sm">
-								<schmancy-grid gap="sm" class="p-3">
-									<!-- Venue & Court -->
-									<schmancy-flex justify="between" align="center">
-										<schmancy-flex gap="sm" align="start">
-											<schmancy-icon class="text-surface-onVariant">location_on</schmancy-icon>
-											<div class="flex-1 text-left">
-												<schmancy-typography type="body" token="md" class="font-medium"
-													>${venueName}</schmancy-typography
-												>
-												<schmancy-typography type="body" token="sm" class="text-surface-onVariant"
-													>${courtName}</schmancy-typography
-												>
-											</div>
-										</schmancy-flex>
-										<schmancy-typography type="title" token="md" class="text-primary-default">
-											€${this.booking.price.toFixed(2)}
+									<!-- Success Title -->
+									<!-- <div class="text-center mb-8">
+										<schmancy-typography type="display" token="sm" class="text-primary-default mb-2">
+											Booking Confirmed!
 										</schmancy-typography>
-									</schmancy-flex>
-									<schmancy-divider></schmancy-divider>
+										<schmancy-typography type="body" token="lg" class="text-surface-onVariant">
+											Your court is reserved and ready
+										</schmancy-typography>
+									</div> -->
 
-									<!-- Date & Time -->
-									<schmancy-flex gap="sm" align="start">
-										<schmancy-icon class="text-surface-onVariant">event</schmancy-icon>
-										<div class="flex-1 text-left">
-											<schmancy-typography type="body" token="md">${dateFormatted}</schmancy-typography>
-											<schmancy-typography type="body" token="sm" class="text-surface-onVariant">
-												${timeFormatted} • ${BookingUtils.formatDuration(this.booking.startTime, this.booking.endTime)}
-											</schmancy-typography>
-										</div>
-									</schmancy-flex>
+									<!-- QR Code Section -->
+									<schmancy-surface type="containerLow" rounded="all" class="p-6 mb-6">
+										<schmancy-grid gap="md" align="center" class="text-center">
+											<img
+												src=${BookingUtils.generateQRCodeDataUrl(this.booking, this.selectedCourt)}
+												alt="Booking QR Code"
+												width="180"
+												height="180"
+												class="mx-auto"
+											/>
+											<schmancy-grid gap="sm">
+												<schmancy-typography type="headline" token="sm"> Check-in QR Code </schmancy-typography>
+												<schmancy-typography type="body" token="sm" class="text-surface-onVariant">
+													Present this code at the venue for quick check-in
+												</schmancy-typography>
+											</schmancy-grid>
+											<schmancy-button
+												variant="outlined"
+												@click=${() => this.downloadQRCode()}
+												.disabled=${this.downloading}
+												class="w-full sm:w-auto"
+											>
+												<schmancy-icon>download</schmancy-icon>
+												Download QR Code
+											</schmancy-button>
+										</schmancy-grid>
+									</schmancy-surface>
 
-									<!-- Address -->
-									${this.venue?.address
-										? html`
-												<schmancy-divider></schmancy-divider>
-												<a
-													href="${this.getMapUrl()}"
-													target="_blank"
-													class="flex items-center gap-3 text-surface-on hover:text-primary-default transition-colors"
-												>
-													<schmancy-icon>directions</schmancy-icon>
-													<schmancy-typography type="body" token="sm" class="flex-1">
-														${this.getFormattedAddress()}
+									<!-- Email Confirmation -->
+									<schmancy-surface type="containerLow" rounded="all" class="p-4 mb-6">
+										<schmancy-flex align="center" justify="between" gap="md">
+											<schmancy-grid gap="xs" class="flex-1">
+												<schmancy-typography type="label" token="sm" class="text-surface-onVariant">
+													Confirmation email sent to:
+												</schmancy-typography>
+												<schmancy-typography type="body" token="md" class="font-medium">
+													${this.customerEmail}
+												</schmancy-typography>
+											</schmancy-grid>
+											<schmancy-button
+												variant="text"
+												@click=${() => this.handleResendEmail()}
+												.disabled=${this.resendingEmail}
+												class="flex-shrink-0"
+											>
+												<schmancy-icon>${this.resendingEmail ? 'hourglass_empty' : 'email'}</schmancy-icon>
+												${this.resendingEmail ? 'Sending...' : 'Resend'}
+											</schmancy-button>
+										</schmancy-flex>
+									</schmancy-surface>
+
+									<!-- Booking Details -->
+									<schmancy-surface type="containerLow" rounded="all" class="p-4 mb-6">
+										<schmancy-grid gap="md">
+											<!-- Header -->
+											<schmancy-flex justify="between" align="center">
+												<schmancy-typography type="headline" token="sm"> Booking Details </schmancy-typography>
+												<schmancy-typography type="title" token="lg" class="text-primary-default">
+													€${this.booking.price.toFixed(2)}
+												</schmancy-typography>
+											</schmancy-flex>
+
+											<schmancy-divider></schmancy-divider>
+
+											<!-- Venue & Court -->
+											<schmancy-flex gap="sm" align="start">
+												<schmancy-icon class="text-primary-default mt-1">location_on</schmancy-icon>
+												<schmancy-grid gap="xs" class="flex-1">
+													<schmancy-typography type="body" token="md" class="font-medium">
+														${venueName}
 													</schmancy-typography>
-												</a>
-											`
-										: ''}
-								</schmancy-grid>
-							</schmancy-card>
+													<schmancy-typography type="body" token="sm" class="text-surface-onVariant">
+														${courtName}
+													</schmancy-typography>
+												</schmancy-grid>
+											</schmancy-flex>
 
-							<!-- Action Buttons -->
-							<schmancy-grid gap="sm" class="w-full">
-								<schmancy-flex gap="sm" justify="center">
-									<schmancy-button variant="outlined" href=${calendarUrl} width="full">
-										<schmancy-icon>calendar_month</schmancy-icon>
-										Add To Calendar
-									</schmancy-button>
-									<schmancy-icon-button
-										variant="outlined"
-										width="full"
-										@click=${() => BookingUtils.shareBooking(this.booking, this.selectedCourt?.name)}
-									>
-										share
-									</schmancy-icon-button>
-									<!-- <schmancy-button variant="outlined" width="full" @click=${() => this.returnToHome()}>
-                    <schmancy-icon>add</schmancy-icon>
-                    Book More
-                  </schmancy-button> -->
-								</schmancy-flex>
+											<!-- Date & Time -->
+											<schmancy-flex gap="sm" align="start">
+												<schmancy-icon class="text-primary-default mt-1">event</schmancy-icon>
+												<schmancy-grid gap="xs" class="flex-1">
+													<schmancy-typography type="body" token="md" class="font-medium">
+														${dateFormatted}
+													</schmancy-typography>
+													<schmancy-typography type="body" token="sm" class="text-surface-onVariant">
+														${timeFormatted} •
+														${BookingUtils.formatDuration(this.booking.startTime, this.booking.endTime)}
+													</schmancy-typography>
+												</schmancy-grid>
+											</schmancy-flex>
+
+											<!-- Address (if available) -->
+											${this.venue?.address
+												? html`
+														<schmancy-flex class="flex lg:hidden" gap="sm" align="start">
+															<schmancy-icon class="text-primary-default mt-1">directions</schmancy-icon>
+															<schmancy-grid gap="xs" class="flex-1">
+																<schmancy-typography type="body" token="sm" class="text-surface-onVariant">
+																	${this.getFormattedAddress()}
+																</schmancy-typography>
+															</schmancy-grid>
+														</schmancy-flex>
+													`
+												: ''}
+										</schmancy-grid>
+									</schmancy-surface>
+
+									<!-- Action Buttons -->
+									<schmancy-grid gap="sm" class="mb-20">
+										<schmancy-flex gap="sm" justify="center" class="flex-wrap">
+											<schmancy-button variant="filled" href=${calendarUrl} >
+												<schmancy-icon>calendar_month</schmancy-icon>
+												 Calendar
+											</schmancy-button>
+											<schmancy-button
+												variant="outlined"
+												@click=${() => BookingUtils.shareBooking(this.booking, this.selectedCourt?.name)}
+												
+											>
+												<schmancy-icon>share</schmancy-icon>
+												<span class="hidden lg:inline">Share Booking</span>
+											</schmancy-button>
+                      	<schmancy-button variant="outlined" @click=${() => this.returnToHome()} >
+											<schmancy-icon>add</schmancy-icon>
+                      
+											Book Another Court
+										</schmancy-button>
+										</schmancy-flex>
+									
+									</schmancy-grid>
+
+									<!-- Social Buttons -->
+									<div class="fixed inset-x-0 bottom-4 mx-0 lg:flex  justify-center">
+                    <sch-flex justify="center" class="w-full">
+										<social-buttons></social-buttons>
+
+                    </sch-flex>
+									</div>
+								</div>
+							</schmancy-scroll>
+						</section>
+
+						<!-- Right Column - Venue Map (Desktop Only) -->
+						<schmancy-surface rounded="all" type="container" class="max-w-lg w-full hidden lg:block mx-auto m-4">
+							<schmancy-grid gap="md" class="p-4">
+								<!-- Map Component -->
+								<venue-map
+									.address=${this.venue?.address}
+									.venueName=${venueName}
+									zoom=${16}
+									showMarker
+									interactive
+									class="h-64 w-full rounded-lg overflow-hidden"
+								></venue-map>
+
+								<!-- Address and Directions -->
+								${this.venue?.address
+									? html`
+											<schmancy-divider></schmancy-divider>
+											<schmancy-grid gap="sm">
+												<schmancy-flex align="center" gap="sm">
+													<schmancy-icon class="text-primary-default">location_on</schmancy-icon>
+													<schmancy-typography type="headline" token="sm"> ${venueName} </schmancy-typography>
+												</schmancy-flex>
+												<schmancy-typography type="body" token="sm" class="text-surface-onVariant ml-8">
+													${this.getFormattedAddress()}
+												</schmancy-typography>
+
+												<schmancy-button
+													variant="outlined"
+													width="full"
+													@click=${() => {
+														const mapUrl = this.getMapUrl()
+														window.open(mapUrl, '_blank')
+													}}
+												>
+													<schmancy-icon slot="prefix">directions</schmancy-icon>
+													Get Directions
+												</schmancy-button>
+											</schmancy-grid>
+										`
+									: ''}
 							</schmancy-grid>
-
-							<!-- Social Buttons -->
-							<social-buttons></social-buttons>
-						</div>
-					</div>
-				</div>
-			</schmancy-scroll>
+						</schmancy-surface>
+					</schmancy-grid>
+				</schmancy-scroll>
+			</schmancy-grid>
 		`
 	}
 

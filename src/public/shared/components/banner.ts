@@ -42,8 +42,11 @@ export class PageHeaderBanner extends $LitElement(css`
 					<schmancy-typography type="body" maxLines="1"  class="${maxWidthClass}">
 						${this.description}
 					</schmancy-typography>
-					<slot></slot>
+				
 				</section>
+     
+          	<slot></slot>
+
 			</div>
 		`
 	}
