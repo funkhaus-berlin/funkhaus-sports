@@ -1,4 +1,4 @@
-import { $notify, select } from '@mhmo91/schmancy'
+import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
@@ -7,22 +7,12 @@ import { css, html, nothing } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
-import { when } from 'lit/directives/when.js'
+import { takeUntil } from 'rxjs'
 import {
-  debounceTime,
-  distinctUntilChanged,
-  filter,
-  fromEvent,
-  map,
-  startWith,
-  takeUntil,
-  tap,
-} from 'rxjs'
-import {
-  availabilityContext,
-  AvailabilityData,
-  availabilityLoading$,
-  getAvailableTimeSlots,
+	availabilityContext,
+	AvailabilityData,
+	availabilityLoading$,
+	getAvailableTimeSlots,
 } from 'src/availability-context'
 import { BookingFlowType } from 'src/types'
 import { toUTC } from 'src/utils/timezone'
@@ -34,39 +24,27 @@ import { TimeSlot } from '../../types'
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
-// Simple animation preset for selected time slot
+// Animation for selected time slot
 const PULSE_ANIMATION = {
 	keyframes: [{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }],
-	options: {
-		duration: 200,
-		easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
-	},
+	options: { duration: 200, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' },
 }
 
-/**
- * Get user's timezone or default to Berlin
- */
+// Utility functions
 function getUserTimezone(): string {
 	try {
-		const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
-		return detectedTimezone || 'Europe/Berlin'
-	} catch (e) {
-		console.warn('Could not detect timezone:', e)
+		return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin'
+	} catch {
 		return 'Europe/Berlin'
 	}
 }
 
-/**
- * Convert UTC ISO string to user's local timezone
- */
 function toUserTimezone(isoString: string): dayjs.Dayjs {
-	const userTimezone = getUserTimezone()
-	return dayjs(isoString).tz(userTimezone)
+	return dayjs(isoString).tz(getUserTimezone())
 }
 
 /**
- * Enhanced time selection component with CSS-based transitions
- * Uses RxJS for state management and CSS transitions for view changes
+ * Simplified time selection component
  */
 @customElement('time-selection-step')
 export class TimeSelectionStep extends $LitElement(css`
@@ -75,21 +53,17 @@ export class TimeSelectionStep extends $LitElement(css`
 		position: relative;
 	}
 	.scrollbar-hide {
-		-ms-overflow-style: none; /* IE and Edge */
-		scrollbar-width: none; /* Firefox */
+		-ms-overflow-style: none;
+		scrollbar-width: none;
 	}
 	.scrollbar-hide::-webkit-scrollbar {
-		display: none; /* Chrome, Safari, and Opera */
+		display: none;
 	}
-
-	/* View transition system */
 	.view-container {
 		position: relative;
-		min-height: 45px; /* Minimum height to prevent collapse during transitions */
+		min-height: 45px;
 	}
-
-	.grid-view,
-	.list-view {
+	.grid-view, .list-view {
 		opacity: 0;
 		visibility: hidden;
 		transition: opacity 100ms ease, visibility 0ms 100ms;
@@ -98,9 +72,7 @@ export class TimeSelectionStep extends $LitElement(css`
 		top: 0;
 		left: 0;
 	}
-
-	.grid-view.active,
-	.list-view.active {
+	.grid-view.active, .list-view.active {
 		opacity: 1;
 		visibility: visible;
 		transition: opacity 100ms ease, visibility 0ms;
@@ -110,637 +82,201 @@ export class TimeSelectionStep extends $LitElement(css`
 	@property({ type: Boolean }) active = true
 	@property({ type: Boolean }) hidden = false
 
-	// Basic dependencies
-	@select(bookingContext)
-	booking!: Booking
+	@select(bookingContext) booking!: Booking
+	@select(BookingProgressContext) bookingProgress!: BookingProgress
+	@select(availabilityContext) availability!: AvailabilityData
 
-	@select(BookingProgressContext)
-	bookingProgress!: BookingProgress
-
-	// Add availability context
-	@select(availabilityContext)
-	availability!: AvailabilityData
-
-	// Simplified state management
+	// Core state
 	@state() timeSlots: TimeSlot[] = []
 	@state() loading = true
 	@state() error: string | null = null
-	@state() isActive = false
-	@state() isExpanded = false
-	@state() isCompact = false
-	@state() isDesktopOrTablet = window.innerWidth >= 768
 	@state() viewMode: 'grid' | 'list' = 'grid'
-	@state() autoScrollAttempted = false
+	@state() isExpanded = false
+	@state() isDesktopOrTablet = window.innerWidth >= 768
 
-	// User preferences
-	private userTimezone = getUserTimezone()
-	private userLocale = navigator.language || 'en-US'
-	use24HourFormat = this._detectTimeFormatPreference()
-
-	// Store references for cleanup
-	private resizeObserver: ResizeObserver | null = null
-
-	// Refs for DOM elements
+	// DOM refs
 	private scrollContainerRef: Ref<HTMLElement> = createRef<HTMLElement>()
 	private timeSlotRefs = new Map<number, HTMLElement>()
-	
-	// Track previous selected time to avoid unnecessary scrolling
-	private previousSelectedTime: string | undefined = undefined
+	private resizeObserver: ResizeObserver | null = null
 
-	// Connection lifecycle methods
 	connectedCallback(): void {
 		super.connectedCallback()
-
-		// Initialize derived streams
-		this.setupStateStreams()
-
-		// Set up resize observer for responsive layout
-		this.setupResizeObserver()
-
-		// Subscribe to external data sources
-		this.subscribeToBookingContext()
-		this.subscribeToProgressContext()
-		this.subscribeToAvailabilityContext()
+		this.setupObservers()
 	}
 
 	disconnectedCallback(): void {
 		super.disconnectedCallback()
-
-		// Clean up observers
-		if (this.resizeObserver) {
-			this.resizeObserver.disconnect()
-			this.resizeObserver = null
-		}
-
-		// Clean up refs
-		this.clearTimeSlotRefs()
-	}
-
-	// Clear time slot references when no longer needed
-	private clearTimeSlotRefs(): void {
+		this.resizeObserver?.disconnect()
 		this.timeSlotRefs.clear()
 	}
 
-	// Simplified stream setup
-	private setupStateStreams(): void {
-		// Screen size changes
-		fromEvent(window, 'resize').pipe(
-			startWith(null),
-			map(() => window.innerWidth >= 768),
-			distinctUntilChanged(),
-			takeUntil(this.disconnecting)
-		).subscribe(isDesktopOrTablet => {
-			this.isDesktopOrTablet = isDesktopOrTablet
-			// Update view mode when screen size changes
-			if (!isDesktopOrTablet && this.viewMode === 'grid') {
-				this.viewMode = 'list'
+	private setupObservers(): void {
+		// Watch screen size changes
+		this.resizeObserver = new ResizeObserver(() => {
+			const newIsDesktop = window.innerWidth >= 768
+			if (this.isDesktopOrTablet !== newIsDesktop) {
+				this.isDesktopOrTablet = newIsDesktop
+				if (!newIsDesktop && this.viewMode === 'grid') {
+					this.viewMode = 'list'
+				}
 			}
-			this.requestUpdate()
+		})
+		this.resizeObserver.observe(document.body)
+
+		// Watch booking progress
+		BookingProgressContext.$.pipe(takeUntil(this.disconnecting)).subscribe(progress => {
+			this.isExpanded = progress.expandedSteps.includes(BookingStep.Time)
 		})
 
-		// Booking progress state
-		BookingProgressContext.$.pipe(
-			takeUntil(this.disconnecting),
-			tap(progress => {
-				// Update expanded state
-				this.isExpanded = progress.expandedSteps.includes(BookingStep.Time)
-				
-				// Update active state
-				const timeStepIndex = progress.steps.findIndex(s => s.step === BookingStep.Time)
-				this.isActive = progress.currentStep === timeStepIndex + 1
-				
-				// Update compact mode
-				this.isCompact = progress.currentStep !== BookingStep.Time
-			})
-		).subscribe()
-
-		// View mode management based on booking state
-		bookingContext.$.pipe(
-			map(booking => !!booking?.startTime),
-			distinctUntilChanged(),
-			takeUntil(this.disconnecting)
-		).subscribe(hasSelection => {
-			// Update view mode
+		// Watch booking context for data changes
+		bookingContext.$.pipe(takeUntil(this.disconnecting)).subscribe(booking => {
+			if (booking?.date && booking?.venueId) {
+				this.loadTimeSlots()
+			}
+			// Update view mode based on selection
+			const hasSelection = !!booking?.startTime
 			if (hasSelection || !this.isDesktopOrTablet) {
 				this.viewMode = 'list'
-				// Schedule scroll after view update
-				setTimeout(() => {
-					if (this.booking.startTime) {
-						this.scrollToTime(this.booking.startTime)
-					} else if (!this.autoScrollAttempted) {
-						this.autoScrollAttempted = true
-						this.scrollToFirstAvailableTime()
-					}
-				}, 250)
-			} else if (this.isActive && this.isDesktopOrTablet) {
+				this.scrollToSelectedTime()
+			} else if (this.isDesktopOrTablet) {
 				this.viewMode = 'grid'
 			}
-			this.requestUpdate()
-		})
-	}
-
-	private setupResizeObserver(): void {
-		this.resizeObserver = new ResizeObserver(() => {
-			const newIsDesktopOrTablet = window.innerWidth >= 768
-			if (this.isDesktopOrTablet !== newIsDesktopOrTablet) {
-				this.isDesktopOrTablet = newIsDesktopOrTablet
-				this.requestUpdate()
-			}
 		})
 
-		// Observe document body for size changes
-		this.resizeObserver.observe(document.body)
-	}
-
-	// External subscriptions
-	private subscribeToBookingContext(): void {
-		bookingContext.$.pipe(
-			takeUntil(this.disconnecting),
-			filter(booking => !!booking.date && !!booking.venueId),
-			tap(() => {
-				this.autoScrollAttempted = false
-				this.loading = true
-				this.error = null
-			}),
-			// Listen for changes to date, venue, or court ID to refresh time slots
-			distinctUntilChanged((prev, curr) => 
-				prev.date === curr.date && 
-				prev.venueId === curr.venueId &&
-				prev.courtId === curr.courtId
-			),
-		).subscribe(() => {
-			// Reload time slots when booking data changes (including court selection)
-			this.loadTimeSlots()
-		})
-	}
-
-	/**
-	 * Check if the selected time is now unavailable due to other selections
-	 * and unselect it if necessary
-	 */
-	private checkSelectedTimeAvailability(): void {
-		const booking = this.booking
-		
-		// If no time is selected, nothing to check
-		if (!booking || !booking.startTime) return
-
-		// Get the selected time in local timezone
-		const localStartTime = toUserTimezone(booking.startTime)
-		const timeValue = localStartTime.hour() * 60 + localStartTime.minute()
-		
-		// Find this time in our current time slots
-		const selectedSlot = this.timeSlots.find((slot: TimeSlot) => slot.value === timeValue)
-		
-		// If the selected time is now unavailable, clear the selection
-		if (selectedSlot && !selectedSlot.available) {
-			console.log('Selected time is no longer available due to changed selections, clearing time selection')
-			
-			// Update booking context to clear times
-			// This will trigger the subscription in court-select that watches for time changes
-			bookingContext.set({
-				startTime: '',
-				endTime: '',
-			}, true)
-
-			// Notify the user
-			$notify.error('Your previously selected time is no longer available. Please select another time slot.',{
-				duration: 2000,
-				playSound: true
-			})
-      
-			// Request update to refresh UI
-			this.requestUpdate()
-		}
-	}
-
-	private subscribeToProgressContext(): void {
-		BookingProgressContext.$.pipe(takeUntil(this.disconnecting)).subscribe(progress => {
-			if (progress.currentStep === BookingStep.Time) {
-				this.autoScrollAttempted = false
-
-				// Try to scroll to first available after DOM update
-				this.updateComplete.then(() => {
-					if (this.viewMode === 'list') {
-						this.scrollToFirstAvailableTime()
-					}
-				})
-			}
-		})
-	}
-
-	private subscribeToAvailabilityContext(): void {
-		// Subscribe to availability context updates
-		availabilityContext.$.pipe(
-			takeUntil(this.disconnecting),
-			filter(availability => !!availability && !!availability.date && !!availability.venueId),
-			filter(availability => availability.date === bookingContext.value.date),
-			// distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.venueId === curr.venueId),
-      debounceTime(500),
-      takeUntil(this.disconnecting),
-		).subscribe({
-			next: () => {
-        
-				this.loadTimeSlots()
-			},
-		})
-
-		// Subscribe to loading state
+		// Watch availability loading state
 		availabilityLoading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
 			this.loading = loading
-			this.requestUpdate()
 		})
 	}
 
-
-	/**
-	 * Load time slots based on the current booking flow
-	 */
 	private loadTimeSlots(): void {
-		// Set initial loading state
+		if (!this.booking?.date || !this.booking?.venueId) return
+
 		this.loading = true
 		this.error = null
 
-		// Safety check to make sure booking object exists
-		if (!this.booking) {
-			console.warn('Booking object not available, using estimated times')
-			this.generateDefaultTimeSlots()
-			this.loading = false
-			return
-		}
-
 		try {
-			// Check current booking flow to determine how to get time slots
-			let timeSlots
+			const slots = this.availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION && this.booking.courtId
+				? getAvailableTimeSlots(this.booking.courtId)
+				: getAvailableTimeSlots()
 
-			// If we're using DATE_COURT_TIME_DURATION flow and have already selected a court,
-			// get only time slots available for this specific court
-			if (this.availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION && this.booking.courtId) {
-				// Get time slots available for this specific court
-				timeSlots = getAvailableTimeSlots(this.booking.courtId)
-			} else {
-				// Get all available time slots across all courts
-				timeSlots = getAvailableTimeSlots()
-			}
-
-			if (timeSlots.length > 0) {
-				this.timeSlots = timeSlots
-				this.loading = false
+			if (slots.length > 0) {
+				this.timeSlots = slots
 				this.error = this.availability.error
-
-				this.announceForScreenReader(`${timeSlots.filter(s => s.available).length} time slots available`)
 			} else {
-				// No valid times available - use estimated times as fallback
+				this.timeSlots = this.generateEstimatedSlots()
 				this.error = 'No valid time options available for this date. Please select a different date.'
-				this.timeSlots = []
-				this.loading = false
-				this.generateDefaultTimeSlots()
 			}
 		} catch (error) {
-			console.error('Error getting available time slots:', error)
+			console.error('Error loading time slots:', error)
+			this.timeSlots = this.generateEstimatedSlots()
 			this.error = 'Error determining available times. Using estimates instead.'
-			this.timeSlots = []
+		} finally {
 			this.loading = false
-			this.generateDefaultTimeSlots()
 		}
-
-		// After data is loaded, try to scroll to appropriate position
-		this.updateComplete.then(() => {
-			if (this.viewMode === 'list') {
-				if (this.booking.startTime) {
-					setTimeout(() => this.scrollToTime(this.booking.startTime), 150)
-				} else if (!this.autoScrollAttempted) {
-					this.autoScrollAttempted = true
-					setTimeout(() => this.scrollToFirstAvailableTime(), 150)
-				}
-			}
-
-      setTimeout(() => {
-			  this.checkSelectedTimeAvailability()
-      }, 1000);
-		})
 	}
 
-	private generateDefaultTimeSlots(): void {
-		// Clear existing time slot refs before updating
-		this.clearTimeSlotRefs()
-
-		// Check if date is today
+	private generateEstimatedSlots(): TimeSlot[] {
 		const userTimezone = getUserTimezone()
 		const selectedDate = dayjs(this.booking.date).tz(userTimezone)
 		const now = dayjs().tz(userTimezone)
 		const isToday = selectedDate.format('YYYY-MM-DD') === now.format('YYYY-MM-DD')
 
-		// Start time (8:00 AM or current time rounded up to next 30 min if today)
 		let startHour = 8
 		let startMinute = 0
 
 		if (isToday) {
 			startHour = now.hour()
 			startMinute = now.minute() < 30 ? 30 : 0
-
-			// If we're past the 30-minute mark, move to the next hour
-			if (startMinute === 0) {
-				startHour += 1
-			}
-
-			// If we're past operating hours, show message
-			if (startHour >= 22) {
-				this.timeSlots = []
-				this.error = 'No more available slots today'
-				this.loading = false
-				return
-			}
+			if (startMinute === 0) startHour += 1
+			if (startHour >= 22) return []
 		}
 
-		// Generate 30-minute slots until 10:00 PM
 		const slots: TimeSlot[] = []
-		const endHour = 22
-
-		for (let hour = startHour; hour <= endHour; hour++) {
-			// For first hour, start from startMinute (0 or 30)
-			const minutesToInclude =
-				hour === startHour ? ([startMinute, startMinute === 0 ? 30 : null].filter(Boolean) as number[]) : [0, 30]
-
-			for (const minute of minutesToInclude) {
-				// Skip if past end time
-				if (hour === endHour && minute > 0) continue
-
-				const value = hour * 60 + minute
-				const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
-
+		for (let hour = startHour; hour <= 22; hour++) {
+			const minutes = hour === startHour ? [startMinute, startMinute === 0 ? 30 : null].filter(Boolean) : [0, 30]
+			for (const minute of minutes as number[]) {
+				if (hour === 22 && minute > 0) continue
 				slots.push({
-					label: timeString,
-					value,
-					available: true, // Assume all slots are available
+					label: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
+					value: hour * 60 + minute,
+					available: true,
 				})
 			}
 		}
-
-		this.timeSlots = slots
-		this.loading = false
-		this.error = 'Using estimated availability - actual availability may vary'
-
-		this.announceForScreenReader(`${slots.length} estimated time slots loaded`)
+		return slots
 	}
 
-	/**
-	 * Handle time selection based on flow type
-	 */
 	private handleTimeSelect(slot: TimeSlot): void {
 		if (!slot.available) return
 
-		try {
-			// Check if this time is already selected (user clicked on a selected time)
-			const isCurrentlySelected = this.isTimeSelected(slot)
-			
-			if (isCurrentlySelected) {
-				// If the time is already selected, unselect it
-				bookingContext.set({
-					startTime: '',
-					endTime: ''
-				}, true)
-				
-				// Highlight the unselected time using our ref system
-				const selectedEl = this.timeSlotRefs.get(slot.value)
-				if (selectedEl) {
-					selectedEl.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
-				}
-				
-			
-				
-				// Announce for screen reader
-				this.announceForScreenReader('Time selection cleared')
-				
-				return // Exit the function early, no need to proceed with selection logic
-			}
-			
-			// Convert selected time to UTC ISO string
-			const hour = Math.floor(slot.value / 60)
-			const minute = slot.value % 60
-			const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
-
-			// Use the utility to convert to UTC
-			const newStartTime = toUTC(this.booking.date, timeString)
-
-			// Update booking context with time selection
-			let newEndTime = undefined
-			
-			if (!!this.booking.endTime && !!this.booking.startTime) {
-				try {
-					const bookingStartDT = dayjs(this.booking.startTime)
-					const bookingEndDT = dayjs(this.booking.endTime)
-					
-					if (bookingStartDT.isValid() && bookingEndDT.isValid()) {
-						const oldDuration = bookingEndDT.diff(bookingStartDT, 'minute')
-						const newEndDT = dayjs(newStartTime).add(oldDuration, 'minute')
-						
-						if (newEndDT.isValid()) {
-							newEndTime = newEndDT.toISOString()
-						} else {
-							console.warn('Invalid end date calculated')
-						}
-					} else {
-						console.warn('Invalid existing booking dates')
-					}
-				} catch (err) {
-					console.error('Error calculating end time:', err)
-				}
-			}
-
-			const bookingUpdate: Partial<Booking> = {
-				startTime: newStartTime,
-				endTime: newEndTime ?? '',
-			}
-
-			// We now preserve the court selection regardless of flow type to improve user experience
-			// This lets the user change time without losing their court selection
-
-			bookingContext.set(bookingUpdate, true)
-
-			// Highlight the selected time using our ref system
-			const selectedEl = this.timeSlotRefs.get(slot.value)
-			if (selectedEl) {
-				selectedEl.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
-			}
-
-			// Advance to the next step using the transition utility
-			// This handles both updating currentStep and expandedSteps
-			transitionToNextStep('Time')
-
-			// Dispatch event for parent components
-			this.dispatchEvent(
-				new CustomEvent('next', {
-					bubbles: true,
-					composed: true,
-				}),
-			)
-		} catch (error) {
-			console.error('Error handling time selection:', error)
-			this.error = 'Failed to select time. Please try again.'
-		}
-	}
-
-	private retryLoading(): void {
-		this.loadTimeSlots()
-	}
-
-	// UPDATED: Refactored scrolling methods without using querySelector
-	private scrollToFirstAvailableTime(): void {
-		if (this.viewMode !== 'list') return
-
-		// Find the first available time slot
-		const firstAvailable = this.timeSlots.find(slot => slot.available)
-		if (!firstAvailable) return
-
-		this.scrollToTimeValue(firstAvailable.value, true)
-	}
-
-	private scrollToTime(timeString: string): void {
-		if (this.viewMode !== 'list') return
-
-		// Check if the time has changed
-		if (this.previousSelectedTime === timeString) {
-			// Time hasn't changed, check if it's already in viewport
-			try {
-				const localTime = toUserTimezone(timeString)
-				const timeValue = localTime.hour() * 60 + localTime.minute()
-				const scrollContainer = this.scrollContainerRef.value
-				const timeEl = this.timeSlotRefs.get(timeValue)
-				
-				if (scrollContainer && timeEl) {
-					const containerRect = scrollContainer.getBoundingClientRect()
-					const elementRect = timeEl.getBoundingClientRect()
-					const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
-					
-					// If already visible, don't scroll
-					if (isFullyVisible) return
-				}
-			} catch (error) {
-				console.error('Error checking time visibility:', error)
-			}
-		}
-
-		try {
-			// Convert to user's local time
-			const localTime = toUserTimezone(timeString)
-			const timeValue = localTime.hour() * 60 + localTime.minute()
-
-			// Update previous selected time
-			this.previousSelectedTime = timeString
-
-			// Scroll to the time value
-			this.scrollToTimeValue(timeValue)
-		} catch (error) {
-			console.error('Error scrolling to time:', error)
-		}
-	}
-
-	private scrollToTimeValue(timeValue: number, highlight = false): void {
-		const scrollContainer = this.scrollContainerRef.value
-		const timeEl = this.timeSlotRefs.get(timeValue)
-
-		if (!scrollContainer || !timeEl) {
-			console.warn('Cannot scroll to time value', timeValue, 'Container or element not found')
+		const isCurrentlySelected = this.isTimeSelected(slot)
+		
+		if (isCurrentlySelected) {
+			// Unselect current time
+			bookingContext.set({ startTime: '', endTime: '' }, true)
+			this.animateSlot(slot.value)
 			return
 		}
 
-		// Check if element is already in view
-		const containerRect = scrollContainer.getBoundingClientRect()
-		const elementRect = timeEl.getBoundingClientRect()
-		const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
+		// Select new time
+		const hour = Math.floor(slot.value / 60)
+		const minute = slot.value % 60
+		const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
+		const newStartTime = toUTC(this.booking.date, timeString)
 
-		// If element is already visible and no highlight needed, do nothing
-		if (isFullyVisible && !highlight) return
-
-		if (!isFullyVisible) {
-			// Calculate scroll position to center the element
-			const containerWidth = scrollContainer.clientWidth
-			const elementOffset = timeEl.offsetLeft
-			const elementWidth = timeEl.offsetWidth
-			const scrollPosition = elementOffset - containerWidth / 2 + elementWidth / 2
-
-			// Smooth scroll to the calculated position
-			scrollContainer.scrollTo({
-				left: scrollPosition,
-				behavior: 'smooth',
-			})
+		// Calculate end time if duration exists
+		let newEndTime = ''
+		if (this.booking.endTime && this.booking.startTime) {
+			const oldDuration = dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute')
+			if (oldDuration > 0) {
+				newEndTime = dayjs(newStartTime).add(oldDuration, 'minute').toISOString()
+			}
 		}
 
-		// Highlight if requested
-		if (highlight) {
-			this.highlightTimeSlot(timeEl)
-		}
-	}
+		bookingContext.set({ startTime: newStartTime, endTime: newEndTime }, true)
+		this.animateSlot(slot.value)
+		transitionToNextStep('Time')
 
-	private highlightTimeSlot(element: HTMLElement): void {
-		element.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
-	}
-
-	// Accessibility helpers
-	private announceForScreenReader(message: string): void {
-		const announcement = document.createElement('div')
-		announcement.setAttribute('aria-live', 'assertive')
-		announcement.setAttribute('class', 'sr-only')
-		announcement.textContent = message
-
-		document.body.appendChild(announcement)
-
-		setTimeout(() => {
-			document.body.removeChild(announcement)
-		}, 1000)
-	}
-
-	// Utility methods
-	private _detectTimeFormatPreference(): boolean {
-		try {
-			const testDate = new Date(2000, 0, 1, 13, 0, 0)
-			const formattedTime = new Intl.DateTimeFormat(this.userLocale, {
-				hour: 'numeric',
-				hour12: false,
-			}).format(testDate)
-
-			return formattedTime.includes('13')
-		} catch (e) {
-			return true
-		}
+		this.dispatchEvent(new CustomEvent('next', { bubbles: true, composed: true }))
 	}
 
 	private isTimeSelected(slot: TimeSlot): boolean {
-		if (!this.booking || !this.booking.startTime) return false
-
-		try {
-			// Convert stored UTC time to user's timezone
-			const localStartTime = toUserTimezone(this.booking.startTime)
-			const slotValue = slot.value
-			const timeValue = localStartTime.hour() * 60 + localStartTime.minute()
-
-			return timeValue === slotValue
-		} catch (error) {
-			console.error('Error checking if time is selected:', error)
-			return false
-		}
+		if (!this.booking?.startTime) return false
+		const localStartTime = toUserTimezone(this.booking.startTime)
+		const timeValue = localStartTime.hour() * 60 + localStartTime.minute()
+		return timeValue === slot.value
 	}
 
-	private renderEmptyState(): unknown {
-		return html`
-			<div class="text-center py-6 grid gap-4 justify-center">
-				<schmancy-icon size="48px" class="text-surface-on-variant opacity-50">schedule</schmancy-icon>
-				<schmancy-typography type="body" token="md" class="mt-2">
-					No time slots available for this date.
-				</schmancy-typography>
-			</div>
-		`
+	private animateSlot(slotValue: number): void {
+		const element = this.timeSlotRefs.get(slotValue)
+		element?.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
 	}
 
-	// UPDATED: Store refs to time slot elements
-	private renderTimeSlot(slot: TimeSlot): unknown {
-		const isSelected = this.isTimeSelected(slot)
+	private scrollToSelectedTime(): void {
+		if (!this.booking?.startTime || this.viewMode !== 'list') return
+		
+		setTimeout(() => {
+			const localTime = toUserTimezone(this.booking.startTime)
+			const timeValue = localTime.hour() * 60 + localTime.minute()
+			const element = this.timeSlotRefs.get(timeValue)
+			const container = this.scrollContainerRef.value
 
-		// Create a reference callback
-		const timeSlotRef = (element: Element | undefined) => {
-			if (element) {
-				this.timeSlotRefs.set(slot.value, element as HTMLElement)
+			if (container && element) {
+				const elementOffset = element.offsetLeft
+				const elementWidth = element.offsetWidth
+				const containerWidth = container.clientWidth
+				const scrollPosition = elementOffset - containerWidth / 2 + elementWidth / 2
+
+				container.scrollTo({ left: scrollPosition, behavior: 'smooth' })
 			}
+		}, 100)
+	}
+
+	private renderTimeSlot(slot: TimeSlot) {
+		const isSelected = this.isTimeSelected(slot)
+		const timeSlotRef = (element: Element | undefined) => {
+			if (element) this.timeSlotRefs.set(slot.value, element as HTMLElement)
 		}
 
 		return html`
@@ -753,138 +289,84 @@ export class TimeSelectionStep extends $LitElement(css`
 				label=${slot.label}
 				dataValue=${slot.value?.toString()}
 				@click=${() => this.handleTimeSelect(slot)}
-				data-time-value=${slot.value}
-				?disabled=${!slot.available}
-			></selection-tile>
+				?disabled=${!slot.available}>
+			</selection-tile>
 		`
 	}
 
-	private renderGridLayout(slots: TimeSlot[]): unknown {
+	private renderGridView(slots: TimeSlot[]) {
 		return html`
-			<div
-				class="grid grid-cols-5 sm:grid-cols-6 gap-3 py-2"
-				role="listbox"
-				aria-label="Available Time Slots"
-				aria-multiselectable="false"
-			>
-				${repeat(
-					slots,
-					slot => slot.value,
-					slot => this.renderTimeSlot(slot),
-				)}
+			<div class="grid grid-cols-5 sm:grid-cols-6 gap-3 py-2" role="listbox">
+				${repeat(slots, slot => slot.value, slot => this.renderTimeSlot(slot))}
 			</div>
 		`
 	}
 
-	/**
-	 * Ensure we have a minimum number of time slots for consistent layout
-	 * Add placeholders for small result sets
-	 */
-	private ensureMinimumSlots(slots: TimeSlot[]): (TimeSlot | { placeholder: true })[] {
-		const minSlots = 5; // Minimum number of slots to display
-		
-		if (slots.length >= minSlots) {
-			return slots;
-		}
-		
-		// Add placeholder items to reach minimum count
-		const displayItems = [...slots];
-		const placeholdersNeeded = minSlots - slots.length;
-		
-		for (let i = 0; i < placeholdersNeeded; i++) {
-			displayItems.push({ placeholder: true } as any);
-		}
-		
-		return displayItems;
-	}
+	private renderListView(slots: TimeSlot[]) {
+		// Ensure minimum 5 slots for consistent layout
+		const displaySlots = slots.length >= 5 ? slots : [
+			...slots,
+			...Array(5 - slots.length).fill({ placeholder: true })
+		]
 
-	// UPDATED: Add ref to scroll container and ensure minimum slots
-	private renderListLayout(slots: TimeSlot[]): unknown {
-		const displayItems = this.ensureMinimumSlots(slots);
-		
 		return html`
 			<div
 				${ref(this.scrollContainerRef)}
-				class="options-scroll-container grid grid-flow-col py-2 overflow-x-auto scrollbar-hide transition-all duration-300 first:pl-1 last:pr-1
-          ${this.isCompact ? 'gap-2' : 'gap-3'}"
-				role="listbox"
-				aria-label="Available Time Slots"
-				aria-multiselectable="false"
-			>
-				${repeat(
-					displayItems,
-					(item, index) => 'placeholder' in item ? `placeholder-${index}` : (item as TimeSlot).value,
-					(item) => {
-						if ('placeholder' in item) {
-							// Create an empty placeholder tile with same dimensions but invisible
-							return html`
-								<div class="w-14 h-10 invisible"></div>
-							`;
-						}
-						return this.renderTimeSlot(item as TimeSlot);
-					}
+				class="grid grid-flow-col py-2 overflow-x-auto scrollbar-hide gap-3"
+				role="listbox">
+				${repeat(displaySlots, (item, index) => 
+					'placeholder' in item ? `placeholder-${index}` : item.value,
+					item => 'placeholder' in item 
+						? html`<div class="w-14 h-10 invisible"></div>`
+						: this.renderTimeSlot(item)
 				)}
 			</div>
 		`
 	}
 
 	render() {
-		// Early exit if explicitly hidden
-		if (this.hidden) return nothing;
+		if (this.hidden) return nothing
 
-		// Get current state values
-		const { timeSlots, loading, error, viewMode } = this;
+		const { timeSlots, loading, error, viewMode, isExpanded } = this
 
-		// Show empty state if no time slots
 		if (!loading && timeSlots.length === 0) {
-			return this.renderEmptyState();
+			return html`
+				<div class="text-center py-6 grid gap-4 justify-center">
+					<schmancy-icon size="48px" class="text-surface-on-variant opacity-50">schedule</schmancy-icon>
+					<schmancy-typography type="body" token="md">No time slots available for this date.</schmancy-typography>
+				</div>
+			`
 		}
 
-		// KEY CHANGE: Use isExpanded to determine if component should be visible
 		return html`
-			<div
-				class="
-					w-full bg-surface-low/50 rounded-lg transition-all duration-300 p-2
-					${this.isExpanded ? 'block' : 'hidden'}
-					${this.isActive ? 'opacity-100' : 'opacity-90'}
-				"
-			>
-				<!-- Error message if present while still showing content -->
-				${error
-					? html`
-							<div class="bg-error-container p-2 rounded-t-lg text-error-on-container text-sm text-center mb-3">
-								${error}
-								<button @click=${() => this.retryLoading()} class="ml-2 underline font-medium">Refresh</button>
-							</div>
-					  `
-					: nothing}
+			<div class="w-full bg-surface-low/50 rounded-lg transition-all duration-300 p-2 ${isExpanded ? 'block' : 'hidden'}">
+				${error ? html`
+					<div class="bg-error-container p-2 rounded-t-lg text-error-on-container text-sm text-center mb-3">
+						${error}
+						<button @click=${() => this.loadTimeSlots()} class="ml-2 underline font-medium">Refresh</button>
+					</div>
+				` : nothing}
 
-				<!-- Title section with view toggle -->
-				${when(
-					!this.isCompact && timeSlots.length > 0,
-					() => html`
-						<div class="flex items-center justify-between">
-							<div>
-								<schmancy-typography align="left" type="label" token="lg" class="font-medium text-primary-default">
-									Select Time
-								</schmancy-typography>
-								<div class="text-xs text-surface-on-variant mt-1">
-									<span>Times shown in your local timezone (${this.userTimezone})</span>
-								</div>
-							</div>
+				${timeSlots.length > 0 ? html`
+					<div class="flex items-center justify-between mb-2">
+						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
+							Select Time
+						</schmancy-typography>
+						<div class="text-xs text-surface-on-variant">
+							Times shown in your local timezone (${getUserTimezone()})
 						</div>
-					`,
-				)}
+					</div>
+				` : nothing}
 
-				<!-- Simplified view container with CSS-based transitions -->
 				<div class="view-container">
-					<!-- Grid View -->
-					<div class="grid-view ${viewMode === 'grid' ? 'active' : ''}">${this.renderGridLayout(timeSlots)}</div>
-
-					<!-- List View -->
-					<div class="list-view ${viewMode === 'list' ? 'active' : ''}">${this.renderListLayout(timeSlots)}</div>
+					<div class="grid-view ${viewMode === 'grid' ? 'active' : ''}">
+						${this.renderGridView(timeSlots)}
+					</div>
+					<div class="list-view ${viewMode === 'list' ? 'active' : ''}">
+						${this.renderListView(timeSlots)}
+					</div>
 				</div>
 			</div>
-		`;
+		`
 	}
 }
