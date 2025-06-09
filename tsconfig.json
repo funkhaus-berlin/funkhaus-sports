@@ -28,9 +28,12 @@
 				}
 			}
 		],
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    },
 
 		"baseUrl": "."
 	},
-	"include": ["src", "archive/court-assignment.service.ts", "archive/availability-coordinator.ts"],
+	"include": ["src","shared"],
 	"exclude": ["node_modules", "dist", ".netlify", "archive", "public"]
 }

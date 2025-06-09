@@ -26,6 +26,7 @@ import {
   BookingEmailRequest as EmailBookingData
 } from './types/shared-types'
 import { db } from './_shared/firebase-admin'
+import countries from '../../shared/countries';
 const handler: Handler = async (event) => {
 	// Handle preflight request for CORS
 	if (event.httpMethod === 'OPTIONS') {
@@ -46,8 +47,85 @@ const handler: Handler = async (event) => {
 	}
 
 	try {
+		console.log('=== START SEND-BOOKING-EMAIL ===');
+		console.log('Request body:', event.body);
+		
 		// Parse the request body
-		const data: EmailBookingData = JSON.parse(event.body || '{}')
+		const body = JSON.parse(event.body || '{}')
+		console.log('Parsed body:', body);
+		
+		// Support both full BookingEmailRequest and simple bookingId-only request
+		let data: EmailBookingData
+		
+		if (typeof body.bookingId === 'string' && !body.customerEmail) {
+			console.log('Simple mode: fetching booking data from database');
+			// Simple retry request - fetch booking details from database
+			const bookingDoc = await db.collection('bookings').doc(body.bookingId).get()
+			
+			if (!bookingDoc.exists) {
+				return {
+					statusCode: 404,
+					headers: corsHeaders,
+					body: JSON.stringify({ success: false, error: 'Booking not found' }),
+				}
+			}
+			
+			const booking = bookingDoc.data()
+			console.log('Booking data fetched:', booking);
+			
+			// Fetch court and venue data
+			let courtData: any = null
+			let venueData: any = null
+			
+			if (booking?.courtId) {
+				const courtDoc = await db.collection('courts').doc(booking.courtId).get()
+				if (courtDoc.exists) {
+					courtData = courtDoc.data()
+					
+					if (courtData?.venueId) {
+						const venueDoc = await db.collection('venues').doc(courtData.venueId).get()
+						if (venueDoc.exists) {
+							venueData = venueDoc.data()
+						}
+					}
+				}
+			}
+			
+			// Prepare email data
+			data = {
+				bookingId: body.bookingId,
+				customerEmail: booking?.customerEmail || booking?.userEmail,
+				customerName: booking?.userName || 'Customer',
+				customerPhone: booking?.customerPhone || '',
+				bookingDetails: {
+					date: new Date(booking?.date).toLocaleDateString('en-US', {
+						weekday: 'long',
+						year: 'numeric',
+						month: 'long',
+						day: 'numeric',
+					}),
+					startTime: booking?.startTime,
+					endTime: booking?.endTime,
+					userTimezone: booking?.userTimezone || 'Europe/Berlin',
+					court: courtData?.name || 'Court',
+					venue: venueData?.name || 'Funkhaus Sports',
+					price: booking?.price?.toFixed(2) || '0.00',
+				},
+				venueInfo: venueData ? {
+					name: venueData.name,
+					address: venueData.address || '',
+				} : {
+					name: 'Funkhaus Sports',
+					address: 'Nalepastrasse 18, 12459 Berlin, Germany'
+				},
+				invoiceNumber: booking?.invoiceNumber,
+			}
+		} else {
+			console.log('Full mode: using provided data');
+			// Full request with all data provided
+			data = body as EmailBookingData
+		}
+		console.log('Final data:', data);
 
 		// Validate required fields
 		if (!data.bookingId || !data.customerEmail || !data.bookingDetails) {
@@ -59,10 +137,14 @@ const handler: Handler = async (event) => {
 		}
 
 		// Generate PDF
+		console.log('Generating PDF...');
 		const pdfBuffer = await generateBookingPDF(data)
+		console.log('PDF generated, size:', pdfBuffer.length);
 
 		// Send the email
+		console.log('Sending email...');
 		const emailSent = await sendEmail(data, pdfBuffer)
+		console.log('Email sent result:', emailSent);
 
 		if (emailSent) {
 			// Update booking record to indicate email was sent with retry logic
@@ -102,8 +184,13 @@ const handler: Handler = async (event) => {
 				}),
 			}
 		}
-	} catch (error) {
+	} catch (error: any) {
 		console.error('Error sending booking email:', error)
+		console.error('Error details:', {
+			message: error.message,
+			stack: error.stack,
+			name: error.name
+		})
 
 		return {
 			statusCode: 500,
@@ -120,6 +207,7 @@ const handler: Handler = async (event) => {
  * Send email with booking confirmation using Resend
  */
 async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boolean> {
+	console.log('=== sendEmail function start ===');
 	try {
 		// Convert buffer to base64 for attachment
 		const pdfBase64 = pdfBuffer.toString('base64')
@@ -319,6 +407,7 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		timeDisplay = `${startTime || ''} - ${endTime || ''}`;
 		
 		// Generate HTML for email
+		console.log('Generating email HTML...');
 		const html = await emailHtml({
 			booking: data.bookingDetails,
 			customer: {
@@ -341,6 +430,7 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		if (!html) {
 			throw new Error('Failed to generate email HTML content')
 		}
+		console.log('HTML generated successfully');
 		
 		// Format date and time in English style with 24-hour time
 		const bookingDate = new Date(data.bookingDetails.date)
@@ -385,6 +475,7 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		}
 
 		// Send email with Resend using retry logic
+		console.log('Calling Resend API...');
 		const sendEmail$ = from(resend.emails.send({
 			from: `Funkhaus Sports <ticket@funkhaus-berlin.net>`,
 			to: data.customerEmail,
@@ -426,10 +517,17 @@ async function sendEmail(data: EmailBookingData, pdfBuffer: Buffer): Promise<boo
 		)
 
 		await lastValueFrom(sendEmail$)
+		console.log('Email sent successfully via Resend!');
 
 		return true
-	} catch (error) {
+	} catch (error: any) {
 		console.error('Error sending email with Resend:', error)
+		console.error('Resend error details:', {
+			message: error.message,
+			stack: error.stack,
+			response: error.response,
+			code: error.code
+		})
 		
 		// Try to identify specific issues
 		if (error instanceof RangeError && error.message.includes('Invalid time value')) {
@@ -541,7 +639,7 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 		// Generate QR code
 		const qrCodeData = await QRCode.toDataURL(data.bookingId)
 		doc.image(qrCodeData, 450, 50, { width: 80, height: 80 })
-		doc.font('Regular').text('Your Ticket', 450, 130)
+		doc.font('Regular').text('Your Ticket', 458, 130)
 	} catch (err) {
 		console.error('Error generating QR code:', err)
 	}
@@ -580,8 +678,11 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 		}
 
 		if (data.customerAddress.country) {
-			doc.text(data.customerAddress.country, 50, y)
-			y += 15
+			const country = countries.find(c => c.code === data.customerAddress.country)
+			if (country) {
+				doc.text(country.name, 50, y)
+				y += 15
+			}
 		}
 	}
 
@@ -614,12 +715,12 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 
 	// Draw table headers with background
 	doc.fillColor('#f5f5f5').rect(50, y, 500, 25).fill()
-	doc.fillColor('#000000')
+	doc.fillColor('#000')
 
 	// Table headers
 	doc.font('Bold').fontSize(12)
 	doc.text('Description', 60, y + 8)
-	doc.text('Duration', 230, y + 8)
+	doc.text('Date/Time', 220, y + 8)
 	doc.text('Amount', 470, y + 8)
 
 	y += 25
@@ -685,12 +786,20 @@ async function generateBookingPDF(data: any): Promise<Buffer> {
 	    }
 	}
 	
-	const duration = `${startTime} - ${endTime}`;
+	// Format date for invoice
+	const bookingDate = new Date(data.bookingDetails.date)
+	const formattedInvoiceDate = bookingDate.toLocaleDateString('en-GB', {
+		day: '2-digit',
+		month: '2-digit',
+		year: 'numeric'
+	})
+	
+	const dateTime = `${formattedInvoiceDate} (${startTime} - ${endTime})`;
 
 	// Invoice item
 	doc.font('Regular').fontSize(12)
-	doc.text(description, 60, y + 8, { width: 240 })
-	doc.text(duration, 230, y + 8)
+	doc.text(description, 60, y + 8, { width: 150 })
+	doc.text(dateTime, 220, y + 8, { width: 180 })
 	doc.text(`€${netAmount.toFixed(2)}`, 470, y + 8)
 
 	y += 30

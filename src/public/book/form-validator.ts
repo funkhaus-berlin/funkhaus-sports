@@ -127,7 +127,7 @@ export class FormValidator {
 
 			if (!phoneValid) {
 				BookingErrorService.setErrorI18n(
-					ErrorMessageKey.VALIDATION_INVALID_EMAIL, // We should create a specific key for phone validation
+					ErrorMessageKey.VALIDATION_INVALID_PHONE,
 					ErrorCategory.VALIDATION,
 					{},
 					{ recoverySuggestionKey: ErrorMessageKey.RECOVERY_CHECK_INPUTS },

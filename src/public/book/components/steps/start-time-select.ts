@@ -170,6 +170,9 @@ export class TimeSelectionStep extends $LitElement(css`
 	// Refs for DOM elements
 	private scrollContainerRef: Ref<HTMLElement> = createRef<HTMLElement>()
 	private timeSlotRefs = new Map<number, HTMLElement>()
+	
+	// Track previous selected time to avoid unnecessary scrolling
+	private previousSelectedTime: string | undefined = undefined
 
 	// Connection lifecycle methods
 	connectedCallback(): void {
@@ -729,10 +732,35 @@ export class TimeSelectionStep extends $LitElement(css`
 	private scrollToTime(timeString: string): void {
 		if (this.state$.value.viewMode !== 'list') return
 
+		// Check if the time has changed
+		if (this.previousSelectedTime === timeString) {
+			// Time hasn't changed, check if it's already in viewport
+			try {
+				const localTime = toUserTimezone(timeString)
+				const timeValue = localTime.hour() * 60 + localTime.minute()
+				const scrollContainer = this.scrollContainerRef.value
+				const timeEl = this.timeSlotRefs.get(timeValue)
+				
+				if (scrollContainer && timeEl) {
+					const containerRect = scrollContainer.getBoundingClientRect()
+					const elementRect = timeEl.getBoundingClientRect()
+					const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
+					
+					// If already visible, don't scroll
+					if (isFullyVisible) return
+				}
+			} catch (error) {
+				console.error('Error checking time visibility:', error)
+			}
+		}
+
 		try {
 			// Convert to user's local time
 			const localTime = toUserTimezone(timeString)
 			const timeValue = localTime.hour() * 60 + localTime.minute()
+
+			// Update previous selected time
+			this.previousSelectedTime = timeString
 
 			// Scroll to the time value
 			this.scrollToTimeValue(timeValue)

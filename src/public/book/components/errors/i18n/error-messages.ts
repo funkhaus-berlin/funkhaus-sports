@@ -16,6 +16,7 @@ export enum ErrorMessageKey {
 	// Validation errors
 	VALIDATION_REQUIRED_FIELDS = 'validation.required_fields',
 	VALIDATION_INVALID_EMAIL = 'validation.invalid_email',
+	VALIDATION_INVALID_PHONE = 'validation.invalid_phone',
 	VALIDATION_INVALID_DATE = 'validation.invalid_date',
 	VALIDATION_INVALID_TIME = 'validation.invalid_time',
 
@@ -58,6 +59,7 @@ export const defaultErrorMessages: ErrorTranslations = {
 	// Validation errors
 	[ErrorMessageKey.VALIDATION_REQUIRED_FIELDS]: 'Please fill in all required fields.',
 	[ErrorMessageKey.VALIDATION_INVALID_EMAIL]: 'Please enter a valid email address.',
+	[ErrorMessageKey.VALIDATION_INVALID_PHONE]: 'Please enter a valid phone number.',
 	[ErrorMessageKey.VALIDATION_INVALID_DATE]: 'Please select a valid date.',
 	[ErrorMessageKey.VALIDATION_INVALID_TIME]: 'Please select a valid time.',
 
@@ -96,6 +98,7 @@ export const deErrorMessages: ErrorTranslations = {
 	// Validation errors
 	[ErrorMessageKey.VALIDATION_REQUIRED_FIELDS]: 'Bitte füllen Sie alle erforderlichen Felder aus.',
 	[ErrorMessageKey.VALIDATION_INVALID_EMAIL]: 'Bitte geben Sie eine gültige E-Mail-Adresse ein.',
+	[ErrorMessageKey.VALIDATION_INVALID_PHONE]: 'Bitte geben Sie eine gültige Telefonnummer ein.',
 	[ErrorMessageKey.VALIDATION_INVALID_DATE]: 'Bitte wählen Sie ein gültiges Datum.',
 	[ErrorMessageKey.VALIDATION_INVALID_TIME]: 'Bitte wählen Sie eine gültige Zeit.',
 
@@ -135,6 +138,7 @@ export const esErrorMessages: ErrorTranslations = {
 	// Validation errors
 	[ErrorMessageKey.VALIDATION_REQUIRED_FIELDS]: 'Por favor, complete todos los campos obligatorios.',
 	[ErrorMessageKey.VALIDATION_INVALID_EMAIL]: 'Por favor, introduzca una dirección de correo electrónico válida.',
+	[ErrorMessageKey.VALIDATION_INVALID_PHONE]: 'Por favor, introduzca un número de teléfono válido.',
 	[ErrorMessageKey.VALIDATION_INVALID_DATE]: 'Por favor, seleccione una fecha válida.',
 	[ErrorMessageKey.VALIDATION_INVALID_TIME]: 'Por favor, seleccione una hora válida.',
 

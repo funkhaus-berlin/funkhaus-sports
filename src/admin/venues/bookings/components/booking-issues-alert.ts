@@ -4,11 +4,12 @@ import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
-import { from, of } from 'rxjs'
-import { catchError, map, tap } from 'rxjs/operators'
-import { db } from 'src/firebase/firebase'
-import { collection, query, where, getDocs, or } from 'firebase/firestore'
+import { of } from 'rxjs'
+import { catchError, map, tap, takeUntil } from 'rxjs/operators'
+import { BookingsDB } from 'src/db/bookings.collection'
 import { Booking } from 'src/types/booking/booking.types'
+
+const BASE_URL = import.meta.env.DEV ? import.meta.env.VITE_BASE_URL : ''
 
 interface BookingIssue {
 	booking: Booking
@@ -40,41 +41,35 @@ export class BookingIssuesAlert extends $LitElement() {
 	private loadBookingIssues() {
 		this.loading = true
 		
-		// Query for bookings with various post-payment issues
-		const issuesQuery = query(
-			collection(db, 'bookings'),
-			where('status', '==', 'confirmed'),
-			where('paymentStatus', '==', 'paid'),
-			where('startTime', '>', new Date().toISOString()),
-			or(
-				where('emailSent', '==', false),
-				where('emailPermanentlyFailed', '==', true),
-				where('qrCodeFailed', '==', true),
-				where('walletPassFailed', '==', true)
-			)
-		)
-
-		from(getDocs(issuesQuery)).pipe(
-			map(snapshot => {
+		// Subscribe to bookings with various post-payment issues
+		// Get all confirmed, paid bookings with future start times
+		BookingsDB.subscribeToCollection([
+			{ key: 'status', operator: '==', value: 'confirmed' },
+			{ key: 'paymentStatus', operator: '==', value: 'paid' },
+			{ key: 'startTime', operator: '>', value: new Date().toISOString() }
+		]).pipe(
+			takeUntil(this.disconnecting),
+			map(bookingsMap => {
 				const issues: BookingIssue[] = []
-				snapshot.forEach(doc => {
-					const booking = { id: doc.id, ...doc.data() } as Booking
+				bookingsMap.forEach((booking, bookingId) => {
+					// Add ID to booking object
+					const bookingWithId = { ...booking, id: bookingId }
 					
 					// Filter by venue if specified
-					if (this.venueId && booking.venueId !== this.venueId) {
+					if (this.venueId && bookingWithId.venueId !== this.venueId) {
 						return
 					}
 					
 					// Check for various types of issues
-					if (!booking.emailSent || booking.emailPermanentlyFailed) {
+					if (!bookingWithId.emailSent || bookingWithId.emailPermanentlyFailed) {
 						issues.push({
-							booking,
+							booking: bookingWithId,
 							issueType: 'email_failed',
-							issueDescription: booking.emailError || 'Failed to send confirmation email',
-							retryCount: booking.emailRetryCount || 0,
-							lastFailedAt: booking.emailFailedAt || booking.updatedAt || new Date().toISOString(),
-							permanentlyFailed: booking.emailPermanentlyFailed,
-							canRetry: !booking.emailPermanentlyFailed
+							issueDescription: bookingWithId.emailError || 'Failed to send confirmation email',
+							retryCount: bookingWithId.emailRetryCount || 0,
+							lastFailedAt: bookingWithId.emailFailedAt || bookingWithId.updatedAt || new Date().toISOString(),
+							permanentlyFailed: bookingWithId.emailPermanentlyFailed,
+							canRetry: !bookingWithId.emailPermanentlyFailed
 						})
 					}
 					
@@ -128,7 +123,7 @@ export class BookingIssuesAlert extends $LitElement() {
 
 	private async retryEmail(bookingId: string) {
 		try {
-			const response = await fetch('/.netlify/functions/resend-booking-email', {
+			const response = await fetch(`${BASE_URL}/api/send-booking-email`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',

@@ -1,14 +1,14 @@
 import { from, map, switchMap, Observable } from 'rxjs'
 import { BookingEmailRequest, BookingEmailResponse, CheckEmailStatusResponse } from '../../../../types/api/email'
 
-const BASE_URL = (import.meta.env.DEV && import.meta.env.VITE_BASE_URL) ?? ''
+const BASE_URL = import.meta.env.DEV ? import.meta.env.VITE_BASE_URL : ''
 
 /**
  * Service for handling email-related API calls
  */
 export function resendBookingEmail(bookingData: BookingEmailRequest): Observable<BookingEmailResponse> {
   return from(
-    fetch(`${BASE_URL}/api/resend-booking-email`, {
+    fetch(`${BASE_URL}/api/send-booking-email`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

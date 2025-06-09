@@ -601,8 +601,6 @@ export function getAvailableDurations(startTime: string, courtId?: string): Dura
  * Enhanced to handle missing duration by checking single time slot availability
  */
 export function getAllCourtsAvailability(startTime?: string, durationMinutes?: number): CourtAvailabilityStatus[] {
-	const DEBUG = false // Set to true for detailed logging
-
 	// Get availability data from context
 	const availability = availabilityContext.value
 	const booking = bookingContext.value
@@ -610,15 +608,8 @@ export function getAllCourtsAvailability(startTime?: string, durationMinutes?: n
 	// Use parameters or fall back to booking context
 	const effectiveStartTime = startTime || booking.startTime
 
-	if (DEBUG) {
-		console.log(
-			`Checking availability for startTime=${effectiveStartTime}, duration=${durationMinutes || 'not provided'}min`,
-		)
-	}
-
 	// If missing start time, return empty array
 	if (!effectiveStartTime) {
-		if (DEBUG) console.log('Missing start time, returning empty array')
 		return []
 	}
 
@@ -630,11 +621,6 @@ export function getAllCourtsAvailability(startTime?: string, durationMinutes?: n
 	const effectiveDuration = durationMinutes || calculateDuration(booking.startTime, booking.endTime) || 30
 	const endMinutes = startMinutes + effectiveDuration
 
-	if (DEBUG) {
-		console.log(`Time range: ${startMinutes}min to ${endMinutes}min`)
-		console.log(`Active courts: ${availability.activeCourtIds.length}`)
-	}
-
 	// Initialize result array
 	const result: CourtAvailabilityStatus[] = []
 
@@ -642,8 +628,6 @@ export function getAllCourtsAvailability(startTime?: string, durationMinutes?: n
 	availability.activeCourtIds.forEach(courtId => {
 		const court = courtsContext.value.get(courtId)
 		if (!court) return
-
-		if (DEBUG) console.log(`Processing court: ${court.name} (${courtId})`)
 
 		// Arrays to store slot information
 		const availableTimeSlots: string[] = []
@@ -660,7 +644,6 @@ export function getAllCourtsAvailability(startTime?: string, durationMinutes?: n
 			const slot = availability.timeSlots.find(s => s.timeValue === slotTime)
 
 			if (!slot) {
-				if (DEBUG) console.log(`  No data for slot at ${slotTime}min`)
 				// No data for this slot - treat as unavailable
 				unavailableTimeSlots.push(formatMinutesToTime(slotTime))
 				continue
@@ -670,10 +653,8 @@ export function getAllCourtsAvailability(startTime?: string, durationMinutes?: n
 			const isSlotAvailable = slot.courtAvailability[courtId] === true
 
 			if (isSlotAvailable) {
-				if (DEBUG) console.log(`  Slot ${formatMinutesToTime(slotTime)} is AVAILABLE`)
 				availableTimeSlots.push(slot.time)
 			} else {
-				if (DEBUG) console.log(`  Slot ${formatMinutesToTime(slotTime)} is UNAVAILABLE`)
 				unavailableTimeSlots.push(slot.time)
 			}
 		}
@@ -689,14 +670,6 @@ export function getAllCourtsAvailability(startTime?: string, durationMinutes?: n
 			fullyAvailable: allSlotsAvailable,
 			availableTimeSlots,
 			unavailableTimeSlots,
-		}
-
-		if (DEBUG) {
-			console.log(`Court status: ${court.name}`)
-			console.log(`  Available: ${status.available}`)
-			console.log(`  Fully Available: ${status.fullyAvailable}`)
-			console.log(`  Available slots: ${status.availableTimeSlots.join(', ')}`)
-			console.log(`  Unavailable slots: ${status.unavailableTimeSlots.join(', ')}`)
 		}
 
 		result.push(status)

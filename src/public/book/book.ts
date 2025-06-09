@@ -2,7 +2,7 @@
 import { fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, PropertyValues } from 'lit'
-import { customElement, query, state } from 'lit/decorators.js'
+import { customElement, query } from 'lit/decorators.js'
 import { debounceTime, distinctUntilChanged, filter, map, shareReplay, take, takeUntil, tap } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
@@ -28,10 +28,6 @@ import { PaymentStatusHandler } from './payment-status-handler'
  */
 @customElement('court-booking-system')
 export class CourtBookingSystem extends $LitElement() {
-	// State
-	@state() selectedCourt?: Court = undefined
-	@state() loadingCourts: boolean = false
-
 	// Contexts
 	@select(courtsContext) availableCourts!: Map<string, Court>
 	@select(venuesContext) venues!: Map<string, Venue>
@@ -61,8 +57,6 @@ export class CourtBookingSystem extends $LitElement() {
 
 		// We'll rely on firstUpdated to handle the venueId check
 		// This allows time for both the URL parameters and context to be properly loaded
-
-		// Initialize Stripe
 	}
 
 	disconnectedCallback() {
@@ -353,7 +347,7 @@ export class CourtBookingSystem extends $LitElement() {
 									<!-- All UI content directly in render function - no separate functions -->
 									${currentStep === 5 ? html`
 										<!-- Payment step -->
-										<funkhaus-checkout-form .booking=${this.booking} .selectedCourt=${this.selectedCourt}>
+										<funkhaus-checkout-form .booking=${this.booking}>
 											<slot slot="stripe-element" name="stripe-element"></slot>
 										</funkhaus-checkout-form>
 									` : !this.availability?.bookingFlowType ? html`

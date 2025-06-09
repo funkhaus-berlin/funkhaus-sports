@@ -40,9 +40,9 @@ html(lang="en")
       /* Base styles */
       body {
         font-family: "Montserrat", Helvetica, Arial, sans-serif;
-        line-height: 1.5;
-        color: #333333;
-        background-color: #f8f8f8;
+        line-height: 1.4;
+        color: #1a1a1a;
+        background-color: #f5f5f5;
         margin: 0;
         padding: 0;
       }
@@ -61,125 +61,133 @@ html(lang="en")
         background-color: #ffffff;
         border-radius: 8px;
         overflow: hidden;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
       }
       
-      /* Header */
+      /* Header - softer dark theme */
       .header {
-        background-color: #000;
+        background-color: #0f0f0f;
         text-align: center;
-        padding: 30px 0;
+        padding: 20px 0;
       }
       
-      /* Content area */
+      /* Content area - reduced padding */
       .content {
-        padding: 30px;
+        padding: 20px;
       }
       
       /* Booking details banner */
       .date-banner {
-        border: 1px solid #e1e1e1;
-        border-radius: 8px;
+        border: 1px solid #e8e8e8;
+        border-radius: 6px;
         overflow: hidden;
-        margin-bottom: 25px;
+        margin-bottom: 20px;
       }
       
       .date-box {
-        width: 100px;
-        background-color: #000;
+        width: 85px;
+        background-color: #0f0f0f;
         color: #fff;
         text-align: center;
-        padding: 15px 10px;
+        padding: 12px 8px;
       }
       
       .date-day {
-        font-size: 38px;
+        font-size: 32px;
         font-weight: 700;
         line-height: 1;
       }
       
       .date-details {
-        padding: 20px;
+        padding: 12px 15px;
       }
       
       /* Calendar buttons */
       .calendar-section {
-        background-color: #f8f9fa;
-        border-radius: 8px;
-        padding: 25px 0;
+        background-color: #f9f9f9;
+        border-radius: 6px;
+        padding: 18px 0;
         text-align: center;
-        margin: 25px 0;
+        margin: 20px 0;
       }
       
       /* Footer */
       .footer {
         text-align: center;
         font-size: 12px;
-        color: #777;
-        padding: 20px 0;
-        border-top: 1px solid #eeeeee;
+        color: #666;
+        padding: 15px 0;
+        border-top: 1px solid #f0f0f0;
       }
       
       .footer a {
-        color: #333;
+        color: #0f0f0f;
         text-decoration: none;
         font-weight: 500;
       }
       
-      /* Mobile adjustments */
+      /* Mobile adjustments - minimal padding reduction */
       @media screen and (max-width: 480px) {
         .content {
-          padding: 20px 15px;
+          padding: 15px;
         }
         
         .date-box {
-          width: 80px;
-          padding: 12px 8px;
+          width: 75px;
+          padding: 10px 6px;
         }
         
         .date-day {
-          font-size: 32px;
+          font-size: 28px;
         }
         
         .date-details {
-          padding: 15px;
+          padding: 10px 12px;
+        }
+        
+        h1 {
+          font-size: 20px !important;
+        }
+        
+        .time-display {
+          font-size: 17px !important;
         }
       }
 
-  body(style="margin:0;padding:20px;background-color:#f8f8f8;")
-    table.main-table(cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;margin:0 auto;border-radius:8px;overflow:hidden;box-shadow:0 3px 10px rgba(0,0,0,0.1);")
-      //- Header
+  body(style="margin:0;padding:15px;background-color:#f5f5f5;")
+    table.main-table(cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;margin:0 auto;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);")
+      //- Header with softer black
       tr
-        td.header(align="center" bgcolor="#000000" style="padding:25px 0;")
-          img.logo(src="https://funkhaus-sports.netlify.app/logo-light.png" alt="Funkhaus" style="height:80px;width:auto;")
+        td.header(align="center" bgcolor="#0f0f0f" style="padding:20px 0;")
+          img.logo(src="https://funkhaus-sports.netlify.app/logo-light.png" alt="Funkhaus" style="height:60px;width:auto;")
       
-      //- Content
+      //- Content with reduced padding
       tr
-        td.content(style="padding:30px;background-color:#ffffff;")
+        td.content(style="padding:20px;background-color:#ffffff;")
           //- Greeting
-          p(style="font-size:15px;margin:0 0 10px;color:#666;") Hello #{customer.name},
-          h1(style="font-size:24px;font-weight:600;margin:0 0 25px;color:#000;") Your booking is confirmed
+          p(style="font-size:14px;margin:0 0 8px;color:#666;") Hello #{customer.name},
+          h1(style="font-size:22px;font-weight:600;margin:0 0 20px;color:#0f0f0f;") Your booking is confirmed
           
-          //- Date banner
-          table.date-banner(cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:25px;border:1px solid #e1e1e1;border-radius:8px;overflow:hidden;")
+          //- Date banner with compact design
+          table.date-banner(cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden;")
             tr
-              //- Date cell
-              td.date-box(width="90" bgcolor="#000000" style="width:90px;background-color:#000;color:#fff;text-align:center;padding:15px 10px;")
+              //- Date cell - more compact
+              td.date-box(width="85" bgcolor="#0f0f0f" style="width:85px;background-color:#0f0f0f;color:#fff;text-align:center;padding:12px 8px;")
                 if calendarEvent
-                  div(style="font-size:14px;font-weight:600;margin-bottom:5px;") #{calendarEvent.dayName}
-                  div(style="font-size:36px;font-weight:700;line-height:1;") #{calendarEvent.day}
-                  div(style="text-transform:uppercase;font-size:14px;margin-top:4px;font-weight:500;") #{calendarEvent.monthShort}
-                  div(style="font-size:12px;opacity:0.7;margin-top:2px;") #{calendarEvent.year}
+                  div(style="font-size:12px;font-weight:600;margin-bottom:3px;opacity:0.9;") #{calendarEvent.dayName}
+                  div(style="font-size:32px;font-weight:700;line-height:1;") #{calendarEvent.day}
+                  div(style="text-transform:uppercase;font-size:12px;margin-top:3px;font-weight:500;") #{calendarEvent.monthShort}
+                  div(style="font-size:11px;opacity:0.7;margin-top:2px;") #{calendarEvent.year}
               
-              //- Details cell
-              td(style="padding:15px;vertical-align:middle;")
-                //- Time display (formatted in backend)
-                p(style="font-size:20px;font-weight:600;margin:0 0 12px;color:#000;") #{timeDisplay}
-                p(style="font-size:15px;color:#333;margin:0 0 5px;font-weight:500;")
+              //- Details cell - tighter spacing
+              td(style="padding:12px 15px;vertical-align:middle;")
+                //- Time display
+                p.time-display(style="font-size:18px;font-weight:600;margin:0 0 8px;color:#0f0f0f;") #{timeDisplay}
+                p(style="font-size:14px;color:#333;margin:0 0 4px;font-weight:500;")
                   strong #{booking.court}
-                  |  at #{booking.venue}
+                  span(style="color:#666;")  at #{booking.venue}
                 
-                //- Venue address (complete and clickable)
+                //- Venue address
                 if venue
                   - var addressText = ''
                   - var mapUrl = ''
@@ -193,19 +201,19 @@ html(lang="en")
                     - if (venue.address.country) parts.push(venue.address.country)
                     - addressText = parts.filter(Boolean).join(', ')
                   
-                  //- Create map URL for Google Maps
+                  //- Create map URL
                   - mapUrl = 'https://maps.google.com/?q=' + encodeURIComponent(addressText)
                   
                   if addressText
-                    a(href=mapUrl target="_blank" style="font-size:14px;color:#0066cc;margin:0 0 12px;display:block;text-decoration:underline;")
+                    a(href=mapUrl target="_blank" style="font-size:13px;color:#0066cc;margin:0 0 8px;display:block;text-decoration:underline;")
                       | #{addressText}
                 
-                //- Price
-                p(style="margin:10px 0 0;")
-                  span(style="font-size:13px;color:#666;text-transform:uppercase;display:block;margin-bottom:3px;") Amount Paid
-                  span(style="font-size:20px;color:#000;font-weight:600;") €#{booking.price}
+                //- Price - inline to save space
+                p(style="margin:8px 0 0;")
+                  span(style="font-size:11px;color:#666;text-transform:uppercase;margin-right:6px;") Amount Paid:
+                  span(style="font-size:18px;color:#0f0f0f;font-weight:600;") €#{booking.price}
           
-          //- Calendar section
+          //- Calendar section - compact
           - var googleLink = '#'
           - var outlookLink = '#'
           - try {
@@ -221,46 +229,30 @@ html(lang="en")
           -   console.error('Error generating calendar links:', e)
           - }
           
-          //- Create directions URL if address is available
-          - var directionsUrl = ''
-          if venue
-            - var venueAddress = ''
-            if typeof venue.address === 'string'
-              - venueAddress = venue.address
-            else if venue.address && venue.address.street
-              - var parts = []
-              - if (venue.address.street) parts.push(venue.address.street)
-              - if (venue.address.postalCode || venue.address.city) parts.push((venue.address.postalCode || '') + ' ' + (venue.address.city || ''))
-              - if (venue.address.country) parts.push(venue.address.country)
-              - venueAddress = parts.filter(Boolean).join(', ')
-            
-            if venueAddress
-              - directionsUrl = 'https://maps.google.com/?q=' + encodeURIComponent(venueAddress)
-          
-          //- Calendar section
-          table(cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:25px 0;background-color:#f8f9fa;border-radius:8px;")
+          //- Calendar section - reduced padding
+          table(cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;background-color:#f9f9f9;border-radius:6px;")
             tr
-              td(align="center" style="padding:20px;")
-                p(style="font-size:14px;font-weight:600;color:#333;margin:0 0 15px;") Save to your calendar
+              td(align="center" style="padding:18px;")
+                p(style="font-size:13px;font-weight:600;color:#333;margin:0 0 12px;") Save to your calendar
                 
                 table(cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;")
                   tr
                     //- Google Calendar button
-                    td(align="center" style="padding:0 8px;")
-                      a(href=googleLink target="_blank" style="display:inline-block;text-decoration:none;background-color:#ffffff;border-radius:6px;border:1px solid #e5e5e5;padding:10px 15px;")
-                        img(src="https://funkhaus-sports.netlify.app/icons/google-calendar-2020.png" alt="Google" width="20" height="20" style="vertical-align:middle;margin-right:8px;")
-                        span(style="font-size:13px;font-weight:500;color:#333;vertical-align:middle;") Google
+                    td(align="center" style="padding:0 6px;")
+                      a(href=googleLink target="_blank" style="display:inline-block;text-decoration:none;background-color:#ffffff;border-radius:5px;border:1px solid #e0e0e0;padding:8px 12px;")
+                        img(src="https://funkhaus-sports.netlify.app/icons/google-calendar-2020.png" alt="Google" width="18" height="18" style="vertical-align:middle;margin-right:6px;")
+                        span(style="font-size:12px;font-weight:500;color:#333;vertical-align:middle;") Google
                     
                     //- Outlook button
-                    td(align="center" style="padding:0 8px;")
-                      a(href=outlookLink target="_blank" style="display:inline-block;text-decoration:none;background-color:#ffffff;border-radius:6px;border:1px solid #e5e5e5;padding:10px 15px;")
-                        img(src="https://funkhaus-sports.netlify.app/icons/outlook-calendar-new.png" alt="Outlook" width="20" height="20" style="vertical-align:middle;margin-right:8px;")
-                        span(style="font-size:13px;font-weight:500;color:#333;vertical-align:middle;") Outlook
+                    td(align="center" style="padding:0 6px;")
+                      a(href=outlookLink target="_blank" style="display:inline-block;text-decoration:none;background-color:#ffffff;border-radius:5px;border:1px solid #e0e0e0;padding:8px 12px;")
+                        img(src="https://funkhaus-sports.netlify.app/icons/outlook-calendar-new.png" alt="Outlook" width="18" height="18" style="vertical-align:middle;margin-right:6px;")
+                        span(style="font-size:12px;font-weight:500;color:#333;vertical-align:middle;") Outlook
                     
           
       
-      //- Footer
+      //- Footer - compact
       tr
-        td(align="center" style="padding:20px 0;text-align:center;font-size:12px;color:#777;border-top:1px solid #eee;background-color:#ffffff;")
+        td(align="center" style="padding:15px 0;text-align:center;font-size:12px;color:#666;border-top:1px solid #f0f0f0;background-color:#ffffff;")
           | Questions? Contact 
-          a(href="mailto:booking@funkhaus-sports.com" style="color:#333;text-decoration:none;font-weight:500;") booking@funkhaus-sports.com
+          a(href="mailto:ticket@funkhaus-sports.com" style="color:#0f0f0f;text-decoration:none;font-weight:500;") ticket@funkhaus-sports.com

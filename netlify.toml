@@ -50,8 +50,8 @@
 
 
 [[redirects]]
-  from = "/api/resend-booking-email"
-  to = "/.netlify/functions/resend-booking-email"
+  from = "/api/send-booking-email"
+  to = "/.netlify/functions/send-booking-email"
   status = 200
   force = true
 

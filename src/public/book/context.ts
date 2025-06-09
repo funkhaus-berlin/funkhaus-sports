@@ -59,41 +59,6 @@ export class BookingProgress {
 
 	currentError: BookingError | null = null
 	fieldErrors: Record<string, string> = {}
-
-	setError(error: BookingError): void {
-		this.currentError = error
-
-		// Update field errors if provided
-		if (error.fieldErrors) {
-			error.fieldErrors.forEach(fieldError => {
-				this.fieldErrors[fieldError.field] = fieldError.message
-			})
-		}
-	}
-
-	clearError(): void {
-		this.currentError = null
-	}
-
-	setFieldError(field: string, message: string): void {
-		this.fieldErrors[field] = message
-	}
-
-	clearFieldError(field: string): void {
-		delete this.fieldErrors[field]
-	}
-
-	clearAllFieldErrors(): void {
-		this.fieldErrors = {}
-	}
-
-	hasFieldError(field: string): boolean {
-		return !!this.fieldErrors[field]
-	}
-
-	getFieldError(field: string): string | undefined {
-		return this.fieldErrors[field]
-	}
 }
 
 export const BookingProgressContext = createContext<BookingProgress>(

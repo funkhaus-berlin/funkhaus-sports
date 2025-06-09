@@ -16,6 +16,7 @@ import type { Stripe } from 'stripe'
 import { corsHeaders } from './_shared/cors'
 import { db } from './_shared/firebase-admin'
 import stripe from './_shared/stripe'
+import { handler as emailHandler } from './send-booking-email'
 
 
 
@@ -484,16 +485,22 @@ function sendBookingConfirmationEmail(bookingData: any, bookingId: string, payme
 			}, null, 2))
 			
 			return defer(async () => {
-				const { handler: emailHandler } = require('./send-booking-email')
 				const mockEvent = {
 					body: JSON.stringify(emailData),
 					httpMethod: 'POST',
 					headers: {},
-				}
-				return emailHandler(mockEvent, {})
+					rawUrl: '',
+					rawQuery: '',
+					path: '',
+					multiValueHeaders: {},
+					isBase64Encoded: false,
+					queryStringParameters: null,
+					multiValueQueryStringParameters: null
+				} as any
+				return emailHandler(mockEvent, {} as any)
 			}).pipe(
 				retryWithBackoff(2, 2000),
-				map(response => JSON.parse(response.body)),
+				map(response => response && 'body' in response && response.body ? JSON.parse(response.body) : { success: false, error: 'Invalid response' }),
 				tap(result => {
 					if (result.success) {
 						console.log(`Sent confirmation email for booking ${bookingId}`)
@@ -606,15 +613,21 @@ function createEmergencyBooking(paymentIntent: Stripe.PaymentIntent, bookingId: 
 			}
 
 			return defer(async () => {
-				const { handler: emailHandler } = require('./send-booking-email')
 				const mockEvent = {
 					body: JSON.stringify(emailData),
 					httpMethod: 'POST',
 					headers: {},
-				}
-				return emailHandler(mockEvent, {})
+					rawUrl: '',
+					rawQuery: '',
+					path: '',
+					multiValueHeaders: {},
+					isBase64Encoded: false,
+					queryStringParameters: null,
+					multiValueQueryStringParameters: null
+				} as any
+				return emailHandler(mockEvent, {} as any)
 			}).pipe(
-				map(response => JSON.parse(response.body)),
+				map(response => response && 'body' in response && response.body ? JSON.parse(response.body) : { success: false, error: 'Invalid response' }),
 				tap(result => {
 					if (result.success) {
 						console.log(`Sent confirmation email for emergency booking ${bookingId}`)

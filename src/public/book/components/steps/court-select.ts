@@ -12,9 +12,7 @@ import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import {
   availabilityContext,
-  BookingFlowType,
   CourtAvailabilityStatus,
-  CourtPreferences,
   getAllCourtsAvailability,
 } from 'src/availability-context'
 import { Court, CourtTypeEnum, SportTypeEnum } from 'src/types/booking/court.types'
@@ -23,6 +21,7 @@ import { Booking, bookingContext, BookingProgress, BookingProgressContext, Booki
 import './court-availability-dialog'
 import './court-map-view'
 import './sport-court-card'
+import { BookingFlowType, CourtPreferences } from 'src/types'
 
 /**
  * View modes for court selection
@@ -704,14 +703,6 @@ export class CourtSelectStep extends $LitElement(css`
 			startTime: undefined,
 		}
 		bookingContext.set(bookingUpdate)
-	}
-
-	/**
-	 * Return courts in original order, no sorting by availability
-	 */
-	private sortCourtsByAvailability(courts: Court[]): Court[] {
-		// Return courts in original order
-		return [...courts];
 	}
 
 	//#endregion
