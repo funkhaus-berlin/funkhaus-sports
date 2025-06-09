@@ -3,8 +3,8 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
-import { css, html, nothing } from 'lit'
-import { customElement, property, state } from 'lit/decorators.js'
+import { css, html, nothing, PropertyValues } from 'lit'
+import { customElement, property, state, query } from 'lit/decorators.js'
 import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { takeUntil } from 'rxjs'
@@ -24,10 +24,20 @@ import { TimeSlot } from '../../types'
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
-// Animation for selected time slot
-const PULSE_ANIMATION = {
-	keyframes: [{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }],
-	options: { duration: 200, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' },
+// Animation presets
+const ANIMATIONS = {
+	fadeIn: {
+		keyframes: [{ opacity: 0 }, { opacity: 1 }],
+		options: { duration: 200, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' as FillMode },
+	},
+	fadeOut: {
+		keyframes: [{ opacity: 1 }, { opacity: 0 }],
+		options: { duration: 200, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' as FillMode },
+	},
+	pulse: {
+		keyframes: [{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }],
+		options: { duration: 200, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' },
+	},
 }
 
 // Utility functions
@@ -62,21 +72,10 @@ export class TimeSelectionStep extends $LitElement(css`
 	.view-container {
 		position: relative;
 		min-height: 45px;
+		transition: height 200ms cubic-bezier(0.4, 0, 0.2, 1);
 	}
 	.grid-view, .list-view {
-		opacity: 0;
-		visibility: hidden;
-		transition: opacity 100ms ease, visibility 0ms 100ms;
-		position: absolute;
 		width: 100%;
-		top: 0;
-		left: 0;
-	}
-	.grid-view.active, .list-view.active {
-		opacity: 1;
-		visibility: visible;
-		transition: opacity 100ms ease, visibility 0ms;
-		position: relative;
 	}
 `) {
 	@property({ type: Boolean }) active = true
@@ -93,11 +92,21 @@ export class TimeSelectionStep extends $LitElement(css`
 	@state() viewMode: 'grid' | 'list' = 'grid'
 	@state() isExpanded = false
 	@state() isDesktopOrTablet = window.innerWidth >= 768
+	@state() private contentHeight = 0
 
 	// DOM refs
 	private scrollContainerRef: Ref<HTMLElement> = createRef<HTMLElement>()
 	private timeSlotRefs = new Map<number, HTMLElement>()
 	private resizeObserver: ResizeObserver | null = null
+
+	// Animation state
+	private animationInProgress = false
+	private gridHeight = 0
+	private listHeight = 0
+
+	// Query selectors for views
+	@query('.grid-view') gridView!: HTMLElement
+	@query('.list-view') listView!: HTMLElement
 
 	connectedCallback(): void {
 		super.connectedCallback()
@@ -108,6 +117,21 @@ export class TimeSelectionStep extends $LitElement(css`
 		super.disconnectedCallback()
 		this.resizeObserver?.disconnect()
 		this.timeSlotRefs.clear()
+	}
+
+	protected updated(changedProperties: PropertyValues): void {
+		super.updated(changedProperties)
+
+		// Handle view mode transitions
+		if (changedProperties.has('viewMode') && this.gridView && this.listView && !this.animationInProgress) {
+			this.measureHeights()
+			this.animateViewTransition()
+		}
+
+		// Initial height measurement
+		if (changedProperties.has('timeSlots') && this.timeSlots.length > 0) {
+			setTimeout(() => this.measureHeights(), 50)
+		}
 	}
 
 	private setupObservers(): void {
@@ -135,11 +159,14 @@ export class TimeSelectionStep extends $LitElement(css`
 			}
 			// Update view mode based on selection
 			const hasSelection = !!booking?.startTime
-			if (hasSelection || !this.isDesktopOrTablet) {
-				this.viewMode = 'list'
-				this.scrollToSelectedTime()
-			} else if (this.isDesktopOrTablet) {
-				this.viewMode = 'grid'
+			const newViewMode = (hasSelection || !this.isDesktopOrTablet) ? 'list' : 'grid'
+			
+			if (this.viewMode !== newViewMode) {
+				this.viewMode = newViewMode
+				// Scroll after transition completes
+				if (hasSelection && newViewMode === 'list') {
+					setTimeout(() => this.scrollToSelectedTime(), 250)
+				}
 			}
 		})
 
@@ -248,9 +275,81 @@ export class TimeSelectionStep extends $LitElement(css`
 		return timeValue === slot.value
 	}
 
+	private measureHeights(): void {
+		if (!this.gridView || !this.listView) return
+
+		// Save original display settings
+		const gridDisplay = this.gridView.style.display
+		const listDisplay = this.listView.style.display
+
+		// Measure grid view height
+		this.gridView.style.display = 'block'
+		this.listView.style.display = 'none'
+		this.gridHeight = this.gridView.offsetHeight
+
+		// Measure list view height
+		this.gridView.style.display = 'none'
+		this.listView.style.display = 'block'
+		this.listHeight = this.listView.offsetHeight
+
+		// Restore original display
+		this.gridView.style.display = gridDisplay
+		this.listView.style.display = listDisplay
+
+		// Set content height
+		this.contentHeight = this.viewMode === 'grid' ? this.gridHeight : this.listHeight
+	}
+
+	private animateViewTransition(): void {
+		if (!this.gridView || !this.listView || this.animationInProgress) return
+
+		this.animationInProgress = true
+		this.contentHeight = this.viewMode === 'grid' ? this.gridHeight : this.listHeight
+
+		// Position both views absolutely during transition
+		this.gridView.style.position = 'absolute'
+		this.listView.style.position = 'absolute'
+		this.gridView.style.width = '100%'
+		this.listView.style.width = '100%'
+		this.gridView.style.top = '0'
+		this.listView.style.top = '0'
+
+		if (this.viewMode === 'grid') {
+			// Fade in grid view
+			this.gridView.style.display = 'block'
+			const gridAnim = this.gridView.animate(ANIMATIONS.fadeIn.keyframes, ANIMATIONS.fadeIn.options)
+
+			// Fade out list view
+			this.listView.style.display = 'block'
+			this.listView.animate(ANIMATIONS.fadeOut.keyframes, ANIMATIONS.fadeOut.options)
+
+			gridAnim.onfinish = () => {
+				this.gridView.style.position = 'static'
+				this.gridView.style.opacity = '1'
+				this.listView.style.display = 'none'
+				this.animationInProgress = false
+			}
+		} else {
+			// Fade in list view
+			this.listView.style.display = 'block'
+			const listAnim = this.listView.animate(ANIMATIONS.fadeIn.keyframes, ANIMATIONS.fadeIn.options)
+
+			// Fade out grid view
+			this.gridView.style.display = 'block'
+			this.gridView.animate(ANIMATIONS.fadeOut.keyframes, ANIMATIONS.fadeOut.options)
+
+			listAnim.onfinish = () => {
+				this.listView.style.position = 'static'
+				this.listView.style.opacity = '1'
+				this.gridView.style.display = 'none'
+				this.animationInProgress = false
+			}
+		}
+	}
+
 	private animateSlot(slotValue: number): void {
 		const element = this.timeSlotRefs.get(slotValue)
-		element?.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
+		element?.animate(ANIMATIONS.pulse.keyframes, ANIMATIONS.pulse.options)
 	}
 
 	private scrollToSelectedTime(): void {
@@ -358,11 +457,11 @@ export class TimeSelectionStep extends $LitElement(css`
 					</div>
 				` : nothing}
 
-				<div class="view-container">
-					<div class="grid-view ${viewMode === 'grid' ? 'active' : ''}">
+				<div class="view-container" style="height: ${this.contentHeight}px;">
+					<div class="grid-view" style="display: ${viewMode === 'grid' ? 'block' : 'none'}">
 						${this.renderGridView(timeSlots)}
 					</div>
-					<div class="list-view ${viewMode === 'list' ? 'active' : ''}">
+					<div class="list-view" style="display: ${viewMode === 'list' ? 'block' : 'none'}">
 						${this.renderListView(timeSlots)}
 					</div>
 				</div>
