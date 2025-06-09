@@ -91,7 +91,7 @@ export class BookingSummary extends $LitElement() {
 								<!-- Date & Time -->
 								<div class="flex items-center gap-[2px] md:gap-[4px]">
 									<schmancy-icon size="14px" class="text-primary-default md:text-[16px]">calendar_today</schmancy-icon>
-									<schmancy-typography type="body" token="sm" class="font-medium text-sm md:text-md">
+									<schmancy-typography type="body" token="sm" class="font-medium text-sm md:text-lg">
 										${this.formatDate(this.booking.date)}
 									</schmancy-typography>
 								</div>
@@ -100,7 +100,7 @@ export class BookingSummary extends $LitElement() {
 								${court ? html`
 									<div class="flex items-center gap-[2px] md:gap-[4px]">
 										<schmancy-icon size="14px" class="text-primary-default md:text-[16px]">sports_tennis</schmancy-icon>
-										<schmancy-typography type="body" token="sm" class="text-sm md:text-md">
+										<schmancy-typography type="body" token="sm" class="text-sm md:text-lg">
 											${court.name}
 										</schmancy-typography>
 									</div>
@@ -108,8 +108,8 @@ export class BookingSummary extends $LitElement() {
 								
 								<!-- Time Range -->
 								<div class="flex items-center gap-[2px] md:gap-[4px]">
-									<schmancy-icon size="14px" class="text-primary-default md:text-[16px]">schedule</schmancy-icon>
-									<schmancy-typography type="body" token="sm" class="text-sm md:text-md">
+									<schmancy-icon size="14px" class="text-primary-default size-sm md:size-lg">schedule</schmancy-icon>
+									<schmancy-typography type="body" token="sm" class="text-sm md:text-lg">
 										${this.formatTime(this.booking.startTime)}-${this.formatTime(this.booking.endTime)}
 									</schmancy-typography>
 								</div>
