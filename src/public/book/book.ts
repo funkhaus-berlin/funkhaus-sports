@@ -336,7 +336,7 @@ export class CourtBookingSystem extends $LitElement() {
 					<schmancy-grid
 						.rcols=${{
 							sm: '1fr',
-              lg:"2fr 1fr"
+              lg:"3fr 2fr"
 						}}
 				
 					>

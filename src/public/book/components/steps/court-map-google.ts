@@ -183,6 +183,19 @@ class CourtDisplayOverlay {
 	private applyLabelStyles(marker: HTMLElement, config: any): void {
 		const courtNumber = this.extractCourtNumber()
 		marker.textContent = courtNumber
+		
+		// Enhanced styles for selected courts
+		const isSelectedStyles = this.isSelected ? `
+			background-color: #000000;
+			color: #ffffff;
+			padding: 4px 8px;
+			border-radius: 4px;
+			box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+		` : `
+			color: #000000;
+			text-shadow: 0 0 3px rgba(255,255,255,0.8), 0 0 6px rgba(255,255,255,0.6);
+		`
+		
 		marker.style.cssText = `
 			position: absolute;
 			top: 50%;
@@ -190,12 +203,11 @@ class CourtDisplayOverlay {
 			transform: translate(-50%, -50%);
 			font-weight: bold;
 			font-size: ${config.fontSize}px;
-			color: #000000;
-			text-shadow: 0 0 3px rgba(255,255,255,0.8), 0 0 6px rgba(255,255,255,0.6);
+			${isSelectedStyles}
 			pointer-events: none;
 			user-select: none;
-			z-index: 10;
-			opacity: ${config.opacity};
+			z-index: ${this.isSelected ? 100 : 10};
+			opacity: ${this.isSelected ? '1' : config.opacity};
 		`
 	}
 	
@@ -249,10 +261,8 @@ class CourtDisplayOverlay {
 		mouseEnter$.pipe(
 			filter(() => this.div !== null && this.availability !== 'none'),
 			tap(() => {
-				if (this.div && !this.isSelected) { // Don't scale on hover if already selected
-					const baseTransform = this.rotation !== 0 ? `rotate(${this.rotation}deg)` : ''
-					this.div.style.transform = `${baseTransform} scale(1.05)`
-					this.div.style.transition = 'transform 0.2s ease'
+				if (this.div) {
+					// No scaling on hover
 					infoPanel.style.opacity = '1'
 					infoPanel.style.transform = 'translateX(-50%) translateY(0)'
 				}
@@ -265,8 +275,7 @@ class CourtDisplayOverlay {
 			filter(() => this.div !== null),
 			tap(() => {
 				if (this.div) {
-					const baseTransform = this.rotation !== 0 ? `rotate(${this.rotation}deg)` : ''
-					this.div.style.transform = baseTransform
+					// No transform changes needed
 					infoPanel.style.opacity = '0'
 					infoPanel.style.transform = 'translateX(-50%) translateY(10px)'
 				}
@@ -282,8 +291,8 @@ class CourtDisplayOverlay {
 			backgroundColor: 'rgba(255, 255, 255, 0.9)',  // White background like editor
 			textColor: '#1f2937',  // Dark text
 			border: 'none',
-			// Scale up selected courts
-			scale: this.isSelected ? '1.1' : '1'
+			// No scaling for selected courts
+			scale: '1'
 		}
 		
 		return styles
@@ -369,15 +378,6 @@ class CourtDisplayOverlay {
 		return paths[String(courtType)] || paths.pickleball
 	}
 	
-	private getMarkerColor(): string {
-		const colorMap: Record<CourtAvailabilityType, string> = {
-			'full': this.isSelected ? '#7c3aed' : '#22c55e',
-			'partial': this.isSelected ? '#7c3aed' : '#f97316',
-			'none': '#ef4444'
-		}
-		return colorMap[this.availability] || '#ef4444'
-	}
-	
 	private getAvailabilityText(): string {
 		const textMap: Record<CourtAvailabilityType, string> = {
 			'full': 'Available',
@@ -429,18 +429,7 @@ class CourtDisplayOverlay {
 	private getMarkerConfig(): { isPin: boolean; size: number; fontSize: number; opacity: string; pinColor?: string } {
 		const markerSize = this.getMarkerSize()
 		
-		// Show pin marker for selected courts, labels for others
-		if (this.isSelected) {
-			return {
-				isPin: true,
-				size: 48, // Larger pin for selected court
-				fontSize: markerSize.fontSize,
-				opacity: '1', // Full opacity for selected
-				pinColor: '#000000' // Black color for selected court
-			}
-		}
-		
-		// Use simple labels for non-selected courts
+		// Always use labels, never pins
 		return {
 			isPin: false,
 			size: 0, // Not used for labels

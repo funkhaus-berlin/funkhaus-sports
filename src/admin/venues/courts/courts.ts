@@ -25,13 +25,6 @@ export class VenueCourts extends $LitElement() {
 	@state() loading: boolean = true
 	@state() error: string | null = null
 
-	// Status configuration
-	private statusConfig = {
-		active: { label: 'Active', icon: 'visibility', next: 'maintenance', nextLabel: 'Under Maintenance' },
-		maintenance: { label: 'Maintenance', icon: 'construction', next: 'inactive', nextLabel: 'Inactive' },
-		inactive: { label: 'Inactive', icon: 'visibility_off', next: 'active', nextLabel: 'Active' },
-	}
-
 	// Table columns definition
 	private columns: TableColumn[] = [
 		{ name: 'Name', key: 'name', align: 'left', sortable: true },

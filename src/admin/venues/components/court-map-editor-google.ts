@@ -294,7 +294,7 @@ class CourtOverlay {
             
             // Convert start center to pixels
             const startCenterPixel = projection.fromLatLngToDivPixel(
-              new window.google!.maps.LatLng(dragState.startLat, dragState.startLng)
+              new (window as any).google.maps.LatLng(dragState.startLat, dragState.startLng)
             )
             
             // Calculate new center
@@ -311,12 +311,12 @@ class CourtOverlay {
             const latDiff = (ne.lat() - sw.lat()) / 2
             const lngDiff = (ne.lng() - sw.lng()) / 2
             
-            this.bounds = new window.google!.maps.LatLngBounds(
-              new window.google!.maps.LatLng(
+            this.bounds = new (window as any).google.maps.LatLngBounds(
+              new (window as any).google.maps.LatLng(
                 newCenter.lat() - latDiff,
                 newCenter.lng() - lngDiff
               ),
-              new window.google!.maps.LatLng(
+              new (window as any).google.maps.LatLng(
                 newCenter.lat() + latDiff,
                 newCenter.lng() + lngDiff
               )
@@ -426,16 +426,16 @@ class CourtOverlay {
   setBounds(bounds: any) {
     this.bounds = bounds
     // Trigger Google Maps to redraw the overlay
-    if (this.overlay && window.google?.maps?.event) {
-      window.google.maps.event.trigger(this.overlay, 'draw')
+    if (this.overlay && (window as any).google?.maps?.event) {
+      (window as any).google.maps.event.trigger(this.overlay, 'draw')
     }
   }
 
   setRotation(rotation: number) {
     this.rotation = rotation
     // Trigger Google Maps to redraw the overlay
-    if (this.overlay && window.google?.maps?.event) {
-      window.google.maps.event.trigger(this.overlay, 'draw')
+    if (this.overlay && (window as any).google?.maps?.event) {
+      (window as any).google.maps.event.trigger(this.overlay, 'draw')
     }
   }
 
@@ -756,13 +756,13 @@ export class CourtMapEditorGoogle extends $LitElement(css`
     ).subscribe()
 
     // Map event listeners
-    const zoomListener = window.google!.maps.event.addListener(map, 'zoom_changed', () => {
+    const zoomListener = (window as any).google.maps.event.addListener(map, 'zoom_changed', () => {
       zoomEvent$.next()
     })
-    const boundsListener = window.google!.maps.event.addListener(map, 'bounds_changed', () => {
+    const boundsListener = (window as any).google.maps.event.addListener(map, 'bounds_changed', () => {
       boundsEvent$.next()
     })
-    const resizeListener = window.google!.maps.event.addListener(map, 'resize', () => {
+    const resizeListener = (window as any).google.maps.event.addListener(map, 'resize', () => {
       resizeEvent$.next()
     })
     
@@ -851,12 +851,12 @@ export class CourtMapEditorGoogle extends $LitElement(css`
     this.existingCourts.forEach((court, index) => {
       try {
         if (court.mapCoordinates?.southWest && court.mapCoordinates?.northEast) {
-          const bounds = new window.google!.maps.LatLngBounds(
-            new window.google!.maps.LatLng(
+          const bounds = new (window as any).google.maps.LatLngBounds(
+            new (window as any).google.maps.LatLng(
               court.mapCoordinates.southWest.lat,
               court.mapCoordinates.southWest.lng
             ),
-            new window.google!.maps.LatLng(
+            new (window as any).google.maps.LatLng(
               court.mapCoordinates.northEast.lat,
               court.mapCoordinates.northEast.lng
             )
@@ -1032,7 +1032,7 @@ export class CourtMapEditorGoogle extends $LitElement(css`
     // Clean up map event listeners
     this.mapEventListeners.forEach(listener => {
       try {
-        window.google?.maps?.event?.removeListener(listener)
+        (window as any).google?.maps?.event?.removeListener(listener)
       } catch (error) {
         console.warn('Error removing listener:', error)
       }

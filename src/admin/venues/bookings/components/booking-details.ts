@@ -643,10 +643,10 @@ export class BookingDetails extends $LitElement() {
                 variant="outlined" 
                 @click=${this.handleRefund}
                 .disabled=${this.processingRefund}
-                class="text-error-default border-error-default hover:bg-error-default hover:text-white"
+                class="text-error-default"
               >
                 <schmancy-icon slot="prefix">payments</schmancy-icon>
-                ${this.processingRefund ? 'Processing...' : 'Process Refund'}
+                ${this.processingRefund ? 'Processing...' : 'Refund'}
               </schmancy-button>
             ` : ''}
             
