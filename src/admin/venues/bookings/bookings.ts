@@ -254,7 +254,9 @@ export class VenuBookingsList extends $LitElement() {
 
 		return html`
 			<schmancy-grid rows="auto auto 1fr" ${fullHeight()}>
-				<!-- Simplified Booking Filter -->
+ 
+
+        				<!-- Simplified Booking Filter -->
 				<bookings-filter></bookings-filter>
 				
 				<!-- Booking Issues Alert -->

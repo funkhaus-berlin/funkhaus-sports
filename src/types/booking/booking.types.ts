@@ -66,6 +66,14 @@ export interface Booking {
 	notes?: string // Added for optional booking notes
 	recurringBookingId?: string // For recurring bookings
 	cancellationReason?: string // Track why bookings are cancelled
+	// Refund related fields
+	refundId?: string // Stripe refund ID
+	refundStatus?: 'refunded' | 'partially_refunded' | 'pending' | 'failed'
+	refundAmount?: number // Amount refunded
+	refundedAt?: string // When refund was processed
+	refundReason?: string // Reason for refund
+	refundedBy?: string // Admin user ID who initiated refund
+	refundedByEmail?: string // Admin email for tracking
 }
 
 

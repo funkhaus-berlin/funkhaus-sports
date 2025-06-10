@@ -5,14 +5,14 @@ import { html, TemplateResult } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { takeUntil } from 'rxjs'
-import { Court, CourtTypeEnum, Pricing, SportTypeEnum } from 'src/types/booking/court.types'
 import { CourtsDB } from 'src/db/courts.collection'
-import { Venue } from 'src/types/booking/venue.types'
 import { confirm } from 'src/schmancy'
+import { Court, CourtTypeEnum, Pricing, SportTypeEnum } from 'src/types/booking/court.types'
+import { Venue } from 'src/types/booking/venue.types'
 import { v4 as uuidv4 } from 'uuid'
-import '../components/court-map-editor'
+import '../components/court-map-editor-google'
 import { venueContext, venuesContext } from '../venue-context'
-import { selectedCourtContext } from './context'
+import { courtsContext, selectedCourtContext } from './context'
 
 // Format enum values to display labels
 export const formatEnum = (value: string): string =>
@@ -36,11 +36,38 @@ export class CourtForm extends $LitElement() {
 	@select(venuesContext) venues!: Map<string, any>
 	@select(venueContext) venueData!: Partial<Venue>
 	@select(selectedCourtContext) selectedCourtData!: Partial<Court>
+	@select(courtsContext) allCourts!: Map<string, Court>
 
 	@state() busy = false
 	@state() isCloning = false
 	@property({ type: String }) venueId: string = ''
 	@property({ type: Object }) courtData?: Court
+
+	// Get existing courts for this venue (excluding current court being edited)
+	get existingCourts(): Court[] {
+		if (!this.allCourts || !this.venueId) return []
+		
+		const courts = Array.from(this.allCourts.values())
+			.filter(court => court.venueId === this.venueId)
+			.filter(court => court.mapCoordinates) // Only courts with map coordinates
+		
+		// If editing an existing court, exclude it from the list
+		if (this.editingCourt?.id) {
+			return courts.filter(court => court.id !== this.editingCourt!.id)
+		}
+		
+		return courts
+	}
+
+	// Trigger updates when courts context changes
+	updated(changedProperties: Map<string | number | symbol, unknown>) {
+		super.updated(changedProperties)
+		
+		// Trigger re-render when allCourts changes
+		if (changedProperties.has('allCourts')) {
+			this.requestUpdate()
+		}
+	}
 
 	constructor( private editingCourt: Court) {
 		super()
@@ -328,7 +355,8 @@ export class CourtForm extends $LitElement() {
 									</div>
 									
 									<schmancy-typography type="label" class="block mb-3 text-surface-on-variant">
-										Draw a rectangle on the map to represent the court's location and size
+										Click "Place Court" to add a court icon on the map, then drag to position
+										${this.existingCourts.length > 0 ? html`<br><span class="text-sm text-surface-on-variant">Existing courts are shown in gray for reference</span>` : ''}
 									</schmancy-typography>
 									
 									${!this.venueData?.latitude && !this.venueData?.longitude && 
@@ -341,14 +369,92 @@ export class CourtForm extends $LitElement() {
 											</span>
 										</div>` : ''}
 									
-									<div class="h-[400px] border border-surface-outline rounded-lg overflow-hidden">
-										<court-map-editor
-											.mapCoordinates=${this.court.mapCoordinates}
-											.venueLatitude=${this.venueData?.latitude || this.venueData?.address?.coordinates?.lat}
-											.venueLongitude=${this.venueData?.longitude || this.venueData?.address?.coordinates?.lng}
-											@bounds-change=${this.handleBoundsChange}
-											@no-venue-coordinates=${() => $notify.info('Venue coordinates are not set. Using default map location.')}
-										></court-map-editor>
+									<div class="space-y-4">
+										<div class="h-[400px] border border-surface-outline rounded-lg overflow-hidden">
+											<court-map-editor-google
+												.mapCoordinates=${this.court.mapCoordinates}
+												.venueLatitude=${this.venueData?.latitude || this.venueData?.address?.coordinates?.lat}
+												.venueLongitude=${this.venueData?.longitude || this.venueData?.address?.coordinates?.lng}
+												.courtType=${Array.isArray(this.court.sportTypes) && this.court.sportTypes.length > 0 ? this.court.sportTypes[0] : 'pickleball'}
+												.courtName=${this.court.name || 'Court'}
+												.existingCourts=${this.existingCourts}
+												@bounds-change=${this.handleBoundsChange}
+											></court-map-editor-google>
+										</div>
+										
+										${this.court.mapCoordinates ? html`
+											<div class="external-controls-container flex gap-5 justify-center flex-wrap">
+												<div class="control-section bg-white p-4 rounded-lg shadow-sm border">
+													<div class="text-xs font-semibold uppercase text-gray-600 mb-2 text-center">Position</div>
+													<div class="flex flex-col items-center gap-1">
+														<button 
+															type="button"
+															@click=${() => this.moveCourtOnMap('up')} 
+															class="w-9 h-9 bg-blue-500 text-white rounded border-0 cursor-pointer flex items-center justify-center text-lg hover:bg-blue-600 transition-all"
+															title="Move Up"
+														>↑</button>
+														<div class="flex gap-1">
+															<button 
+																type="button"
+																@click=${() => this.moveCourtOnMap('left')} 
+																class="w-9 h-9 bg-blue-500 text-white rounded border-0 cursor-pointer flex items-center justify-center text-lg hover:bg-blue-600 transition-all"
+																title="Move Left"
+															>←</button>
+															<button 
+																type="button"
+																@click=${() => this.moveCourtOnMap('down')} 
+																class="w-9 h-9 bg-blue-500 text-white rounded border-0 cursor-pointer flex items-center justify-center text-lg hover:bg-blue-600 transition-all"
+																title="Move Down"
+															>↓</button>
+															<button 
+																type="button"
+																@click=${() => this.moveCourtOnMap('right')} 
+																class="w-9 h-9 bg-blue-500 text-white rounded border-0 cursor-pointer flex items-center justify-center text-lg hover:bg-blue-600 transition-all"
+																title="Move Right"
+															>→</button>
+														</div>
+													</div>
+												</div>
+												
+												<div class="control-section bg-white p-4 rounded-lg shadow-sm border">
+													<div class="text-xs font-semibold uppercase text-gray-600 mb-2 text-center">Rotation</div>
+													<div class="flex items-center gap-2">
+														<button 
+															type="button"
+															@click=${() => this.rotateCourtOnMap(-15)} 
+															class="w-8 h-8 bg-blue-500 text-white rounded-full border-0 cursor-pointer flex items-center justify-center text-lg hover:bg-blue-600 transition-all"
+															title="Rotate counter-clockwise"
+														>↺</button>
+														<div class="text-sm font-semibold min-w-10 text-center">${this.court.mapCoordinates?.rotation || 0}°</div>
+														<button 
+															type="button"
+															@click=${() => this.rotateCourtOnMap(15)} 
+															class="w-8 h-8 bg-blue-500 text-white rounded-full border-0 cursor-pointer flex items-center justify-center text-lg hover:bg-blue-600 transition-all"
+															title="Rotate clockwise"
+														>↻</button>
+													</div>
+												</div>
+												
+												<div class="control-section bg-white p-4 rounded-lg shadow-sm border">
+													<div class="text-xs font-semibold uppercase text-gray-600 mb-2 text-center">Size</div>
+													<div class="flex items-center gap-2">
+														<button 
+															type="button"
+															@click=${() => this.changeCourtSizeOnMap(-0.005)} 
+															class="w-10 h-10 bg-green-500 text-white rounded border-0 cursor-pointer flex items-center justify-center text-xl font-bold hover:bg-green-600 transition-all"
+															title="Decrease Size"
+														>−</button>
+														<div class="text-sm font-semibold min-w-12 text-center">100%</div>
+														<button 
+															type="button"
+															@click=${() => this.changeCourtSizeOnMap(0.005)} 
+															class="w-10 h-10 bg-green-500 text-white rounded border-0 cursor-pointer flex items-center justify-center text-xl font-bold hover:bg-green-600 transition-all"
+															title="Increase Size"
+														>+</button>
+													</div>
+												</div>
+											</div>
+										` : ''}
 									</div>
 								</div>
 							</div>
@@ -466,7 +572,7 @@ export class CourtForm extends $LitElement() {
 			
 			// Check if rotation data is provided (in bounds[2])
 			if (bounds[2] && bounds[2][0] && bounds[2][0][0] === 'rotation' && bounds[2][1] && bounds[2][1][0] !== undefined) {
-				// mapCoordinates.rotation = bounds[2][1][0];
+				(mapCoordinates as any).rotation = bounds[2][1][0];
 			}
 		} else {
 			mapCoordinates = undefined
@@ -575,6 +681,28 @@ export class CourtForm extends $LitElement() {
 				this.busy = false
 			},
 		})
+	}
+
+	// Court map control methods
+	moveCourtOnMap(direction: 'up' | 'down' | 'left' | 'right') {
+		const mapEditor = this.shadowRoot?.querySelector('court-map-editor-google') as any
+		if (mapEditor) {
+			mapEditor.moveCourt(direction)
+		}
+	}
+	
+	rotateCourtOnMap(delta: number) {
+		const mapEditor = this.shadowRoot?.querySelector('court-map-editor-google') as any
+		if (mapEditor) {
+			mapEditor.rotateCourt(delta)
+		}
+	}
+
+	changeCourtSizeOnMap(delta: number) {
+		const mapEditor = this.shadowRoot?.querySelector('court-map-editor-google') as any
+		if (mapEditor) {
+			mapEditor.changeCourtSize(delta)
+		}
 	}
 
 	// Render court preview for a specific sport type

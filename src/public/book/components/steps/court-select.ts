@@ -19,9 +19,10 @@ import { Court, CourtTypeEnum, SportTypeEnum } from 'src/types/booking/court.typ
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import './court-availability-dialog'
-import './court-map-view'
+import './court-map-google'
 import './sport-court-card'
 import { BookingFlowType, CourtPreferences } from 'src/types'
+import { venueContext } from 'src/admin/venues/venue-context'
 
 /**
  * View modes for court selection
@@ -195,6 +196,9 @@ export class CourtSelectStep extends $LitElement(css`
 		date: string
 		bookingFlowType: BookingFlowType
 	}
+	
+	@select(venueContext)
+	venue!: any
 
 	// Component state
 	@state() selectedVenueCourts: Court[] = []
@@ -558,12 +562,19 @@ export class CourtSelectStep extends $LitElement(css`
 
 			this.courtAvailability = availabilityMap
 
-			// Load venue courts - maintain original order from database
-			const venueCourts = Array.from(this.allCourts.values()).filter(
-				court => court.status === 'active' && court.venueId === this.booking.venueId,
-			)
+			// Load venue courts and sort by name with natural number ordering
+			const venueCourts = Array.from(this.allCourts.values())
+				.filter(court => court.status === 'active' && court.venueId === this.booking.venueId)
+				.sort((a, b) => {
+					// Natural sort that handles numbers properly
+					// This will sort "Court 1, Court 2, Court 10" correctly
+					return a.name.localeCompare(b.name, undefined, { 
+						numeric: true, 
+						sensitivity: 'base' 
+					})
+				})
 
-			// Apply filters without sorting
+			// Apply filters while maintaining name sort
 			const filteredCourts = this.applyCourtPreferenceFilters(venueCourts)
 
 			// Update state - no sorting
@@ -955,18 +966,18 @@ export class CourtSelectStep extends $LitElement(css`
 	}
 
 	/**
-	 * Apply court preference filters to the list of courts without sorting
+	 * Apply court preference filters to the list of courts
 	 * Filters courts based on court type, player count, and other preferences
-	 * but maintains original court order
+	 * Maintains the name-based sort order
 	 */
 	private applyCourtPreferenceFilters(courts: Court[]): Court[] {
-		// If no filters are active, return courts in original order
+		// If no filters are active, return courts in their current order (sorted by name)
 		if (!this.getActiveFilterCount()) {
 			return [...courts]
 		}
 
 		// For active filters, prioritize matching courts first
-		// but maintain original order within groups
+		// but maintain name sort within each group
 		const matchingCourts: Court[] = []
 		const nonMatchingCourts: Court[] = []
 		
@@ -979,6 +990,7 @@ export class CourtSelectStep extends $LitElement(css`
 		})
 		
 		// Return matching courts first, then non-matching courts
+		// Both groups maintain their name-based sorting from the input
 		return [...matchingCourts, ...nonMatchingCourts]
 	}
 
@@ -1442,14 +1454,32 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Render the courts in map view
 	 */
 	private renderMapView() {
-		return html`
-			<court-map-view
-				.courts=${this.selectedVenueCourts}
-				.selectedCourtId=${this.booking?.courtId}
-				.courtAvailability=${this.courtAvailability}
-				@court-select=${(e: CustomEvent) => this.handleCourtSelect(e.detail.court)}
-			></court-map-view>
-		`
+		// Check if any courts have map coordinates
+		const courtsWithCoordinates = this.selectedVenueCourts.filter(c => c.mapCoordinates)
+		
+		if (courtsWithCoordinates.length > 0) {
+			// Use Google Maps when courts have real coordinates
+			return html`
+				<court-map-google
+					.courts=${this.selectedVenueCourts}
+					.selectedCourtId=${this.booking?.courtId}
+					.courtAvailability=${this.courtAvailability}
+					.venueAddress=${this.venue?.address}
+					.venueName=${this.venue?.name || 'Venue'}
+					@court-select=${(e: CustomEvent) => this.handleCourtSelect(e.detail.court)}
+				></court-map-google>
+			`
+		} else {
+			// Fallback to simulated map view
+			return html`
+				<court-map-view
+					.courts=${this.selectedVenueCourts}
+					.selectedCourtId=${this.booking?.courtId}
+					.courtAvailability=${this.courtAvailability}
+					@court-select=${(e: CustomEvent) => this.handleCourtSelect(e.detail.court)}
+				></court-map-view>
+			`
+		}
 	}
 
 	/**

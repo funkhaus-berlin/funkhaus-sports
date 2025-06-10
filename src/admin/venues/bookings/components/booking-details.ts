@@ -1,5 +1,5 @@
 // src/admin/venues/bookings/components/booking-details.ts
-import { $dialog, $notify, select } from '@mhmo91/schmancy'
+import { $dialog, $notify, select, SchmancyInputChangeEventV2 } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { html } from 'lit'
@@ -10,6 +10,7 @@ import { resendBookingEmail } from 'src/public/book/components/services'
 import { Booking, BookingStatus } from 'src/types/booking/booking.types'
 import { courtsContext } from '../../courts/context'
 import { venueContext } from '../../venue-context'
+import { getAuth } from 'firebase/auth'
 
 /**
  * Component that displays booking information in a user-friendly way
@@ -22,6 +23,7 @@ export class BookingDetails extends $LitElement() {
   @select(venueContext) venue!: Partial<Venue>
   @state() courtName: string = ''
   @state() resendingEmail: boolean = false // Tracks email resend operation state
+  @state() processingRefund: boolean = false // Tracks refund operation state
 
   constructor(booking?: Booking) {
     super()
@@ -98,12 +100,6 @@ export class BookingDetails extends $LitElement() {
   }
 
 
-  /**
-   * Check if actions should be displayed
-   */
-  private showActions(): boolean {
-    return true // Always show actions since we're only showing email resend now
-  }
 
   /**
    * Format price to display with currency
@@ -228,6 +224,224 @@ export class BookingDetails extends $LitElement() {
     }
   }
 
+  /**
+   * Handle refund processing
+   * Prompts user for refund amount and reason
+   */
+  private async handleRefund() {
+    if (this.processingRefund) return
+
+    // Check if booking can be refunded
+    if (this.booking.status !== 'confirmed') {
+      $notify.error('Only confirmed bookings can be refunded')
+      return
+    }
+
+    if (this.booking.refundStatus === 'refunded' || this.booking.refundStatus === 'partially_refunded') {
+      $notify.error('This booking has already been refunded')
+      return
+    }
+
+    // Prepare dialog content with refund amount input
+    const fullAmount = this.booking.price || 0
+    let refundAmount = fullAmount
+    let refundReason = ''
+
+    const result = await $dialog.confirm({
+      title: 'Process Refund',
+      content: html`
+        <div class="space-y-4">
+          <schmancy-typography type="body" token="md">
+            Process a refund for booking #${this.booking.id}
+          </schmancy-typography>
+          
+          <div class="bg-surface-container p-3 rounded-md">
+            <schmancy-typography type="label" token="sm" class="text-surface-onVariant">
+              Original Payment
+            </schmancy-typography>
+            <schmancy-typography type="title" token="md">
+              €${fullAmount.toFixed(2)}
+            </schmancy-typography>
+          </div>
+
+          <schmancy-input
+            id="refund-amount"
+            label="Refund Amount (€)"
+            type="number"
+            value=${fullAmount}
+            min="0.01"
+            max=${fullAmount}
+            step="0.01"
+            required
+            helper="Enter the amount to refund (max: €${fullAmount.toFixed(2)})"
+            @change=${(e: SchmancyInputChangeEventV2) => {
+              const value = parseFloat(e.detail.value || '0')
+              refundAmount = Math.min(Math.max(0.01, value), fullAmount)
+            }}
+          ></schmancy-input>
+
+          <schmancy-input
+            id="refund-reason"
+            label="Reason for Refund"
+            type="text"
+            placeholder="e.g., Customer request, venue closed, etc."
+            @change=${(e: SchmancyInputChangeEventV2) => {
+              refundReason = e.detail.value || ''
+            }}
+          ></schmancy-input>
+
+          <schmancy-typography type="body" token="sm" class="text-warning-default">
+            ⚠️ This action cannot be undone. The refund will be processed immediately.
+          </schmancy-typography>
+        </div>
+      `,
+      confirmText: 'Process Refund',
+      cancelText: 'Cancel'
+    })
+
+    if (result) {
+      // Get final values from inputs
+      const amountInput = document.getElementById('refund-amount') as HTMLInputElement
+      const reasonInput = document.getElementById('refund-reason') as HTMLInputElement
+      
+      refundAmount = parseFloat(amountInput?.value || fullAmount.toString())
+      refundReason = reasonInput?.value || 'Admin initiated refund'
+
+      if (refundAmount <= 0 || refundAmount > fullAmount) {
+        $notify.error('Invalid refund amount')
+        return
+      }
+
+      this.processingRefund = true
+
+      try {
+        // Get auth token
+        const auth = getAuth()
+        const user = auth.currentUser
+        if (!user) {
+          throw new Error('User not authenticated')
+        }
+        
+        const token = await user.getIdToken()
+        
+        // Call refund API
+        const response = await fetch(`${import.meta.env.DEV ? import.meta.env.VITE_BASE_URL : ''}/api/process-refund`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            bookingId: this.booking.id,
+            amount: refundAmount,
+            reason: refundReason
+          })
+        })
+
+        const result = await response.json()
+
+        if (!response.ok) {
+          // Handle specific error codes from the refund API
+          const errorCode = result.errorCode || 'unknown_error'
+          const canRetry = result.canRetry || false
+          
+          let userMessage = result.error || 'Failed to process refund'
+          
+          // Provide user-friendly messages based on error code
+          switch (errorCode) {
+            case 'charge_already_refunded':
+              userMessage = 'This booking has already been refunded'
+              break
+            case 'insufficient_funds':
+              userMessage = 'Unable to process refund due to insufficient funds. Please contact your payment processor.'
+              break
+            case 'charge_disputed':
+              userMessage = 'Cannot refund a payment that is currently disputed. Please resolve the dispute first.'
+              break
+            case 'amount_too_large':
+              userMessage = 'The refund amount exceeds the original charge amount'
+              break
+            case 'payment_not_succeeded':
+              userMessage = 'Cannot refund a payment that hasn\'t been successfully charged'
+              break
+            case 'no_charge_found':
+              userMessage = 'No charge found for this payment'
+              break
+            case 'api_error':
+            case 'connection_error':
+              userMessage = 'Service temporarily unavailable. Please try again in a few moments.'
+              break
+            case 'rate_limit':
+              userMessage = 'Too many requests. Please wait a moment and try again.'
+              break
+            case 'authentication_error':
+              userMessage = 'Authentication failed. Please contact support.'
+              break
+          }
+          
+          // Show error with retry option if applicable
+          if (canRetry) {
+            const retry = await $dialog.confirm({
+              title: 'Refund Failed',
+              content: html`
+                <div class="space-y-4">
+                  <schmancy-typography type="body" token="md">
+                    ${userMessage}
+                  </schmancy-typography>
+                  <schmancy-typography type="body" token="sm" class="text-surface-onVariant">
+                    This is a temporary issue. Would you like to try again?
+                  </schmancy-typography>
+                </div>
+              `,
+              confirmText: 'Retry',
+              cancelText: 'Cancel'
+            })
+            
+            if (retry) {
+              // Retry the refund
+              this.processingRefund = false
+              setTimeout(() => this.handleRefund(), 500)
+              return
+            }
+          } else {
+            $notify.error(userMessage)
+          }
+          
+          throw new Error(userMessage)
+        }
+
+        if (result.success) {
+          $notify.success(`Refund of €${refundAmount.toFixed(2)} processed successfully`)
+          
+          // Update local booking object to reflect refund
+          this.booking = {
+            ...this.booking,
+            refundStatus: refundAmount < fullAmount ? 'partially_refunded' : 'refunded',
+            refundAmount: refundAmount,
+            refundedAt: new Date().toISOString(),
+            refundReason: refundReason,
+            status: 'cancelled'
+          }
+          
+          // Trigger update
+          this.requestUpdate()
+        } else {
+          throw new Error(result.error || 'Refund failed')
+        }
+      } catch (error: any) {
+        console.error('Refund processing error:', error)
+        // Only show error if we haven't already shown a more specific message
+        if (!error.message.includes('Service temporarily unavailable') && 
+            !error.message.includes('Too many requests') &&
+            !error.message.includes('Authentication failed')) {
+          $notify.error(`Failed to process refund: ${error.message || 'Unknown error'}`)
+        }
+      } finally {
+        this.processingRefund = false
+      }
+    }
+  }
+
   render() {
     if (!this.booking) {
       return html`
@@ -332,6 +546,42 @@ export class BookingDetails extends $LitElement() {
                   <schmancy-typography type="body" token="md">${this.booking.invoiceNumber}</schmancy-typography>
                 </div>
               ` : ''}
+              
+              <!-- Refund information if applicable -->
+              ${this.booking.refundStatus ? html`
+                <div>
+                  <schmancy-typography type="label" token="sm">Refund Status</schmancy-typography>
+                  <div class="flex items-center gap-2">
+                    <schmancy-icon size="16px" class="${this.booking.refundStatus === 'refunded' ? 'text-green-600' : 'text-orange-600'}">
+                      ${this.booking.refundStatus === 'refunded' ? 'check_circle' : 'info'}
+                    </schmancy-icon>
+                    <schmancy-typography type="body" token="md" class="${this.booking.refundStatus === 'refunded' ? 'text-green-600' : 'text-orange-600'}">
+                      ${this.booking.refundStatus === 'refunded' ? 'Fully Refunded' : 'Partially Refunded'}
+                    </schmancy-typography>
+                  </div>
+                </div>
+              ` : ''}
+              
+              ${this.booking.refundAmount ? html`
+                <div>
+                  <schmancy-typography type="label" token="sm">Refund Amount</schmancy-typography>
+                  <schmancy-typography type="body" token="md">€${this.booking.refundAmount.toFixed(2)}</schmancy-typography>
+                </div>
+              ` : ''}
+              
+              ${this.booking.refundedAt ? html`
+                <div>
+                  <schmancy-typography type="label" token="sm">Refunded On</schmancy-typography>
+                  <schmancy-typography type="body" token="md">${this.formatTimestamp(this.booking.refundedAt)}</schmancy-typography>
+                </div>
+              ` : ''}
+              
+              ${this.booking.refundReason ? html`
+                <div class="col-span-2">
+                  <schmancy-typography type="label" token="sm">Refund Reason</schmancy-typography>
+                  <schmancy-typography type="body" token="md">${this.booking.refundReason}</schmancy-typography>
+                </div>
+              ` : ''}
             </div>
           </div>
 
@@ -386,6 +636,19 @@ export class BookingDetails extends $LitElement() {
               <schmancy-icon slot="prefix">email</schmancy-icon>
               ${this.resendingEmail ? 'Sending...' : 'Resend Email'}
             </schmancy-button>
+            
+            <!-- Refund button - only show for confirmed bookings that haven't been fully refunded -->
+            ${this.booking.status === 'confirmed' && this.booking.refundStatus !== 'refunded' ? html`
+              <schmancy-button 
+                variant="outlined" 
+                @click=${this.handleRefund}
+                .disabled=${this.processingRefund}
+                class="text-error-default border-error-default hover:bg-error-default hover:text-white"
+              >
+                <schmancy-icon slot="prefix">payments</schmancy-icon>
+                ${this.processingRefund ? 'Processing...' : 'Process Refund'}
+              </schmancy-button>
+            ` : ''}
             
             <schmancy-menu>
               <schmancy-button 

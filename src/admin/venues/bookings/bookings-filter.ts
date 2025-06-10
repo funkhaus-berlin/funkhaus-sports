@@ -157,6 +157,12 @@ export class BookingsFilter extends $LitElement(css`
     const currentSearch = this.filter?.search || ''
     
     return html`
+           <!-- Simplified Booking Filter -->
+				<schmancy-nav-drawer-appbar>
+
+
+        </schmancy-nav-drawer-appbar>
+				
       <schmancy-surface type="container" rounded="all" class="p-3">
         <div class="filter-container">
           <!-- Status filters -->
@@ -185,7 +191,7 @@ export class BookingsFilter extends $LitElement(css`
               .value=${currentSearch}
               @change=${this.handleSearchInput}
               placeholder="Search bookings..."
-              size="md"
+              size="sm"
             >
               <schmancy-icon slot="prefix">search</schmancy-icon>
               ${currentSearch ? html`

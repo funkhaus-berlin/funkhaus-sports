@@ -18,6 +18,7 @@ import '../shared/components/venue-map'
 import stripePromise, { $stripe, $stripeElements, appearance } from '../stripe'
 import './components'
 import { BookingErrorService } from './components/errors/booking-error-service'
+import './components/steps/court-map-google'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep, ErrorCategory } from './context'
 import { PaymentStatusHandler } from './payment-status-handler'
 
@@ -417,15 +418,42 @@ export class CourtBookingSystem extends $LitElement() {
                
                 
                 <!-- Map Component -->
-                <venue-map
-                  .address=${venueContext.value?.address}
-                  .venueName=${venueContext.value?.name || 'Venue'}
-                  zoom=${16}
-                  showMarker
-                  interactive
-
-                  class="h-64 w-full rounded-lg overflow-hidden"
-                ></venue-map>
+                ${(() => {
+                  // Check if any courts have map coordinates
+                  const courtsArray = Array.from(this.availableCourts?.values() || [])
+                  const venueCourts = courtsArray.filter(court => court.venueId === this.booking?.venueId)
+                  const courtsWithCoordinates = venueCourts.filter(c => c.mapCoordinates)
+                  
+                  if (courtsWithCoordinates.length > 0) {
+                    // Show courts on map
+                    return html`
+                      <court-map-google
+                        .courts=${venueCourts}
+                        .selectedCourtId=${this.booking?.courtId || ''}
+                        .courtAvailability=${new Map()} 
+                        .venueAddress=${venueContext.value?.address}
+                        .venueName=${venueContext.value?.name || 'Venue'}
+                        zoom=${18}
+                        class="h-64 w-full rounded-lg overflow-hidden"
+                        @court-select=${(e: CustomEvent) => {
+                          console.log('Court selected from map:', e.detail.court)
+                        }}
+                      ></court-map-google>
+                    `
+                  } else {
+                    // Show regular venue map
+                    return html`
+                      <venue-map
+                        .address=${venueContext.value?.address}
+                        .venueName=${venueContext.value?.name || 'Venue'}
+                        zoom=${16}
+                        showMarker
+                        interactive
+                        class="h-64 w-full rounded-lg overflow-hidden"
+                      ></venue-map>
+                    `
+                  }
+                })()}
                 
                 <!-- Address and Directions -->
                 ${venueContext.value?.address ? html`

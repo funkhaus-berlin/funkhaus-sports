@@ -189,7 +189,13 @@ export class VenueCourts extends $LitElement() {
 												<schmancy-table
 													.cols=${this.columns.map(_ => '1fr').join(' ')}
 													.columns=${this.columns}
-													.data=${Array.from(this.courts.values())}
+													.data=${Array.from(this.courts.values()).sort((a, b) => {
+											// Natural sort that handles numbers properly
+											return a.name.localeCompare(b.name, undefined, { 
+												numeric: true, 
+												sensitivity: 'base' 
+											})
+										})}
 													sortable
 												></schmancy-table>
 											`,

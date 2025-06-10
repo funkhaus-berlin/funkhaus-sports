@@ -94,7 +94,7 @@ async function generateInvoiceNumber(db: FirebaseFirestore.Firestore, bookingId:
  * Enhanced webhook handler with improved reliability and error recovery
  */
 
-const handler: Handler = async (event, context) => {
+const handler: Handler = async (event) => {
 	console.log('=== Stripe Webhook Handler Called ===')
 	console.log('Method:', event.httpMethod)
 	console.log('Path:', event.path)
@@ -184,7 +184,7 @@ const handler: Handler = async (event, context) => {
 
 		// Handle different event types
 		console.log(`Processing event type: ${stripeEvent.type}`)
-		let result
+		let result: any
 		switch (stripeEvent.type) {
 			case 'payment_intent.succeeded':
 				console.log('Calling handlePaymentIntentSucceededRx...')
@@ -202,6 +202,9 @@ const handler: Handler = async (event, context) => {
 				break
 			case 'payment_intent.canceled':
 				result = await handlePaymentIntentCanceled(stripeEvent.data.object as Stripe.PaymentIntent)
+				break
+			case 'charge.refunded':
+				result = await handleChargeRefunded(stripeEvent.data.object as Stripe.Charge)
 				break
 			default:
 				result = `Unhandled event type: ${stripeEvent.type}`
@@ -871,6 +874,89 @@ async function logPaymentTransaction(
 		console.log(`Logged payment transaction: ${paymentIntent.id}`)
 	} catch (error) {
 		console.error('Error logging payment transaction:', error)
+	}
+}
+
+/**
+ * Handle charge refunded events
+ */
+async function handleChargeRefunded(charge: Stripe.Charge) {
+	console.log('Charge refunded:', charge.id)
+	
+	// Get payment intent ID from charge
+	const paymentIntentId = typeof charge.payment_intent === 'string' 
+		? charge.payment_intent 
+		: charge.payment_intent?.id
+		
+	if (!paymentIntentId) {
+		console.error('No payment intent ID found in charge')
+		return { success: false, error: 'No payment intent ID' }
+	}
+	
+	try {
+		// Find booking by payment intent ID
+		const bookingsSnapshot = await db.collection('bookings')
+			.where('paymentIntentId', '==', paymentIntentId)
+			.limit(1)
+			.get()
+			
+		if (bookingsSnapshot.empty) {
+			console.error(`No booking found for payment intent ${paymentIntentId}`)
+			return { success: false, error: 'Booking not found' }
+		}
+		
+		const bookingDoc = bookingsSnapshot.docs[0]
+		const bookingId = bookingDoc.id
+		const booking = bookingDoc.data()
+		
+		// Calculate refund details
+		const refundAmount = charge.amount_refunded / 100 // Convert from cents
+		const isFullRefund = charge.amount_refunded === charge.amount
+		
+		// Update booking with refund information
+		await db.collection('bookings').doc(bookingId).update({
+			refundStatus: isFullRefund ? 'refunded' : 'partially_refunded',
+			refundAmount: refundAmount,
+			refundedAt: new Date().toISOString(),
+			refundId: charge.refunds?.data?.[0]?.id || 'unknown',
+			status: 'cancelled',
+			cancellationReason: `Refunded via Stripe: ${isFullRefund ? 'Full refund' : 'Partial refund'}`,
+			updatedAt: new Date().toISOString(),
+			// Preserve original refund reason if it was set by admin
+			...(booking.refundReason ? {} : { refundReason: 'Refunded via Stripe webhook' })
+		})
+		
+		console.log(`Updated booking ${bookingId} with refund status: ${isFullRefund ? 'fully refunded' : 'partially refunded'} (€${refundAmount})`)
+		
+		// Log refund transaction
+		await db.collection('paymentTransactions').add({
+			type: 'refund',
+			chargeId: charge.id,
+			paymentIntentId: paymentIntentId,
+			bookingId: bookingId,
+			amount: refundAmount,
+			currency: charge.currency,
+			status: 'succeeded',
+			isFullRefund: isFullRefund,
+			refundId: charge.refunds?.data?.[0]?.id || 'unknown',
+			timestamp: admin.firestore.FieldValue.serverTimestamp(),
+			notes: `${isFullRefund ? 'Full' : 'Partial'} refund processed via Stripe webhook`
+		})
+		
+		return { 
+			success: true, 
+			action: 'updated_refund_status',
+			bookingId,
+			refundAmount,
+			isFullRefund
+		}
+		
+	} catch (error) {
+		console.error('Error handling charge refunded webhook:', error)
+		return { 
+			success: false, 
+			error: error.message || 'Failed to process refund webhook' 
+		}
 	}
 }
 

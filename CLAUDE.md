@@ -4,15 +4,19 @@ This file provides comprehensive instructions for Claude when working with the F
 
 ## CRITICAL INSTRUCTIONS
 
-1. **Never Assume APIs**: 
-   - Always check for working examples in the codebase
-   - If examples not found, check library or module documentation
-   - Never use an API without verifying its implementation first
+**🚨 MOST IMPORTANT - ALWAYS IN YOUR FRONT HEAD 🚨**
+1. **NEVER ASSUME APIs - ALWAYS DOUBLE CHECK DOCUMENTATION/INTERFACES**: 
+   - **ALWAYS** check for working examples in the codebase FIRST
+   - **ALWAYS** verify the actual implementation before using ANY API
+   - **ALWAYS** check library or module documentation if no examples found
+   - **NEVER** use an API without verifying its exact implementation
+   - **NEVER** assume how an API works based on its name or your memory
+   - This rule is PARAMOUNT and must be your FIRST consideration for EVERY code change
 
 2. **Never Assume Interfaces**: 
-   - Always double check models, types, and interface definitions
-   - Reference the exact types used in the codebase
-   - Don't rely on memory or assumptions about type structures
+   - **ALWAYS** double check models, types, and interface definitions
+   - **ALWAYS** reference the exact types used in the codebase
+   - **NEVER** rely on memory or assumptions about type structures
    - **NEVER use `any` type** - always use proper types or create appropriate interfaces
 
 3. **Component-Based Architecture**: 

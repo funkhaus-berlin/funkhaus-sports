@@ -6,59 +6,18 @@ import { BehaviorSubject, EMPTY, from, fromEvent, Observable, of } from 'rxjs'
 import { catchError, debounceTime, distinctUntilChanged, filter, finalize, map, switchMap, take, takeUntil, tap } from 'rxjs/operators'
 import { VenueAddress } from 'src/types/booking/venue.types'
 
-// Define the Google Maps API types we need
-declare global {
-	interface Window {
-		google?: {
-			maps: {
-				Map: new (element: HTMLElement, options: any) => any
-				Marker: new (options: any) => any
-				LatLng: new (lat: number, lng: number) => any
-				LatLngBounds: new (sw?: any, ne?: any) => any
-				Geocoder: new () => any
-				Animation: {
-					DROP: any
-				}
-				MapTypeId: {
-					ROADMAP: any
-					SATELLITE: any
-					HYBRID: any
-					TERRAIN: any
-				}
-				MapTypeControlStyle: {
-					DEFAULT: any
-					HORIZONTAL_BAR: any
-					DROPDOWN_MENU: any
-				}
-				ControlPosition: {
-					TOP_LEFT: any
-					TOP_CENTER: any
-					TOP_RIGHT: any
-					LEFT_CENTER: any
-					RIGHT_CENTER: any
-					BOTTOM_LEFT: any
-					BOTTOM_CENTER: any
-					BOTTOM_RIGHT: any
-				}
-			}
-		}
-		initMap?: () => void
-	}
-}
-
 /**
- * Google Maps component to display venue location
- * Follows project's functional programming patterns with RxJS
+ * Interactive Google Maps component with location selection capability
+ * Extends the base venue-map component to support interactive location picking
  * 
  * Features:
- * - Satellite view by default (configurable via mapType prop)
- * - Configurable map controls (zoom, map type, street view, etc.)
- * - Only zoom control enabled by default
- * - Automatic geocoding for addresses without coordinates
- * - Responsive and accessible design
+ * - Click on map to select location
+ * - Reverse geocoding to get address from coordinates
+ * - Visual marker for selected location
+ * - Emits location-selected events with coordinates and address
  */
-@customElement('venue-map')
-export class VenueMap extends $LitElement(css`
+@customElement('venue-map-interactive')
+export class VenueMapInteractive extends $LitElement(css`
 	:host {
 		display: block;
 		width: 100%;
@@ -84,6 +43,10 @@ export class VenueMap extends $LitElement(css`
 	@property({ type: Boolean }) showFullscreenControl = false
 	@property({ type: Boolean }) showRotateControl = false
 	@property({ type: Boolean }) showScaleControl = false
+	
+	// Interactive selection mode
+	@property({ type: Boolean }) selectionMode = false
+	@property({ type: Object }) selectedLocation?: { lat: number; lng: number }
 
 	@state() private mapLoaded = false
 	@state() private loading = true
@@ -93,18 +56,21 @@ export class VenueMap extends $LitElement(css`
 
 	private map: any
 	private marker: any
+	private selectionMarker: any
 	
 	// RxJS subjects for reactive state management
 	private mapLoaded$ = new BehaviorSubject<boolean>(false)
 	private address$ = new BehaviorSubject<VenueAddress | undefined>(undefined)
+	private selectedLocation$ = new BehaviorSubject<{ lat: number; lng: number } | undefined>(undefined)
 
 	connectedCallback() {
 		super.connectedCallback()
 		
 		// Initialize Google Maps loading and map creation pipeline
-		of(this.address).pipe(
+		// Always initialize the map, even without an address
+		of(true).pipe(
 			tap(() => this.loading = true),
-			tap(address => this.address$.next(address)),
+			tap(() => this.address$.next(this.address)),
 			switchMap(() => this.loadGoogleMapsScript()),
 			tap(() => this.mapLoaded$.next(true)),
 			switchMap(() => this.waitForMapContainer()),
@@ -121,11 +87,37 @@ export class VenueMap extends $LitElement(css`
 		// React to address changes
 		this.address$.pipe(
 			distinctUntilChanged(),
-			filter(address => !!address && this.mapLoaded),
+			filter(() => this.mapLoaded),
 			debounceTime(300),
 			switchMap(() => this.updateMapLocation()),
 			takeUntil(this.disconnecting)
 		).subscribe()
+		
+		// Handle selected location changes
+		this.selectedLocation$.pipe(
+			distinctUntilChanged(),
+			filter(location => !!location && this.mapLoaded),
+			tap(location => {
+				if (location) {
+					this.updateSelectionMarker(location)
+				}
+			}),
+			takeUntil(this.disconnecting)
+		).subscribe()
+	}
+	
+	updated(changedProperties: Map<string | number | symbol, unknown>) {
+		super.updated(changedProperties)
+		
+		// Handle address prop changes
+		if (changedProperties.has('address')) {
+			this.address$.next(this.address)
+		}
+		
+		// Handle selectedLocation prop changes
+		if (changedProperties.has('selectedLocation')) {
+			this.selectedLocation$.next(this.selectedLocation)
+		}
 	}
 
 	disconnectedCallback() {
@@ -134,6 +126,10 @@ export class VenueMap extends $LitElement(css`
 		if (this.marker) {
 			this.marker.setMap(null)
 			this.marker = null
+		}
+		if (this.selectionMarker) {
+			this.selectionMarker.setMap(null)
+			this.selectionMarker = null
 		}
 		if (this.map) {
 			this.map = null
@@ -225,11 +221,12 @@ export class VenueMap extends $LitElement(css`
 			switchMap(address => {
 				if (address?.coordinates) {
 					return of({ lat: address.coordinates.lat, lng: address.coordinates.lng })
-				} else if (address) {
+				} else if (address && address.street && address.city) {
+					// Only try geocoding if we have enough address info
 					return this.geocodeAddress(address)
 				} else {
-					// Default location
-					return of({ lat: 52.5200, lng: 13.4050 }) // Berlin
+					// Default location - center of Europe (for better general coverage)
+					return of({ lat: 50.1109, lng: 8.6821 }) // Frankfurt, Germany
 				}
 			}),
 			tap(coords => {
@@ -248,14 +245,21 @@ export class VenueMap extends $LitElement(css`
 	 * Update map location when address changes
 	 */
 	private updateMapLocation() {
-		if (!this.map || !this.address) return EMPTY
+		if (!this.map) return EMPTY
+		
+		// If no address, don't update location
+		if (!this.address) return EMPTY
 
 		return of(this.address).pipe(
 			switchMap(address => {
 				if (address.coordinates) {
 					return of({ lat: address.coordinates.lat, lng: address.coordinates.lng })
-				} else {
+				} else if (address.street && address.city) {
+					// Only geocode if we have at least street and city
 					return this.geocodeAddress(address)
+				} else {
+					// Not enough info to geocode
+					return EMPTY
 				}
 			}),
 			tap(coords => {
@@ -319,6 +323,36 @@ export class VenueMap extends $LitElement(css`
 				animation: window.google.maps.Animation.DROP
 			})
 		}
+		
+		// Set up click handler for selection mode
+		if (this.selectionMode) {
+			this.map.addListener('click', (e: any) => {
+				const location = {
+					lat: e.latLng.lat(),
+					lng: e.latLng.lng()
+				}
+				this.selectedLocation = location
+				this.selectedLocation$.next(location)
+				
+				// Dispatch event for parent component
+				this.dispatchEvent(new CustomEvent('location-selected', {
+					detail: { location, address: null },
+					bubbles: true,
+					composed: true
+				}))
+				
+				// Reverse geocode to get address
+				this.reverseGeocode(location).subscribe(address => {
+					if (address) {
+						this.dispatchEvent(new CustomEvent('location-selected', {
+							detail: { location, address },
+							bubbles: true,
+							composed: true
+						}))
+					}
+				})
+			})
+		}
 	}
 
 	/**
@@ -331,7 +365,19 @@ export class VenueMap extends $LitElement(css`
 		}
 
 		const { street, city, postalCode, country } = address
-		const fullAddress = `${street}, ${city}, ${postalCode}, ${country}`
+		
+		// Build address string from available components
+		const addressParts = []
+		if (street) addressParts.push(street)
+		if (city) addressParts.push(city)
+		if (postalCode) addressParts.push(postalCode)
+		if (country) addressParts.push(country)
+		
+		if (addressParts.length === 0) {
+			return of(null)
+		}
+		
+		const fullAddress = addressParts.join(', ')
 
 		return of(new window.google.maps.Geocoder()).pipe(
 			switchMap(geocoder => 
@@ -352,6 +398,99 @@ export class VenueMap extends $LitElement(css`
 			catchError(err => {
 				console.error('Geocoding error:', err)
 				// Instead of throwing, return null to indicate geocoding failed
+				return of(null)
+			})
+		)
+	}
+	
+	/**
+	 * Update selection marker position
+	 */
+	private updateSelectionMarker(location: { lat: number; lng: number }) {
+		if (!this.map || !window.google?.maps) return
+		
+		const position = new window.google.maps.LatLng(location.lat, location.lng)
+		
+		if (!this.selectionMarker) {
+			// Create selection marker with different color
+			this.selectionMarker = new window.google.maps.Marker({
+				position,
+				map: this.map,
+				title: 'Selected Location',
+				icon: {
+					path: window.google.maps.SymbolPath.CIRCLE,
+					scale: 10,
+					fillColor: '#ff4444',
+					fillOpacity: 0.8,
+					strokeColor: '#ffffff',
+					strokeWeight: 2
+				},
+				animation: window.google.maps.Animation.DROP
+			})
+		} else {
+			this.selectionMarker.setPosition(position)
+		}
+		
+		// Center map on selection
+		this.map.panTo(position)
+	}
+	
+	/**
+	 * Reverse geocode coordinates to get address
+	 */
+	private reverseGeocode(location: { lat: number; lng: number }): Observable<VenueAddress | null> {
+		if (!window.google?.maps) {
+			return of(null)
+		}
+		
+		return of(new window.google.maps.Geocoder()).pipe(
+			switchMap(geocoder => 
+				from(new Promise<any>((resolve, reject) => {
+					const latLng = new (window.google as any).maps.LatLng(location.lat, location.lng)
+					geocoder.geocode({ location: latLng }, (results: any, status: any) => {
+						if (status === 'OK' && results?.[0]) {
+							resolve(results[0])
+						} else {
+							reject(new Error(`Reverse geocoding failed: ${status}`))
+						}
+					})
+				}))
+			),
+			map(result => {
+				// Parse Google result into VenueAddress format
+				const components = result.address_components || []
+				const address: VenueAddress = {
+					street: '',
+					city: '',
+					postalCode: '',
+					country: '',
+					coordinates: location
+				}
+				
+				// Extract address components
+				for (const component of components) {
+					const types = component.types || []
+					
+					if (types.includes('street_number')) {
+						address.street = component.long_name + ' ' + address.street
+					} else if (types.includes('route')) {
+						address.street = address.street + component.long_name
+					} else if (types.includes('locality')) {
+						address.city = component.long_name
+					} else if (types.includes('postal_code')) {
+						address.postalCode = component.long_name
+					} else if (types.includes('country')) {
+						address.country = component.long_name
+					}
+				}
+				
+				// Clean up street
+				address.street = address.street.trim()
+				
+				return address
+			}),
+			catchError(err => {
+				console.error('Reverse geocoding error:', err)
 				return of(null)
 			})
 		)
@@ -406,7 +545,7 @@ export class VenueMap extends $LitElement(css`
 				
 				<div 
 					id="map-container"
-					class="w-full h-full"
+					class="w-full h-full ${this.selectionMode ? 'cursor-crosshair' : ''}"
 					style="min-height: 300px;"
 					@click=${(e: Event) => {
 						if (!this.interactive) {
@@ -415,6 +554,7 @@ export class VenueMap extends $LitElement(css`
 						}
 					}}
 				></div>
+		
 			</schmancy-surface>
 		`
 	}
@@ -422,6 +562,6 @@ export class VenueMap extends $LitElement(css`
 
 declare global {
 	interface HTMLElementTagNameMap {
-		'venue-map': VenueMap
+		'venue-map-interactive': VenueMapInteractive
 	}
 }

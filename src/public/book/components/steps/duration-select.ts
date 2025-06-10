@@ -108,7 +108,6 @@ export class DurationSelectionStep extends $LitElement(css`
 	}
 
 	private loadDurations(): void {
-		if (!this.booking?.startTime) return
 
 		this.loading = true
 		this.error = null

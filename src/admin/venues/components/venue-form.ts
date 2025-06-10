@@ -15,6 +15,7 @@ import { FacilityEnum, OperatingHours, Venue, VenueTypeEnum } from 'src/types/bo
 import { auth } from 'src/firebase/firebase'
 import { confirm } from 'src/schmancy'
 import './venue-info-card'
+import 'src/public/shared/components/venue-map-interactive'
 
 // Format enum values to display labels
 export const formatEnum = (value: string): string =>
@@ -201,6 +202,30 @@ export class VenueForm extends $LitElement() {
                 .error=${Boolean(this.formErrors['address.country'])}
                 @change=${(e: SchmancyInputChangeEvent) => this.updateAddress('country', e.detail.value)}
               ></schmancy-input>
+              
+              <!-- Interactive Map for Location Selection -->
+              <div class="col-span-1">
+                <schmancy-typography type="label" token="sm" class="mb-2 block">Select Location on Map</schmancy-typography>
+                <div class="h-[50vh] rounded-lg overflow-hidden border border-surface-containerHigh">
+                  <venue-map-interactive
+                    .address=${this.formData.address}
+                    .venueName=${this.formData.name}
+                    .selectionMode=${true}
+                    .showMarker=${true}
+                    .selectedLocation=${this.formData.address?.coordinates}
+                    .zoom=${15}
+                    .mapType=${'satellite'}
+                    .showMapTypeControl=${true}
+                    @location-selected=${(e: CustomEvent) => this.handleLocationSelected(e)}
+                  ></venue-map-interactive>
+                </div>
+                ${this.formData.address?.coordinates ? html`
+                  <schmancy-typography type="body" token="sm" class="mt-2 text-surface-onVariant">
+                    <schmancy-icon size="14px" class="inline mr-1">location_on</schmancy-icon>
+                    Coordinates: ${this.formData.address.coordinates.lat.toFixed(6)}, ${this.formData.address.coordinates.lng.toFixed(6)}
+                  </schmancy-typography>
+                ` : ''}
+              </div>
             </div>
 
             <!-- Facilities -->
@@ -313,6 +338,24 @@ export class VenueForm extends $LitElement() {
               .theme=${this.formData.theme || { primary: '#5e808e', text: '#ffffff', logo: 'light' }}
               class="mb-8 transform scale-110"
             ></funkhaus-venue-card>
+            
+            <!-- Map Preview if coordinates are set -->
+            ${this.formData.address?.coordinates ? html`
+              <div class="w-full mt-4">
+                <schmancy-typography type="label" token="sm" class="mb-2 block">Location Preview</schmancy-typography>
+                <div class="h-48 rounded-lg overflow-hidden border border-surface-containerHigh">
+                  <venue-map-interactive
+                    .address=${this.formData.address}
+                    .venueName=${this.formData.name}
+                    .selectedLocation=${this.formData.address.coordinates}
+                    .showMarker=${true}
+                    .interactive=${false}
+                    .zoom=${16}
+                    .mapType=${'satellite'}
+                  ></venue-map-interactive>
+                </div>
+              </div>
+            ` : ''}
           </div>
         </div>
       </div>
@@ -413,6 +456,43 @@ export class VenueForm extends $LitElement() {
       const updatedErrors = { ...this.formErrors }
       delete updatedErrors[errorKey]
       this.formErrors = updatedErrors
+    }
+  }
+  
+  // Handle location selected from map
+  private handleLocationSelected(e: CustomEvent) {
+    const { location, address } = e.detail
+    
+    if (location) {
+      // Update coordinates
+      const updatedAddress = {
+        ...this.formData.address,
+        coordinates: {
+          lat: location.lat,
+          lng: location.lng
+        }
+      }
+      
+      // If we got address from reverse geocoding, update those fields too
+      if (address && address.street && address.city) {
+        updatedAddress.street = address.street || updatedAddress.street
+        updatedAddress.city = address.city || updatedAddress.city
+        updatedAddress.postalCode = address.postalCode || updatedAddress.postalCode
+        updatedAddress.country = address.country || updatedAddress.country
+      }
+      
+      this.formData = { ...this.formData, address: updatedAddress }
+      this.requestUpdate()
+      
+      // Clear any address errors since we got valid coordinates
+      const addressErrors = Object.keys(this.formErrors).filter(key => key.startsWith('address.'))
+      if (addressErrors.length > 0) {
+        const updatedErrors = { ...this.formErrors }
+        addressErrors.forEach(key => delete updatedErrors[key])
+        this.formErrors = updatedErrors
+      }
+      
+      $notify.success('Location selected on map')
     }
   }
 

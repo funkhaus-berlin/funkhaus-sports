@@ -287,7 +287,15 @@ export class BookingDayView extends $LitElement() {
             : html`
               <!-- Court headers and booking lists -->
               <div class="flex border-b border-gray-200">
-                ${Array.from(this.courts.entries()).map(([courtId, court]) => {
+                ${Array.from(this.courts.entries())
+                  .sort(([, a], [, b]) => {
+                    // Natural sort that handles numbers properly
+                    return a.name.localeCompare(b.name, undefined, { 
+                      numeric: true, 
+                      sensitivity: 'base' 
+                    })
+                  })
+                  .map(([courtId, court]) => {
                   const bookings = this.courtBookings.get(courtId) || []
                   
                   return html`
