@@ -165,7 +165,7 @@ export class TimeSelectionStep extends $LitElement(css`
 				this.viewMode = newViewMode
 				// Scroll after transition completes
 				if (hasSelection && newViewMode === 'list') {
-					setTimeout(() => this.scrollToSelectedTime(), 250)
+					setTimeout(() => this.scrollToSelectedTime(), 50)
 				}
 			}
 		})
@@ -367,7 +367,7 @@ export class TimeSelectionStep extends $LitElement(css`
 				const containerWidth = container.clientWidth
 				const scrollPosition = elementOffset - containerWidth / 2 + elementWidth / 2
 
-				container.scrollTo({ left: scrollPosition, behavior: 'smooth' })
+				container.scrollTo({ left: scrollPosition, behavior: 'instant' })
 			}
 		}, 100)
 	}

@@ -1,7 +1,8 @@
 // src/public/book/booking-steps-utils.ts
 
 import { BookingProgressContext } from './context';
-import { getNextStep, StepLabel } from 'src/availability-context';
+import { getNextStep } from 'src/availability-context';
+import { StepLabel } from 'src/types/booking';
 
 /**
  * Transitions to the next step in the booking flow and updates expanded steps
