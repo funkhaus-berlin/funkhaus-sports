@@ -3,12 +3,12 @@
 import { createContext } from '@mhmo91/schmancy'
 import dayjs from 'dayjs'
 import { BehaviorSubject, combineLatest, Observable, of } from 'rxjs'
-import { distinctUntilChanged, filter, map, shareReplay, switchMap, takeUntil, tap } from 'rxjs/operators'
+import { catchError, distinctUntilChanged, filter, map, shareReplay, switchMap, takeUntil, tap } from 'rxjs/operators'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
 import { BookingsDB } from 'src/db/bookings.collection'
-import { Venue } from 'src/types/booking/venue.types'
+import { Venue, OperatingHours } from 'src/types/booking/venue.types'
 import { BookingFlowConfig, BookingFlowType, StepLabel } from 'src/types/booking'
 import { getUserTimezone, isTimeSlotInPast } from 'src/utils/timezone'
 import { bookingContext } from './public/book/context'
@@ -17,7 +17,7 @@ import type { Booking } from './types/booking/booking.types'
 
 
 // Updated BOOKING_FLOWS constant with the new structure
-export const BOOKING_FLOWS: Record<BookingFlowType, BookingFlowConfig> = {
+export const BOOKING_FLOWS: Record<string, BookingFlowConfig> = {
 	[BookingFlowType.DATE_COURT_TIME_DURATION]: [
 		{ step: 1, label: 'Date', icon: 'event' },
 		{ step: 2, label: 'Court', icon: 'sports_tennis' },
@@ -144,9 +144,28 @@ export function getBookingFlowForVenue(venue: Venue | null): BookingFlowType {
 }
 
 /**
+ * Get venue operating hours for a specific day
+ */
+function getVenueHoursForDay(venue: Venue | null | undefined, date: string): { openHour: number; closeHour: number } {
+	const dayOfWeek = dayjs(date).format('dddd').toLowerCase() as keyof OperatingHours
+	const operatingHours = venue?.operatingHours?.[dayOfWeek]
+	
+	// Parse opening and closing times with defaults
+	const openHour = operatingHours?.open 
+		? parseInt(operatingHours.open.split(':')[0]) || 8
+		: 8
+		
+	const closeHour = operatingHours?.close
+		? parseInt(operatingHours.close.split(':')[0]) || 22
+		: 22
+	
+	return { openHour, closeHour }
+}
+
+/**
  * Generate timeslots for a given day
  */
-function generateTimeSlots(date: string, courtIds: string[]): TimeSlotAvailability[] {
+function generateTimeSlots(date: string, courtIds: string[], venue?: Venue | null): TimeSlotAvailability[] {
 	const slots: TimeSlotAvailability[] = []
 
 	// Check if date is today in user's timezone
@@ -155,15 +174,18 @@ function generateTimeSlots(date: string, courtIds: string[]): TimeSlotAvailabili
 	const now = dayjs().tz(userTimezone)
 	const isToday = selectedDate.format('YYYY-MM-DD') === now.format('YYYY-MM-DD')
 
-	// Start time (either 8 AM or current hour if today)
-	let startHour = 8
+	// Get venue operating hours
+	const { openHour, closeHour } = getVenueHoursForDay(venue, date)
+
+	// Start time (either opening hour or current hour if today)
+	let startHour = openHour
 	if (isToday) {
 		const currentHour = now.hour()
-		startHour = currentHour < 8 ? 8 : currentHour
+		startHour = currentHour < openHour ? openHour : currentHour
 	}
 
-	// End time (10 PM)
-	const endHour = 22
+	// End time from venue settings
+	const endHour = closeHour
 
 	// Initialize all courts as available for each time slot
 	const courtAvailability: Record<string, boolean> = {}
@@ -171,23 +193,37 @@ function generateTimeSlots(date: string, courtIds: string[]): TimeSlotAvailabili
 		courtAvailability[courtId] = true
 	})
 
+	// Get minimum booking time from venue settings
+	const minBookingMinutes = venue?.settings?.minBookingTime || 30
+	
 	// Generate slots from start to end time in 30 min increments
-	for (let hour = startHour; hour < endHour; hour++) {
+	// We need to generate slots up to the point where a minimum booking can still be completed
+	for (let hour = startHour; hour <= endHour; hour++) {
+		const fullHourMinutes = hour * 60
+		const halfHourMinutes = hour * 60 + 30
+		
+		// Only add slots if a minimum booking duration can be completed before closing
+		const closingMinutes = closeHour * 60
+		
 		// Full hour slot
-		slots.push({
-			time: `${hour.toString().padStart(2, '0')}:00`,
-			timeValue: hour * 60,
-			courtAvailability: { ...courtAvailability },
-			hasAvailableCourts: courtIds.length > 0,
-		})
+		if (fullHourMinutes + minBookingMinutes <= closingMinutes) {
+			slots.push({
+				time: `${hour.toString().padStart(2, '0')}:00`,
+				timeValue: fullHourMinutes,
+				courtAvailability: { ...courtAvailability },
+				hasAvailableCourts: courtIds.length > 0,
+			})
+		}
 
 		// Half hour slot
-		slots.push({
-			time: `${hour.toString().padStart(2, '0')}:30`,
-			timeValue: hour * 60 + 30,
-			courtAvailability: { ...courtAvailability },
-			hasAvailableCourts: courtIds.length > 0,
-		})
+		if (halfHourMinutes + minBookingMinutes <= closingMinutes && hour < endHour) {
+			slots.push({
+				time: `${hour.toString().padStart(2, '0')}:30`,
+				timeValue: halfHourMinutes,
+				courtAvailability: { ...courtAvailability },
+				hasAvailableCourts: courtIds.length > 0,
+			})
+		}
 	}
 
 	return slots
@@ -247,128 +283,107 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 		shareReplay(1),
 	)
 
-	// Main data stream
+	// Main data stream with functional approach
 	combineLatest([
 		bookingChanges$,
 		courtsContext.$.pipe(filter(courts => courts.size > 0)),
 		venuesContext.$.pipe(filter(venues => venues.size > 0)),
-	])
-		.pipe(
-			tap(() => {
-				loadingSubject.next(true)
-				errorSubject.next(null)
-
-				// Update context with loading state
-				availabilityContext.set(
-					{
-						...availabilityContext.value,
-						loading: true,
-						error: null,
-					},
-					true,
-				)
-			}),
-			filter(([, allCourts, allVenues]) => !!allCourts && !!allVenues),
-			switchMap(([booking, allCourts, allVenues]) => {
-				const { date, venueId } = booking
-
-				// Get the venue object
-				const venue = allVenues.get(venueId) || null
-
-				// Get just the flow type instead of the full flow config
-				const bookingFlowType = getBookingFlowForVenue(venue)
-
-				// Other calculations remain the same
-
-				// Get venue name for display
-				const venueName = venue?.name || 'Unknown Venue'
-
-				// Get active courts for this venue
-				const activeCourts = Array.from(allCourts.values()).filter(
-					court => court.status === 'active' && court.venueId === venueId,
-				)
-
-				const activeCourtIds = activeCourts.map(court => court.id)
-
-				if (activeCourts.length === 0) {
-					errorSubject.next('No active courts found for this venue')
-					return of({
-						date,
-						venueId,
-						timeSlots: [],
-						activeCourtIds: [],
-						bookings: [],
-						bookingFlowType,
-						venueName,
-					})
-				}
-
-				// Generate initial time slots
-				const timeSlots = generateTimeSlots(date, activeCourtIds)
-
-				// Fetch bookings for this date and venue
-				return BookingsDB.subscribeToCollection([
-					{ key: 'date', operator: '==', value: dayjs(date).format('YYYY-MM-DD') },
-					{ key: 'status', operator: 'in', value: ['confirmed', 'holding'] },
-					{ key: 'venueId', operator: '==', value: venueId }, // Filter by venue ID
-				]).pipe(
-					map(bookingsMap => {
-						// Convert to array
-						const bookings = Array.from(bookingsMap.values())
-
-						// Process bookings to mark unavailable slots
-						const processedTimeSlots = processBookingsForTimeSlots(timeSlots, bookings)
-
-						return {
-							date,
-							venueId,
-							timeSlots: processedTimeSlots,
-							activeCourtIds,
+	]).pipe(
+		// Set loading state
+		tap(() => {
+			loadingSubject.next(true)
+			errorSubject.next(null)
+			availabilityContext.set({ ...availabilityContext.value, loading: true, error: null }, true)
+		}),
+		// Process availability data
+		switchMap(([booking, allCourts, allVenues]) => {
+			const { date, venueId } = booking
+			const venue = allVenues.get(venueId) || null
+			
+			// Build availability data through functional transformations
+			return of({ date, venueId, venue }).pipe(
+				// Add booking flow type
+				map(data => ({
+					...data,
+					bookingFlowType: getBookingFlowForVenue(data.venue),
+					venueName: data.venue?.name || 'Unknown Venue'
+				})),
+				// Get active courts
+				map(data => ({
+					...data,
+					activeCourts: Array.from(allCourts.values()).filter(
+						court => court.status === 'active' && court.venueId === venueId
+					)
+				})),
+				// Extract court IDs and check if courts exist
+				map(data => ({
+					...data,
+					activeCourtIds: data.activeCourts.map(court => court.id)
+				})),
+				// Generate time slots or return empty data
+				switchMap(data => {
+					if (data.activeCourts.length === 0) {
+						errorSubject.next('No active courts found for this venue')
+						return of({
+							date: data.date,
+							venueId: data.venueId,
+							timeSlots: [],
+							activeCourtIds: [],
+							bookings: [],
+							bookingFlowType: data.bookingFlowType,
+							venueName: data.venueName,
+						})
+					}
+					
+					// Generate time slots
+					const timeSlots = generateTimeSlots(data.date, data.activeCourtIds, data.venue)
+					
+					// Fetch and process bookings
+					return BookingsDB.subscribeToCollection([
+						{ key: 'date', operator: '==', value: dayjs(date).format('YYYY-MM-DD') },
+						{ key: 'status', operator: 'in', value: ['confirmed', 'holding'] },
+						{ key: 'venueId', operator: '==', value: venueId },
+					]).pipe(
+						map(bookingsMap => Array.from(bookingsMap.values())),
+						map(bookings => ({
+							date: data.date,
+							venueId: data.venueId,
+							timeSlots: processBookingsForTimeSlots(timeSlots, bookings),
+							activeCourtIds: data.activeCourtIds,
 							bookings,
-							bookingFlowType, // Changed from bookingFlow
-							venueName,
-						}
-					}),
-				)
-			}),
-			takeUntil(destroySignal$),
-			tap({
-				next: () => {
-					loadingSubject.next(false)
-
-					// Update context with loading state
-					availabilityContext.set(
-						{
-							...availabilityContext.value,
-							loading: false,
-						},
-						true,
+							bookingFlowType: data.bookingFlowType,
+							venueName: data.venueName,
+						}))
 					)
-				},
-				error: err => {
-					console.error('Error loading availability data:', err)
-					errorSubject.next('Failed to load availability data')
-					loadingSubject.next(false)
-
-					// Update context with error state
-					availabilityContext.set(
-						{
-							...availabilityContext.value,
-							loading: false,
-							error: 'Failed to load availability data',
-						},
-						true,
-					)
-				},
-			}),
-		)
-		.subscribe(availabilityData => {
+				})
+			)
+		}),
+		// Handle errors
+		catchError(err => {
+			console.error('Error loading availability data:', err)
+			errorSubject.next('Failed to load availability data')
+			loadingSubject.next(false)
 			availabilityContext.set({
-				...availabilityData,
+				...availabilityContext.value,
 				loading: false,
-				error: null,
-			})
+				error: 'Failed to load availability data',
+			}, true)
+			return of(availabilityContext.value)
+		}),
+		// Clear loading state
+		tap(() => {
+			loadingSubject.next(false)
+			availabilityContext.set({ ...availabilityContext.value, loading: false }, true)
+		}),
+		// Complete until destroy signal
+		takeUntil(destroySignal$)
+	).subscribe(availabilityData => {
+		availabilityContext.set({
+			...availabilityData,
+			loading: false,
+			error: null,
 		})
+	})
 }
 
 /**
@@ -390,19 +405,80 @@ export function isCourtAvailable(courtId: string, timeSlot: string): boolean {
  */
 export function isCourtAvailableForDuration(courtId: string, startTime: string, durationMinutes: number): boolean {
 	const availability = availabilityContext.value
+	const booking = bookingContext.value
 
 	// Parse start time
 	const [hours, minutes] = startTime.split(':').map(Number)
 	const startMinutes = hours * 60 + minutes
 	const endMinutes = startMinutes + durationMinutes
 
+	// Get venue and closing time
+	const venue = venuesContext.value.get(booking.venueId)
+	const { closeHour } = getVenueHoursForDay(venue, booking.date)
+	const closingMinutes = closeHour * 60
+
+	console.log(`Checking court ${courtId} availability for ${durationMinutes} min starting at ${startTime}:`, {
+		startMinutes,
+		endMinutes,
+		closingMinutes,
+		wouldExceedClosing: endMinutes > closingMinutes,
+		venue: venue?.name,
+		closingHour: closeHour
+	})
+
+	// Check if the booking would exceed closing time
+	if (endMinutes > closingMinutes) {
+		console.log('Duration would exceed closing time')
+		return false
+	}
+
 	// Check all time slots in the range
+	// We need to check slots from start time up to (but not including) end time
+	let unavailableSlots = []
+	let checkedSlots = []
+	
 	for (const slot of availability.timeSlots) {
+		// Check slots that fall within our booking duration
 		if (slot.timeValue >= startMinutes && slot.timeValue < endMinutes) {
+			checkedSlots.push({
+				time: slot.time,
+				timeValue: slot.timeValue,
+				available: slot.courtAvailability[courtId]
+			})
+			
 			if (!slot.courtAvailability[courtId]) {
-				return false
+				unavailableSlots.push(slot.time)
 			}
 		}
+	}
+
+	// Also check the start time slot specifically
+	const startSlot = availability.timeSlots.find(s => s.timeValue === startMinutes)
+	
+	// Debug: Check what courts are in the availability data
+	const sampleSlot = availability.timeSlots[0]
+	const availableCourtIds = sampleSlot ? Object.keys(sampleSlot.courtAvailability || {}) : []
+	
+	console.log('Start slot check:', {
+		startTime,
+		startMinutes,
+		startSlotFound: !!startSlot,
+		startSlotAvailable: startSlot?.courtAvailability[courtId],
+		checkedSlots,
+		unavailableSlots,
+		courtIdToCheck: courtId,
+		availableCourtIds,
+		sampleCourtAvailability: sampleSlot?.courtAvailability
+	})
+	
+	if (!startSlot || !startSlot.courtAvailability[courtId]) {
+		console.log('Start slot not available or not found')
+		return false
+	}
+	
+	if (unavailableSlots.length > 0) {
+		console.log('Found unavailable slots within duration:', unavailableSlots)
+		return false
 	}
 
 	return true
@@ -475,6 +551,17 @@ export function getAvailableDurations(startTime: string, courtId?: string): Dura
 	const availability = availabilityContext.value
 	const booking = bookingContext.value
 
+	console.log('getAvailableDurations called with:', {
+		startTime,
+		courtId,
+		bookingCourtId: booking.courtId,
+		availabilityReady: !!availability,
+		timeSlotsCount: availability?.timeSlots?.length || 0,
+		bookingFlowType: availability?.bookingFlowType,
+		bookingDate: booking.date,
+		venueId: booking.venueId
+	})
+
 	// Return empty array if startTime is empty, undefined, or invalid
 	if (!startTime || !dayjs(startTime).isValid()) {
 		console.warn('Invalid or missing start time provided to getAvailableDurations:', startTime)
@@ -484,8 +571,16 @@ export function getAvailableDurations(startTime: string, courtId?: string): Dura
 	// Use courtId parameter or fall back to selected court in booking
 	const effectiveCourtId = courtId || booking.courtId
 
-	// Format time string
-	const formattedTime = dayjs(startTime).format('HH:mm')
+	// Format time string - handle both ISO and HH:mm formats
+	const startTimeDayjs = dayjs(startTime)
+	const formattedTime = startTimeDayjs.format('HH:mm')
+	
+	console.log('Formatted start time:', {
+		original: startTime,
+		formatted: formattedTime,
+		hour: startTimeDayjs.hour(),
+		minute: startTimeDayjs.minute()
+	})
 
 	// Standard durations
 	const standardDurations = [
@@ -508,6 +603,8 @@ export function getAvailableDurations(startTime: string, courtId?: string): Dura
 			.map(duration => {
 				// Check if this duration is available for the specific court
 				const isAvailable = isCourtAvailableForDuration(effectiveCourtId, formattedTime, duration.value)
+				
+				console.log(`Duration ${duration.label} (${duration.value} min) available: ${isAvailable}`)
 
 				if (!isAvailable) return null
 

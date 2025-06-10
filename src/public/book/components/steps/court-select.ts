@@ -8,7 +8,7 @@ import { cache } from 'lit/directives/cache.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
-import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs'
+import { combineLatest, distinctUntilChanged, filter, map, takeUntil } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import {
   availabilityContext,
@@ -330,57 +330,66 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Subscribe to booking and availability context updates
 	 */
 	private subscribeToAvailabilityUpdates(): void {
-		// Subscribe to booking context changes
-		bookingContext.$.pipe(
+		// Consolidated reactive pipeline
+		combineLatest([
+			bookingContext.$,
+			availabilityContext.$,
+			courtsContext.$,
+			BookingProgressContext.$
+		]).pipe(
 			takeUntil(this.disconnecting),
-			filter(booking => !!booking),
-			map(booking => ({
-				startTime: booking.startTime,
-				endTime: booking.endTime,
-				date: booking.date,
-				venueId: booking.venueId,
-			})),
-			distinctUntilChanged(
-				(prev, curr) =>
-					prev.startTime === curr.startTime &&
-					prev.endTime === curr.endTime &&
-					prev.date === curr.date &&
-					prev.venueId === curr.venueId,
+			// Filter for valid data
+			filter(([booking, availability, courts, progress]) => 
+				!!booking &&
+				!!availability &&
+				!!availability.timeSlots && // Ensure time slots are loaded
+				courts && courts.size > 0
 			),
-		).subscribe(() => {
-			this.loadCourtsWithAvailability()
-		})
-
-		// Subscribe to availability context changes
-		availabilityContext.$.pipe(
-			takeUntil(this.disconnecting),
-			filter(availability => !!availability && !!this.booking?.date),
-			filter(availability => availability.date === this.booking.date),
-			// Add additional checks for bookings changes
-			map(availability => ({
-				bookings: availability.bookings,
-				date: availability.date,
-				venueId: availability.venueId
+			// Extract relevant data for comparison
+			map(([booking, availability, courts, progress]) => ({
+				booking: {
+					startTime: booking.startTime,
+					endTime: booking.endTime,
+					date: booking.date,
+					venueId: booking.venueId,
+					courtId: booking.courtId
+				},
+				availability: {
+					bookings: availability.bookings,
+					date: availability.date,
+					venueId: availability.venueId,
+					timeSlots: availability.timeSlots
+				},
+				courtsSize: courts.size,
+				currentStep: progress.currentStep
 			})),
 			distinctUntilChanged((prev, curr) => 
-				// Deep compare the bookings arrays to detect changes
-				prev.date === curr.date &&
-				prev.venueId === curr.venueId &&
-				JSON.stringify(prev.bookings) === JSON.stringify(curr.bookings)
-			),
-		).subscribe(() => {
-			console.log('Availability context updated - refreshing court availability')
+				// Compare relevant fields
+				prev.booking.startTime === curr.booking.startTime &&
+				prev.booking.endTime === curr.booking.endTime &&
+				prev.booking.date === curr.booking.date &&
+				prev.booking.venueId === curr.booking.venueId &&
+				prev.booking.courtId === curr.booking.courtId &&
+				prev.availability.date === curr.availability.date &&
+				prev.availability.venueId === curr.availability.venueId &&
+				JSON.stringify(prev.availability.bookings) === JSON.stringify(curr.availability.bookings) &&
+				JSON.stringify(prev.availability.timeSlots) === JSON.stringify(curr.availability.timeSlots) &&
+				prev.courtsSize === curr.courtsSize
+			)
+		).subscribe(({booking, availability}) => {
+			console.log('Context updated - refreshing court availability')
+			console.log('Time slots available:', availability.timeSlots?.length || 0)
+			
+			// Clear cache to force re-evaluation of court availability
+			this.resetAvailabilityCache()
+			
 			this.loadCourtsWithAvailability()
-		})
-
-		// Subscribe to courts context to reload when it becomes available
-		courtsContext.$.pipe(
-			takeUntil(this.disconnecting),
-			filter(courts => courts && courts.size > 0),
-			distinctUntilChanged((prev, curr) => prev?.size === curr?.size)
-		).subscribe(() => {
-			console.log('Courts context updated - loading courts')
-			this.loadCourtsWithAvailability()
+			
+			// Check if selected court still has available time slots
+			if (booking.courtId && !this.hasAnyAvailableTimeSlots(booking.courtId)) {
+				console.log('Selected court has no available time slots, clearing selection')
+				bookingContext.set({ courtId: '' }, true)
+			}
 		})
 
 		// Initial load
@@ -396,7 +405,25 @@ export class CourtSelectStep extends $LitElement(css`
 	 */
 	private hasAnyAvailableTimeSlots(courtId: string): boolean {
 		const timeSlots = availabilityContext.value?.timeSlots || []
-		return timeSlots.some(slot => slot.courtAvailability?.[courtId] === true)
+		
+		// Debug: log the check
+		console.log(`Checking availability for court ${courtId}:`, {
+			timeSlotsCount: timeSlots.length,
+			availabilityContextReady: !!availabilityContext.value,
+			firstFewSlots: timeSlots.slice(0, 3).map(slot => ({
+				time: slot.time || slot.timeValue,
+				courtAvailable: slot.courtAvailability?.[courtId]
+			}))
+		})
+		
+		const hasSlots = timeSlots.some(slot => slot.courtAvailability?.[courtId] === true)
+		
+		// Debug logging
+		if (!hasSlots && timeSlots.length > 0) {
+			console.log(`Court ${courtId} has NO available time slots out of ${timeSlots.length} total slots`)
+		}
+		
+		return hasSlots
 	}
 
 	/**
@@ -474,7 +501,11 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Check if a court can be selected based on its availability
 	 */
 	private canSelectCourt(courtId: string): boolean {
-		return this.getCourtAvailabilityInfo(courtId).canSelect
+		const canSelect = this.getCourtAvailabilityInfo(courtId).canSelect
+		if (!canSelect) {
+			console.log(`Court ${courtId} cannot be selected - availability info:`, this.getCourtAvailabilityInfo(courtId))
+		}
+		return canSelect
 	}
 
 	/**

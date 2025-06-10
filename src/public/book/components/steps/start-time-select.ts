@@ -17,6 +17,7 @@ import {
 } from 'src/availability-context'
 import { BookingFlowType } from 'src/types'
 import { toUTC } from 'src/utils/timezone'
+import { venueContext } from 'src/admin/venues/venue-context'
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { TimeSlot } from '../../types'
@@ -241,21 +242,44 @@ export class TimeSelectionStep extends $LitElement(css`
 		const now = dayjs().tz(userTimezone)
 		const isToday = selectedDate.format('YYYY-MM-DD') === now.format('YYYY-MM-DD')
 
-		let startHour = 8
+		// Get venue operating hours
+		const dayOfWeek = selectedDate.format('dddd').toLowerCase()
+		const operatingHours = venueContext.value?.operatingHours?.[dayOfWeek]
+		const minBookingMinutes = venueContext.value?.settings?.minBookingTime || 30
+		
+		// Parse opening and closing times with defaults
+		let openHour = 8
+		let closeHour = 22
+		
+		if (operatingHours?.open) {
+			const [hour] = operatingHours.open.split(':').map(Number)
+			if (!isNaN(hour)) openHour = hour
+		}
+		
+		if (operatingHours?.close) {
+			const [hour] = operatingHours.close.split(':').map(Number)
+			if (!isNaN(hour)) closeHour = hour
+		}
+
+		let startHour = openHour
 		let startMinute = 0
 
 		if (isToday) {
 			startHour = now.hour()
 			startMinute = now.minute() < 30 ? 30 : 0
 			if (startMinute === 0) startHour += 1
-			if (startHour >= 22) return []
+			if (startHour >= closeHour) return []
 		}
 
 		const slots: TimeSlot[] = []
-		for (let hour = startHour; hour <= 22; hour++) {
+		const closingMinutes = closeHour * 60
+		
+		for (let hour = startHour; hour <= closeHour; hour++) {
 			const minutes = hour === startHour ? [startMinute, startMinute === 0 ? 30 : null].filter(Boolean) : [0, 30]
 			for (const minute of minutes as number[]) {
-				if (hour === 22 && minute > 0) continue
+				const slotMinutes = hour * 60 + minute
+				// Only add slot if minimum booking can be completed before closing
+				if (slotMinutes + minBookingMinutes > closingMinutes) continue
 				slots.push({
 					label: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
 					value: hour * 60 + minute,
