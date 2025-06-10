@@ -267,13 +267,13 @@ export class BookingConfirmation extends $LitElement() {
 					imageSrc="/assets/still02.jpg"
 				>
      
-                       <div class="absolute right-0 top-[1vh] lg:top-[5vh] my-auto">
+                       <!-- <div class="absolute right-0 top-[1vh] lg:top-[5vh] my-auto">
                            <img
 											src="/logo.svg"
 											alt="Funkhaus Sports Logo"
 											class="cursor-pointer h-[15vh] lg:h-[20vh] w-auto"
 											@click=${() => this.returnToHome()}
-										/>
+										/> -->
         </div>
 				</page-header-banner>
 
@@ -394,18 +394,20 @@ export class BookingConfirmation extends $LitElement() {
 											</schmancy-flex>
 
 											<!-- Address (if available) -->
-											${this.venue?.address
-												? html`
-														<schmancy-flex class="flex lg:hidden" gap="sm" align="start">
-															<schmancy-icon class="text-primary-default mt-1">directions</schmancy-icon>
-															<schmancy-grid gap="xs" class="flex-1">
-																<schmancy-typography type="body" token="sm" class="text-surface-onVariant">
-																	${this.getFormattedAddress()}
-																</schmancy-typography>
-															</schmancy-grid>
-														</schmancy-flex>
-													`
-												: ''}
+											${
+												this.venue?.address
+													? html`
+															<schmancy-flex class="flex lg:hidden" gap="sm" align="start">
+																<schmancy-icon class="text-primary-default mt-1">directions</schmancy-icon>
+																<schmancy-grid gap="xs" class="flex-1">
+																	<schmancy-typography type="body" token="sm" class="text-surface-onVariant">
+																		${this.getFormattedAddress()}
+																	</schmancy-typography>
+																</schmancy-grid>
+															</schmancy-flex>
+														`
+													: ''
+											}
 										</schmancy-grid>
 									</schmancy-surface>
 
@@ -458,32 +460,34 @@ export class BookingConfirmation extends $LitElement() {
 								></venue-map>
 
 								<!-- Address and Directions -->
-								${this.venue?.address
-									? html`
-											<schmancy-divider></schmancy-divider>
-											<schmancy-grid gap="sm">
-												<schmancy-flex align="center" gap="sm">
-													<schmancy-icon class="text-primary-default">location_on</schmancy-icon>
-													<schmancy-typography type="headline" token="sm"> ${venueName} </schmancy-typography>
-												</schmancy-flex>
-												<schmancy-typography type="body" token="sm" class="text-surface-onVariant ml-8">
-													${this.getFormattedAddress()}
-												</schmancy-typography>
+								${
+									this.venue?.address
+										? html`
+												<schmancy-divider></schmancy-divider>
+												<schmancy-grid gap="sm">
+													<schmancy-flex align="center" gap="sm">
+														<schmancy-icon class="text-primary-default">location_on</schmancy-icon>
+														<schmancy-typography type="headline" token="sm"> ${venueName} </schmancy-typography>
+													</schmancy-flex>
+													<schmancy-typography type="body" token="sm" class="text-surface-onVariant ml-8">
+														${this.getFormattedAddress()}
+													</schmancy-typography>
 
-												<schmancy-button
-													variant="outlined"
-													width="full"
-													@click=${() => {
-														const mapUrl = this.getMapUrl()
-														window.open(mapUrl, '_blank')
-													}}
-												>
-													<schmancy-icon slot="prefix">directions</schmancy-icon>
-													Get Directions
-												</schmancy-button>
-											</schmancy-grid>
-										`
-									: ''}
+													<schmancy-button
+														variant="outlined"
+														width="full"
+														@click=${() => {
+															const mapUrl = this.getMapUrl()
+															window.open(mapUrl, '_blank')
+														}}
+													>
+														<schmancy-icon slot="prefix">directions</schmancy-icon>
+														Get Directions
+													</schmancy-button>
+												</schmancy-grid>
+											`
+										: ''
+								}
 										<social-buttons></social-buttons>
                   
 							</schmancy-grid>
