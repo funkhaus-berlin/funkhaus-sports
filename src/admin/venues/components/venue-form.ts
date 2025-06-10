@@ -11,7 +11,7 @@ import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { takeUntil } from 'rxjs'
 import { VenuesDB } from 'src/db/venue-collection'
-import { FacilityEnum, OperatingHours, Venue, VenueTypeEnum } from 'src/types/booking/venue.types'
+import { FacilityEnum, OperatingHours, Venue, VenueTypeEnum, VenueSettings, defaultVenueSettings } from 'src/types/booking/venue.types'
 import { auth } from 'src/firebase/firebase'
 import { confirm } from 'src/schmancy'
 import './venue-info-card'
@@ -65,6 +65,7 @@ export class VenueForm extends $LitElement() {
       },
       venueType: Object.values(VenueTypeEnum)[0],
       facilities: [],
+      settings: defaultVenueSettings,
     } as Venue
   }
 
@@ -158,8 +159,8 @@ export class VenueForm extends $LitElement() {
                   .value=${this.formData.theme?.logo || 'light'}
                   @change=${(e: SchmancySelectChangeEvent) => this.updateTheme('logo', e.detail.value as 'light' | 'dark')}
                 >
-                  <schmancy-option value="light" label="Light">Light</schmancy-option>
-                  <schmancy-option value="dark" label="Dark">Dark</schmancy-option>
+                  <schmancy-option value="light">Light</schmancy-option>
+                  <schmancy-option value="dark">Dark</schmancy-option>
                 </schmancy-select>
               </div>
             </div>
@@ -285,6 +286,119 @@ export class VenueForm extends $LitElement() {
               ></schmancy-input>
             </div>
 
+            <!-- Booking Settings -->
+            <div class="grid gap-3 mb-4">
+              <schmancy-grid>
+                <schmancy-typography type="title">Booking Settings</schmancy-typography>
+                <schmancy-divider></schmancy-divider>
+              </schmancy-grid>
+
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Minimum Booking Time -->
+                <schmancy-select
+                  label="Minimum Booking Time"
+                  required
+                  .value=${String(this.formData.settings?.minBookingTime || 30)}
+                  @change=${(e: SchmancySelectChangeEvent) => this.updateSettings('minBookingTime', Number(e.detail.value))}
+                >
+                  <schmancy-option value="30">30 minutes</schmancy-option>
+                  <schmancy-option value="60">1 hour</schmancy-option>
+                  <schmancy-option value="90">1.5 hours</schmancy-option>
+                  <schmancy-option value="120">2 hours</schmancy-option>
+                </schmancy-select>
+
+                <!-- Maximum Booking Time -->
+                <schmancy-select
+                  label="Maximum Booking Time"
+                  required
+                  .value=${String(this.formData.settings?.maxBookingTime || 180)}
+                  @change=${(e: SchmancySelectChangeEvent) => this.updateSettings('maxBookingTime', Number(e.detail.value))}
+                >
+                  <schmancy-option value="60">1 hour</schmancy-option>
+                  <schmancy-option value="90">1.5 hours</schmancy-option>
+                  <schmancy-option value="120">2 hours</schmancy-option>
+                  <schmancy-option value="150">2.5 hours</schmancy-option>
+                  <schmancy-option value="180">3 hours</schmancy-option>
+                  <schmancy-option value="210">3.5 hours</schmancy-option>
+                  <schmancy-option value="240">4 hours</schmancy-option>
+                  <schmancy-option value="270">4.5 hours</schmancy-option>
+                  <schmancy-option value="300">5 hours</schmancy-option>
+                </schmancy-select>
+
+                <!-- Booking Time Step -->
+                <schmancy-select
+                  label="Time Slot Interval"
+                  required
+                  .value=${String(this.formData.settings?.bookingTimeStep || 30)}
+                  @change=${(e: SchmancySelectChangeEvent) => this.updateSettings('bookingTimeStep', Number(e.detail.value))}
+                >
+                  <schmancy-option value="15">15 minutes</schmancy-option>
+                  <schmancy-option value="30">30 minutes</schmancy-option>
+                  <schmancy-option value="60">1 hour</schmancy-option>
+                </schmancy-select>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <!-- Advance Booking Limit -->
+                <schmancy-input
+                  type="number"
+                  label="Advance Booking Limit (days)"
+                  min="1"
+                  max="365"
+                  .value="${String(this.formData.settings?.advanceBookingLimit || 14)}"
+                  @change=${(e: SchmancyInputChangeEvent) => this.updateSettings('advanceBookingLimit', Number(e.detail.value))}
+                ></schmancy-input>
+
+                <!-- Booking Flow Type -->
+                <schmancy-select
+                  label="Booking Flow"
+                  required
+                  .value=${this.formData.settings?.bookingFlow || 'DATE_COURT_TIME_DURATION'}
+                  @change=${(e: SchmancySelectChangeEvent) => this.updateSettings('bookingFlow', e.detail.value as string)}
+                >
+                  <schmancy-option value="DATE_COURT_TIME_DURATION">Date → Court → Time → Duration</schmancy-option>
+                  <schmancy-option value="DATE_TIME_DURATION_COURT">Date → Time → Duration → Court</schmancy-option>
+                  <schmancy-option value="DATE_TIME_COURT_DURATION">Date → Time → Court → Duration</schmancy-option>
+                </schmancy-select>
+              </div>
+
+              <!-- Cancellation Policy -->
+              <div class="mt-4">
+                <schmancy-typography type="label" token="sm" class="mb-2 block">Cancellation Policy</schmancy-typography>
+                <div class="grid gap-3">
+                  <schmancy-checkbox
+                    .value=${this.formData.settings?.cancellationPolicy?.allowCancellation || true}
+                    @change=${(e: schmancyCheckBoxChangeEvent) => 
+                      this.updateCancellationPolicy('allowCancellation', e.detail.value)}
+                  >
+                    Allow Cancellations
+                  </schmancy-checkbox>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 ${this.formData.settings?.cancellationPolicy?.allowCancellation ? '' : 'opacity-50 pointer-events-none'}">
+                    <schmancy-input
+                      type="number"
+                      label="Refund Cutoff (hours before booking)"
+                      min="0"
+                      max="168"
+                      .value="${String(this.formData.settings?.cancellationPolicy?.refundCutoff || 24)}"
+                      @change=${(e: SchmancyInputChangeEvent) => 
+                        this.updateCancellationPolicy('refundCutoff', Number(e.detail.value))}
+                    ></schmancy-input>
+
+                    <schmancy-input
+                      type="number"
+                      label="Refund Percentage (%)"
+                      min="0"
+                      max="100"
+                      .value="${String(this.formData.settings?.cancellationPolicy?.refundPercentage || 80)}"
+                      @change=${(e: SchmancyInputChangeEvent) => 
+                        this.updateCancellationPolicy('refundPercentage', Number(e.detail.value))}
+                    ></schmancy-input>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Status -->
             <div class="grid gap-3 mb-4">
               <schmancy-grid>
@@ -297,9 +411,9 @@ export class VenueForm extends $LitElement() {
                 .value=${this.formData.status || 'active'}
                 @change=${(e: SchmancySelectChangeEvent) => this.updateField('status', e.detail.value as string)}
               >
-                <schmancy-option value="active" label="Active">Active</schmancy-option>
-                <schmancy-option value="maintenance" label="Under Maintenance">Under Maintenance</schmancy-option>
-                <schmancy-option value="inactive" label="Inactive">Inactive</schmancy-option>
+                <schmancy-option value="active">Active</schmancy-option>
+                <schmancy-option value="maintenance">Under Maintenance</schmancy-option>
+                <schmancy-option value="inactive">Inactive</schmancy-option>
               </schmancy-select>
             </div>
 
@@ -517,6 +631,32 @@ export class VenueForm extends $LitElement() {
     operatingHours[day] = { ...dayHours, [field]: value }
     
     this.formData = { ...this.formData, operatingHours }
+    this.requestUpdate()
+  }
+
+  // Update settings
+  private updateSettings(field: keyof VenueSettings, value: any) {
+    const settings = {
+      ...defaultVenueSettings,
+      ...this.formData.settings,
+      [field]: value,
+    }
+    this.formData = { ...this.formData, settings }
+    this.requestUpdate()
+  }
+
+  // Update cancellation policy
+  private updateCancellationPolicy(field: keyof VenueSettings['cancellationPolicy'], value: any) {
+    const settings = {
+      ...defaultVenueSettings,
+      ...this.formData.settings,
+      cancellationPolicy: {
+        ...defaultVenueSettings.cancellationPolicy,
+        ...this.formData.settings?.cancellationPolicy,
+        [field]: value,
+      },
+    }
+    this.formData = { ...this.formData, settings }
     this.requestUpdate()
   }
 

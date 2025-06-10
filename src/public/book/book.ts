@@ -356,7 +356,7 @@ export class CourtBookingSystem extends $LitElement() {
 										<date-selection-step class="max-w-full sticky top-0 block my-2 z-0"></date-selection-step>
 									` : html`
 										<!-- Render booking steps based on flow -->
-										${flowSteps.map(step => {
+										${flowSteps && flowSteps.map ? flowSteps.map(step => {
 											// Check if step should be shown - all logic inline
 											if (!this.availability?.bookingFlowType) return html``
 
@@ -399,11 +399,14 @@ export class CourtBookingSystem extends $LitElement() {
 												case 'Time':
 													return html` <time-selection-step class="max-w-full sticky top-0 block mt-2 z-10"></time-selection-step> `
 												case 'Duration':
-													return html` <duration-selection-step class="max-w-full mt-2 block"></duration-selection-step> `
+													// Only show duration step if start time is selected
+													return this.booking.startTime 
+														? html` <duration-selection-step class="max-w-full mt-2 block"></duration-selection-step> `
+														: html``
 												default:
 													return html``
 											}
-										})}
+										}) : html``}
 									`}
 								</schmancy-scroll>
 							</schmancy-grid>

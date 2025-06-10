@@ -264,7 +264,7 @@ export class VenueMapInteractive extends $LitElement(css`
 			}),
 			tap(coords => {
 				if (coords && window.google?.maps) {
-					const center = new window.google.maps.LatLng(coords.lat, coords.lng)
+					const center = new (window as any).google.maps.LatLng(coords.lat, coords.lng)
 					this.map.setCenter(center)
 					
 					if (this.marker) {
@@ -281,7 +281,7 @@ export class VenueMapInteractive extends $LitElement(css`
 	private createMap(lat: number, lng: number) {
 		if (!this.mapContainer || !window.google) return
 
-		const center = new window.google.maps.LatLng(lat, lng)
+		const center = new (window as any).google.maps.LatLng(lat, lng)
 		
 		// Map options
 		const mapOptions = {
@@ -293,8 +293,8 @@ export class VenueMapInteractive extends $LitElement(css`
 			mapTypeControl: this.interactive && this.showMapTypeControl,
 			mapTypeControlOptions: {
 				mapTypeIds: ['roadmap', 'satellite', 'hybrid', 'terrain'],
-				style: window.google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
-				position: window.google.maps.ControlPosition.TOP_RIGHT
+				style: (window as any).google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+				position: (window as any).google.maps.ControlPosition.TOP_RIGHT
 			},
 			streetViewControl: this.interactive && this.showStreetViewControl,
 			fullscreenControl: this.interactive && this.showFullscreenControl,
@@ -312,15 +312,15 @@ export class VenueMapInteractive extends $LitElement(css`
 		}
 
 		// Create map
-		this.map = new window.google.maps.Map(this.mapContainer, mapOptions)
+		this.map = new (window as any).google.maps.Map(this.mapContainer, mapOptions)
 
 		// Add marker if requested
 		if (this.showMarker) {
-			this.marker = new window.google.maps.Marker({
+			this.marker = new (window as any).google.maps.Marker({
 				position: center,
 				map: this.map,
 				title: this.venueName,
-				animation: window.google.maps.Animation.DROP
+				animation: (window as any).google.maps.Animation.DROP
 			})
 		}
 		
@@ -379,7 +379,7 @@ export class VenueMapInteractive extends $LitElement(css`
 		
 		const fullAddress = addressParts.join(', ')
 
-		return of(new window.google.maps.Geocoder()).pipe(
+		return of(new (window as any).google.maps.Geocoder()).pipe(
 			switchMap(geocoder => 
 				from(new Promise<any>((resolve, reject) => {
 					geocoder.geocode({ address: fullAddress }, (results: any, status: any) => {
@@ -409,23 +409,23 @@ export class VenueMapInteractive extends $LitElement(css`
 	private updateSelectionMarker(location: { lat: number; lng: number }) {
 		if (!this.map || !window.google?.maps) return
 		
-		const position = new window.google.maps.LatLng(location.lat, location.lng)
+		const position = new (window as any).google.maps.LatLng(location.lat, location.lng)
 		
 		if (!this.selectionMarker) {
 			// Create selection marker with different color
-			this.selectionMarker = new window.google.maps.Marker({
+			this.selectionMarker = new (window as any).google.maps.Marker({
 				position,
 				map: this.map,
 				title: 'Selected Location',
 				icon: {
-					path: window.google.maps.SymbolPath.CIRCLE,
+					path: (window as any).google.maps.SymbolPath.CIRCLE,
 					scale: 10,
 					fillColor: '#ff4444',
 					fillOpacity: 0.8,
 					strokeColor: '#ffffff',
 					strokeWeight: 2
 				},
-				animation: window.google.maps.Animation.DROP
+				animation: (window as any).google.maps.Animation.DROP
 			})
 		} else {
 			this.selectionMarker.setPosition(position)
@@ -443,7 +443,7 @@ export class VenueMapInteractive extends $LitElement(css`
 			return of(null)
 		}
 		
-		return of(new window.google.maps.Geocoder()).pipe(
+		return of(new (window as any).google.maps.Geocoder()).pipe(
 			switchMap(geocoder => 
 				from(new Promise<any>((resolve, reject) => {
 					const latLng = new (window.google as any).maps.LatLng(location.lat, location.lng)

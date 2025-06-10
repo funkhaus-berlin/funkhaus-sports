@@ -6,7 +6,8 @@ import { css, html, nothing } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { createRef, ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
-import { catchError, of, takeUntil, tap } from 'rxjs'
+import { catchError, combineLatest, of, takeUntil } from 'rxjs'
+import { distinctUntilChanged, filter, tap } from 'rxjs/operators'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { availabilityContext, availabilityLoading$, getAvailableDurations } from 'src/availability-context'
 import { BookingService } from 'src/bookingServices/booking.service'
@@ -86,24 +87,68 @@ export class DurationSelectionStep extends $LitElement(css`
 		}
 		window.addEventListener('resize', checkScreenSize)
 
-		// Watch booking progress
-		BookingProgressContext.$.pipe(takeUntil(this.disconnecting)).subscribe(progress => {
-			this.isExpanded = progress.expandedSteps.includes(BookingStep.Duration)
-		})
-
-		// Watch booking context for data changes and load durations
-		bookingContext.$.pipe(takeUntil(this.disconnecting)).subscribe(booking => {
-			if (booking?.date && booking?.startTime) {
-				this.loadDurations()
+		// Consolidated reactive pipeline
+		combineLatest([
+			bookingContext.$,
+			availabilityContext.$,
+			courtsContext.$,
+			BookingProgressContext.$,
+			availabilityLoading$
+		]).pipe(
+			takeUntil(this.disconnecting),
+			tap(([booking, availability, courts, progress, loading]) => {
+				// Update loading state
+				this.loading = loading
+				
+				// Update expanded state from progress
+				this.isExpanded = progress.expandedSteps.includes(BookingStep.Duration)
+				
+				// Scroll to selected duration if endTime exists
+				if (booking?.endTime) {
+					setTimeout(() => this.scrollToSelectedDuration(), 250)
+				}
+			}),
+			// Only process durations when we have required data and contexts are ready
+			filter(([booking, availability, courts, progress, loading]) => 
+				!!booking?.date && 
+				!!booking?.startTime && 
+				availabilityContext.ready && 
+				courtsContext.ready &&
+				!loading
+			),
+			distinctUntilChanged(([prevBooking, prevAvail, prevCourts], [currBooking, currAvail, currCourts]) => 
+				prevBooking.date === currBooking.date &&
+				prevBooking.startTime === currBooking.startTime &&
+				prevBooking.courtId === currBooking.courtId &&
+				prevAvail.date === currAvail.date &&
+				prevAvail.activeCourtIds.length === currAvail.activeCourtIds.length &&
+				prevCourts.size === currCourts.size
+			)
+		).subscribe(([booking, availability, courts]) => {
+			// Load durations
+			this.loadDurations()
+			
+			// Check if selected duration is still valid
+			if (booking.endTime) {
+				const currentDuration = this.getCurrentDuration()
+				if (currentDuration > 0) {
+					// Get available durations based on current context
+					const courtId = availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION 
+						? booking.courtId : undefined
+					const availableDurations = getAvailableDurations(booking.startTime, courtId)
+					
+					// Check if current duration is still available
+					const isDurationValid = availableDurations.some(d => d.value === currentDuration)
+					
+					// Also check if it exceeds closing time
+					const exceedsClosing = this.wouldExceedClosingTime({ value: currentDuration } as Duration)
+					
+					if (!isDurationValid || exceedsClosing) {
+						console.log('Selected duration is no longer available, clearing selection')
+						bookingContext.set({ endTime: '', price: 0 }, true)
+					}
+				}
 			}
-			if (booking?.endTime) {
-				setTimeout(() => this.scrollToSelectedDuration(), 250)
-			}
-		})
-
-		// Watch availability loading state
-		availabilityLoading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
-			this.loading = loading
 		})
 	}
 
@@ -113,6 +158,20 @@ export class DurationSelectionStep extends $LitElement(css`
 		this.error = null
 
 		try {
+			// Check if availability context and courts are ready
+			if (!availabilityContext.ready || !this.availability?.timeSlots || !courtsContext.ready) {
+				console.log('Availability or courts context not ready, using estimated durations')
+				this.durations = this.generateEstimatedDurations()
+				this.error = 'Loading availability data...'
+				// Retry after a short delay
+				setTimeout(() => {
+					if (availabilityContext.ready && this.availability?.timeSlots && courtsContext.ready) {
+						this.loadDurations()
+					}
+				}, 500)
+				return
+			}
+
 			const courtId = this.availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION 
 				? this.booking.courtId : undefined
 			
@@ -120,6 +179,7 @@ export class DurationSelectionStep extends $LitElement(css`
 			
 			if (durations.length > 0) {
 				this.durations = durations
+				this.error = null // Clear any previous error
 			} else {
 				this.durations = this.generateEstimatedDurations()
 				this.error = 'Using estimated pricing - actual prices may vary'
@@ -132,13 +192,21 @@ export class DurationSelectionStep extends $LitElement(css`
 			this.loading = false
 		}
 
-		// Validate current selection
-		this.validateCurrentSelection()
 	}
 
 	private generateEstimatedDurations(): Duration[] {
 		const baseRate = this.getAverageHourlyRate()
-		return [30, 60, 90, 120, 150, 180, 210, 240, 270, 300].map(minutes => ({
+		const venue = this.availability?.venue
+		const minTime = venue?.settings?.minBookingTime || 30
+		const maxTime = venue?.settings?.maxBookingTime || 180
+		const timeStep = venue?.settings?.bookingTimeStep || 30
+		
+		const durations: number[] = []
+		for (let minutes = minTime; minutes <= maxTime; minutes += timeStep) {
+			durations.push(minutes)
+		}
+		
+		return durations.map(minutes => ({
 			label: DURATION_LABELS[minutes]?.compact || `${minutes}m`,
 			value: minutes,
 			price: Math.round(baseRate * minutes / 60)
@@ -160,17 +228,6 @@ export class DurationSelectionStep extends $LitElement(css`
 		return Math.max(0, dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute'))
 	}
 
-	private validateCurrentSelection(): void {
-		const currentDuration = this.getCurrentDuration()
-		if (!currentDuration) return
-		
-		const isValid = this.durations.some(d => d.value === currentDuration) && 
-			!this.wouldExceedClosingTime({ value: currentDuration } as Duration)
-		
-		if (!isValid) {
-			bookingContext.set({ endTime: '', price: 0 }, true)
-		}
-	}
 
 	private wouldExceedClosingTime(duration: Duration): boolean {
 		if (!this.booking?.startTime || !this.booking?.date) return false

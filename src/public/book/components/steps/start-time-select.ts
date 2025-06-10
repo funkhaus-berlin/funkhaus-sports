@@ -7,7 +7,8 @@ import { css, html, nothing, PropertyValues } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
-import { takeUntil } from 'rxjs'
+import { combineLatest, filter, takeUntil } from 'rxjs'
+import { distinctUntilChanged, tap } from 'rxjs/operators'
 import {
   availabilityContext,
   AvailabilityData,
@@ -91,7 +92,7 @@ export class TimeSelectionStep extends $LitElement(css`
 	@state() error: string | null = null
 	@state() viewMode: 'grid' | 'list' = 'grid'
 	@state() isExpanded = false
-	@state() isDesktopOrTablet = window.innerWidth >= 768
+	@state() isDesktopOrTablet = window.innerWidth >= 412
 	@state() private contentHeight = 0
 
 	// DOM refs
@@ -137,7 +138,7 @@ export class TimeSelectionStep extends $LitElement(css`
 	private setupObservers(): void {
 		// Watch screen size changes
 		this.resizeObserver = new ResizeObserver(() => {
-			const newIsDesktop = window.innerWidth >= 768
+			const newIsDesktop = window.innerWidth >= 412
 			if (this.isDesktopOrTablet !== newIsDesktop) {
 				this.isDesktopOrTablet = newIsDesktop
 				if (!newIsDesktop && this.viewMode === 'grid') {
@@ -147,32 +148,63 @@ export class TimeSelectionStep extends $LitElement(css`
 		})
 		this.resizeObserver.observe(document.body)
 
-		// Watch booking progress
-		BookingProgressContext.$.pipe(takeUntil(this.disconnecting)).subscribe(progress => {
-			this.isExpanded = progress.expandedSteps.includes(BookingStep.Time)
-		})
-
-		// Watch booking context for data changes
-		bookingContext.$.pipe(takeUntil(this.disconnecting)).subscribe(booking => {
-			if (booking?.date && booking?.venueId) {
-				this.loadTimeSlots()
-			}
-			// Update view mode based on selection
-			const hasSelection = !!booking?.startTime
-			const newViewMode = (hasSelection || !this.isDesktopOrTablet) ? 'list' : 'grid'
+		// Consolidated reactive pipeline
+		combineLatest([
+			bookingContext.$,
+			availabilityContext.$,
+			BookingProgressContext.$,
+			availabilityLoading$
+		]).pipe(
+			takeUntil(this.disconnecting),
+			tap(([booking, _availability, progress, loading]) => {
+				// Update loading state
+				this.loading = loading
+				
+				// Update expanded state from progress
+				this.isExpanded = progress.expandedSteps.includes(BookingStep.Time)
+				
+				// Update view mode based on selection
+				const hasSelection = !!booking?.startTime
+				const newViewMode = (hasSelection || !this.isDesktopOrTablet) ? 'list' : 'grid'
+				
+				if (this.viewMode !== newViewMode) {
+					this.viewMode = newViewMode
+					// Scroll after transition completes
+					if (hasSelection && newViewMode === 'list') {
+						setTimeout(() => this.scrollToSelectedTime(), 100)
+					}
+				}
+			}),
+			// Only process time slots when we have required data and not loading
+			filter(([booking, _availability, _progress, loading]) => 
+				!!booking?.date && !!booking?.venueId && !loading
+			),
+			distinctUntilChanged(([prevBooking, prevAvail], [currBooking, currAvail]) => 
+				prevBooking.date === currBooking.date &&
+				prevBooking.venueId === currBooking.venueId &&
+				prevBooking.courtId === currBooking.courtId &&
+				prevAvail.date === currAvail.date &&
+				prevAvail.activeCourtIds.length === currAvail.activeCourtIds.length
+			)
+		).subscribe(([booking, availability]) => {
+			// Load time slots
+			this.loadTimeSlots()
 			
-			if (this.viewMode !== newViewMode) {
-				this.viewMode = newViewMode
-				// Scroll after transition completes
-				if (hasSelection && newViewMode === 'list') {
-					setTimeout(() => this.scrollToSelectedTime(), 50)
+			// Check if selected time is still valid
+			if (booking.startTime) {
+				const slots = availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION && booking.courtId
+					? getAvailableTimeSlots(booking.courtId)
+					: getAvailableTimeSlots()
+				
+				const localStartTime = toUserTimezone(booking.startTime)
+				const selectedTimeValue = localStartTime.hour() * 60 + localStartTime.minute()
+				const selectedSlot = slots.find(slot => slot.value === selectedTimeValue)
+				
+				if (!selectedSlot || !selectedSlot.available) {
+					console.log('Selected time is no longer available, clearing selection')
+					bookingContext.set({ startTime: '', endTime: '' }, true)
 				}
 			}
-		})
-
-		// Watch availability loading state
-		availabilityLoading$.pipe(takeUntil(this.disconnecting)).subscribe(loading => {
-			this.loading = loading
 		})
 	}
 
@@ -411,7 +443,7 @@ export class TimeSelectionStep extends $LitElement(css`
 		return html`
 			<div
 				${ref(this.scrollContainerRef)}
-				class="grid grid-flow-col py-2 overflow-x-auto scrollbar-hide gap-3"
+				class="flex grid-flow-col py-2 overflow-x-auto scrollbar-hide gap-3"
 				role="listbox">
 				${repeat(displaySlots, (item, index) => 
 					'placeholder' in item ? `placeholder-${index}` : item.value,

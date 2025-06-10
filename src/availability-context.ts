@@ -76,7 +76,16 @@ export function getNextStep(step: StepLabel): number {
 
 export function getBookingFlowSteps(): BookingFlowConfig {
 	const flowType = availabilityContext.value.bookingFlowType
-	return BOOKING_FLOWS[flowType]
+	if (!flowType) {
+		console.warn('bookingFlowType is undefined in availabilityContext', availabilityContext.value)
+		return BOOKING_FLOWS[BookingFlowType.DATE_COURT_TIME_DURATION]
+	}
+	const flow = BOOKING_FLOWS[flowType]
+	if (!flow) {
+		console.warn('No flow found for bookingFlowType:', flowType)
+		return BOOKING_FLOWS[BookingFlowType.DATE_COURT_TIME_DURATION]
+	}
+	return flow
 }
 
 // Define interfaces for availability data
@@ -226,17 +235,21 @@ function processBookingsForTimeSlots(timeSlots: TimeSlotAvailability[], bookings
  * @param destroySignal$ Observable that emits when the context should be destroyed
  */
 export function initializeAvailabilityContext(destroySignal$: Observable<any>): void {
-	// Subscribe to date and venue changes from booking context
-	const dateVenueChanges$ = bookingContext.$.pipe(
-		map(booking => ({ date: booking.date, venueId: booking.venueId })),
+	// Subscribe to date, venue, and court changes from booking context
+	const bookingChanges$ = bookingContext.$.pipe(
+		map(booking => ({ date: booking.date, venueId: booking.venueId, courtId: booking.courtId })),
 		filter(({ date, venueId }) => !!date && !!venueId),
-		distinctUntilChanged((prev, curr) => prev.date === curr.date && prev.venueId === curr.venueId),
+		distinctUntilChanged((prev, curr) => 
+			prev.date === curr.date && 
+			prev.venueId === curr.venueId && 
+			prev.courtId === curr.courtId
+		),
 		shareReplay(1),
 	)
 
 	// Main data stream
 	combineLatest([
-		dateVenueChanges$,
+		bookingChanges$,
 		courtsContext.$.pipe(filter(courts => courts.size > 0)),
 		venuesContext.$.pipe(filter(venues => venues.size > 0)),
 	])
@@ -267,8 +280,6 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 
 				// Other calculations remain the same
 
-				const bookingFlow = BOOKING_FLOWS[bookingFlowType]
-
 				// Get venue name for display
 				const venueName = venue?.name || 'Unknown Venue'
 
@@ -287,7 +298,7 @@ export function initializeAvailabilityContext(destroySignal$: Observable<any>): 
 						timeSlots: [],
 						activeCourtIds: [],
 						bookings: [],
-						bookingFlow,
+						bookingFlowType,
 						venueName,
 					})
 				}
