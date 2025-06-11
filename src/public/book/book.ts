@@ -447,8 +447,9 @@ export class CourtBookingSystem extends $LitElement() {
 		// Get current step and flow steps for rendering
 		const currentStep = this.bookingProgress.currentStep
 		const flowSteps = getBookingFlowSteps()
-		
+    console.log(this.booking)
 		return html`
+
 				<schmancy-grid ${fullHeight()} rows="auto 1fr">
 					<page-header-banner
           class="h-[15vh] sm:h-[20vh] lg:h-[25vh]  lg:block"

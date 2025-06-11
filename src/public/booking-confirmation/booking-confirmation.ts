@@ -7,16 +7,17 @@ import utc from 'dayjs/plugin/utc'
 import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { courtsContext } from 'src/admin/venues/courts/context'
-import { venuesContext } from 'src/admin/venues/venue-context'
-import { VenuesLandingPage } from 'src/public/venues/venues'
+import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 import { Court } from 'src/types/booking/court.types'
 import { Venue } from 'src/types/booking/venue.types'
+import { CourtBookingSystem } from '../book/book'
 import { BookingUtils } from '../book/booking-utils'
 import { resendBookingEmail } from '../book/components/services'
-import { Booking, bookingContext, BookingProgressContext } from '../book/context'
+import { Booking, bookingContext, BookingProgressContext, BookingStep } from '../book/context'
 import '../shared/components/banner'
 import '../shared/components/social-buttons'
 import '../shared/components/venue-map'
+import { VenuesLandingPage } from '../venues/venues'
 
 // Set up dayjs plugins
 dayjs.extend(utc)
@@ -88,11 +89,37 @@ export class BookingConfirmation extends $LitElement() {
 	 * Return to venue selection page
 	 */
 	private returnToHome() {
-		bookingContext.clear()
-		BookingProgressContext.clear()
-		if (this.onNewBooking) {
-			this.onNewBooking()
+		const venueID = this.booking.venueId
+
+		if (venueID) {
+			bookingContext.clear()
+			BookingProgressContext.clear()
+			// Reset to first step (Date)
+			BookingProgressContext.set({
+				currentStep: BookingStep.Date,
+			})
+
+			// Set venue in the context
+			bookingContext.set({
+				venueId: venueID,
+			})
+			venueContext.replace(venuesContext.value.get(venueID)!)
+			BookingProgressContext.set({
+				currentStep: BookingStep.Date,
+			})
+
+			// Navigate to booking system
+			area.push({
+				component: new CourtBookingSystem(),
+				area: 'root',
+			})
 		} else {
+      bookingContext.clear()
+			BookingProgressContext.clear()
+			// Reset to first step (Date)
+			BookingProgressContext.set({
+				currentStep: BookingStep.Date,
+			})
 			area.push({
 				component: VenuesLandingPage,
 				area: 'root',

@@ -3,15 +3,15 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import jsQR from 'jsqr'
-import { css, html, nothing } from 'lit'
+import { html, nothing } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { animationFrames, fromEvent, of, Subject, timer } from 'rxjs'
 import { catchError, filter, map, switchMap, takeUntil, tap, throttleTime, timeout } from 'rxjs/operators'
 import { BookingsDB } from 'src/db/bookings.collection'
-import { Venue } from 'src/types/booking/venue.types'
 import { PermissionService } from 'src/firebase/permission.service'
 import { Booking } from 'src/types/booking/booking.types'
+import { Venue } from 'src/types/booking/venue.types'
 import { userContext } from 'src/user.context'
 import { venueContext } from '../venue-context'
 import './booking-details-sheet'
@@ -276,6 +276,12 @@ export default class BookingScanner extends $LitElement() {
 			)
 		}
 
+		// Check if we're already showing this booking
+		if (this.activeSheetId === bookingId) {
+			console.log('Booking details already open for this QR code')
+			return of(null)
+		}
+
 		// Block further scans until processing is complete
 		this.isReadyToScan = false
 		this.isBusy = true
@@ -368,13 +374,35 @@ export default class BookingScanner extends $LitElement() {
 	}
 
 
+	private activeSheetId?: string
+
 	private showBookingDetails(booking: Booking) {
+		// Check if a sheet is already open for this booking
+		if (this.activeSheetId === booking.id) {
+			console.log('Booking details sheet already open for this booking')
+			return
+		}
+
+		// Close any existing sheet first
+		if (this.activeSheetId) {
+			sheet.dismiss('booking-details-sheet')
+		}
+
 		const detailsSheet = document.createElement('booking-details-sheet') as any
 		detailsSheet.booking = booking
 
+		// Store the booking ID to prevent duplicate sheets
+		this.activeSheetId = booking.id
+
 		sheet.open({
 			component: detailsSheet,
-      header:'hidden'
+			header: 'hidden',
+			close: () => {
+				this.activeSheetId = undefined
+				// Ensure scanning is re-enabled when sheet closes
+				this.isReadyToScan = true
+				this.isBusy = false
+			}
 		})
 	}
 
