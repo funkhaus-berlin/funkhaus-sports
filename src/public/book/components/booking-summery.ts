@@ -3,6 +3,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
+import { catchError, of } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext } from 'src/admin/venues/venue-context'
 import { BookingsDB } from 'src/db/bookings.collection'
@@ -22,8 +23,7 @@ export class BookingSummary extends $LitElement() {
 
 	@property({ type: Object }) selectedCourt?: Court
 
-  @state() busy:boolean = false
-
+	@state() busy: boolean = false
 
 	private getSelectedCourt(): Court | undefined {
 		if (this.selectedCourt) {
@@ -40,7 +40,7 @@ export class BookingSummary extends $LitElement() {
 	private formatDate(dateStr: string): string {
 		if (!dateStr) return 'TBD'
 		// More compact format on mobile
-		return  dayjs(dateStr).format('ddd, MMM D')
+		return dayjs(dateStr).format('ddd, MMM D')
 	}
 
 	private formatTime(timeStr: string): string {
@@ -49,22 +49,44 @@ export class BookingSummary extends $LitElement() {
 		return toUserTimezone(timeStr).format('HH:mm')
 	}
 
-
-
-
 	/**
 	 * Handle edit button click - go back to the previous completed step
 	 */
 	private handleEdit(): void {
-    this.busy = true
-    BookingsDB.delete(this.booking.id).subscribe({
-      next:()=>{
+		this.busy = true
 
-        const progress = BookingProgressContext.value
-		
+		// Only try to delete if booking has a valid ID
+		if (this.booking?.id && this.booking.id.trim() !== '') {
+			console.log('Deleting booking with ID:', this.booking.id)
+			BookingsDB.delete(this.booking.id)
+				.pipe(
+					catchError(error => {
+						console.error('Error deleting booking:', error)
+						return of(true)
+					}),
+				)
+				.subscribe({
+					next: () => {
+						console.log('Booking operation completed')
+						this.navigateToTargetStep()
+					},
+					complete: () => {
+						this.busy = false
+					},
+				})
+		} else {
+			console.log('No valid booking ID to delete, proceeding with navigation')
+			this.navigateToTargetStep()
+			this.busy = false
+		}
+	}
+
+	private navigateToTargetStep(): void {
+		const progress = BookingProgressContext.value
+
 		// Find the last completed step before payment
 		let targetStep = BookingStep.Duration // Default to duration step
-		
+
 		if (this.booking?.endTime) {
 			targetStep = BookingStep.Duration
 		} else if (this.booking?.startTime) {
@@ -74,16 +96,13 @@ export class BookingSummary extends $LitElement() {
 		} else if (this.booking?.date) {
 			targetStep = BookingStep.Date
 		}
-		
+
 		// Update the progress context to go to the target step
 		BookingProgressContext.set({
 			...progress,
 			currentStep: targetStep,
-			expandedSteps: [...progress.expandedSteps, targetStep]
+			expandedSteps: [...progress.expandedSteps, targetStep],
 		})
-      }
-    })
-		
 	}
 
 	render() {
@@ -96,59 +115,66 @@ export class BookingSummary extends $LitElement() {
 				<div class="flex items-center justify-between gap-1 md:gap-2">
 					<!-- Left side - booking info -->
 					<div class="flex-1 min-w-0">
-						${hasBookingDetails ? html`
-							<div class="flex items-center gap-2 md:gap-4 flex-wrap">
-								<!-- Date & Time -->
-								<div class="flex items-center gap-[2px] md:gap-[4px]">
-									<schmancy-icon size="14px" class="text-primary-default md:text-[16px]">calendar_today</schmancy-icon>
-									<schmancy-typography type="body" token="sm" class="font-medium text-sm md:text-lg">
-										${this.formatDate(this.booking.date)}
-									</schmancy-typography>
-								</div>
+						${hasBookingDetails
+							? html`
+									<div class="flex items-center gap-2 md:gap-4 flex-wrap">
+										<!-- Date & Time -->
+										<div class="flex items-center gap-[2px] md:gap-[4px]">
+											<schmancy-icon size="14px" class="text-primary-default md:text-[16px]"
+												>calendar_today</schmancy-icon
+											>
+											<schmancy-typography type="body" token="sm" class="font-medium text-sm md:text-lg">
+												${this.formatDate(this.booking.date)}
+											</schmancy-typography>
+										</div>
 
-                	<!-- Court (if selected) -->
-								${court ? html`
-									<div class="flex items-center gap-[2px] md:gap-[4px]">
-										<schmancy-icon size="14px" class="text-primary-default md:text-[16px]">sports_tennis</schmancy-icon>
-										<schmancy-typography type="body" token="sm" class="text-sm md:text-lg">
-											${court.name}
-										</schmancy-typography>
+										<!-- Court (if selected) -->
+										${court
+											? html`
+													<div class="flex items-center gap-[2px] md:gap-[4px]">
+														<schmancy-icon size="14px" class="text-primary-default md:text-[16px]"
+															>sports_tennis</schmancy-icon
+														>
+														<schmancy-typography type="body" token="sm" class="text-sm md:text-lg">
+															${court.name}
+														</schmancy-typography>
+													</div>
+												`
+											: ''}
+
+										<!-- Time Range -->
+										<div class="flex items-center gap-[2px] md:gap-[4px]">
+											<schmancy-icon size="14px" class="text-primary-default size-sm md:size-lg"
+												>schedule</schmancy-icon
+											>
+											<schmancy-typography type="body" token="sm" class="text-sm md:text-lg">
+												${this.formatTime(this.booking.startTime)}-${this.formatTime(this.booking.endTime)}
+											</schmancy-typography>
+										</div>
+
+										<slot></slot>
 									</div>
-								` : ''}
-								
-								<!-- Time Range -->
-								<div class="flex items-center gap-[2px] md:gap-[4px]">
-									<schmancy-icon size="14px" class="text-primary-default size-sm md:size-lg">schedule</schmancy-icon>
-									<schmancy-typography type="body" token="sm" class="text-sm md:text-lg">
-										${this.formatTime(this.booking.startTime)}-${this.formatTime(this.booking.endTime)}
+								`
+							: html`
+									<schmancy-typography type="body" token="sm" class="text-surface-on-variant">
+										Complete your booking details
 									</schmancy-typography>
-								</div>
-
-                <slot></slot>
-								
-							
-							</div>
-						` : html`
-							<schmancy-typography type="body" token="sm" class="text-surface-on-variant">
-								Complete your booking details
-							</schmancy-typography>
-						`}
+								`}
 					</div>
-					
+
 					<!-- Right side - edit button -->
 					<div class="flex items-center">
 						<schmancy-button
 							variant="filled tonal"
 							@click=${() => this.handleEdit()}
 							class="px-2 md:px-3"
-              ?disabled=${this.busy}
+							?disabled=${this.busy}
 						>
 							<schmancy-icon size="18px" class="md:text-[20px]">edit</schmancy-icon>
 							<span class="hidden sm:block ml-1">Change</span>
 						</schmancy-button>
 					</div>
 				</div>
-
 			</schmancy-surface>
 		`
 	}

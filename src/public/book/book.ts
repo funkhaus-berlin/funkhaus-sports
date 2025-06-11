@@ -3,7 +3,9 @@ import { fullHeight, select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html, PropertyValues } from 'lit'
 import { customElement, query } from 'lit/decorators.js'
-import { debounceTime, distinctUntilChanged, filter, map, shareReplay, take, takeUntil, tap } from 'rxjs'
+import { debounceTime, distinctUntilChanged, filter, fromEvent, map, merge, shareReplay, take, takeUntil, tap } from 'rxjs'
+import { doc, updateDoc } from 'firebase/firestore'
+import { from, of, catchError } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 import {
@@ -12,6 +14,7 @@ import {
   initializeAvailabilityContext
 } from 'src/availability-context'
 import { pricingService } from 'src/bookingServices/dynamic-pricing-service'
+import { db } from 'src/firebase/firebase'
 import { Court } from 'src/types/booking/court.types'
 import { Venue } from 'src/types/booking/venue.types'
 import '../shared/components/venue-map'
@@ -55,6 +58,9 @@ export class CourtBookingSystem extends $LitElement() {
 
 		// Add history state management
 		window.addEventListener('popstate', this.handleHistoryNavigation.bind(this))
+
+		// Setup RxJS-based window event listeners for booking hold management
+		this.setupBookingHoldCleanup()
 
 		// We'll rely on firstUpdated to handle the venueId check
 		// This allows time for both the URL parameters and context to be properly loaded
@@ -132,6 +138,124 @@ export class CourtBookingSystem extends $LitElement() {
 				})
 			}
 		}, 250) // Small timeout to allow context hydration
+	}
+
+	// BOOKING HOLD CLEANUP METHODS
+
+	/**
+	 * Setup RxJS-based window event listeners to handle booking hold cleanup
+	 * This prevents bookings from getting stuck in holding state when users
+	 * refresh the page or navigate away using browser controls
+	 */
+	private setupBookingHoldCleanup(): void {
+		// Handle page unload events (refresh, close tab, navigate away)
+		const beforeUnload$ = fromEvent(window, 'beforeunload').pipe(
+			tap(() => {
+				// Only release if we're on payment step and no payment intent exists
+				if (this.isOnPaymentStep() && this.shouldReleaseBookingHold()) {
+					this.releaseBookingHold()
+				}
+			})
+		)
+
+		// Handle browser navigation (back/forward buttons)
+		const popState$ = fromEvent(window, 'popstate').pipe(
+			filter(() => this.shouldReleaseBookingHold()),
+			tap(() => {
+				this.releaseBookingHold()
+			})
+		)
+
+		// Handle page visibility changes (tab switching, minimizing)
+		const visibilityChange$ = fromEvent(document, 'visibilitychange').pipe(
+			filter(() => document.visibilityState === 'hidden'),
+			filter(() => this.shouldReleaseBookingHold()),
+			tap(() => {
+				this.releaseBookingHold()
+			})
+		)
+
+		// Merge all event streams and subscribe
+		merge(beforeUnload$, popState$, visibilityChange$)
+			.pipe(takeUntil(this.disconnecting))
+			.subscribe()
+	}
+
+	/**
+	 * Check if we're currently on the payment step
+	 */
+	private isOnPaymentStep(): boolean {
+		return this.bookingProgress?.currentStep === BookingStep.Payment
+	}
+
+	/**
+	 * Check if a booking hold should be released
+	 * Only release if booking is in holding status and no payment intent exists
+	 */
+	private shouldReleaseBookingHold(): boolean {
+		return !!(
+			this.booking?.id &&
+			this.booking?.status === 'holding' &&
+			!this.booking?.paymentIntentId
+		)
+	}
+
+	/**
+	 * Release a booking hold by updating its status to cancelled
+	 */
+	private releaseBookingHold(): void {
+		if (!this.booking?.id) {
+			return
+		}
+
+		console.log(`Releasing booking hold ${this.booking.id} due to browser navigation/refresh`)
+
+		const bookingRef = doc(db, 'bookings', this.booking.id)
+
+		// Use synchronous approach for beforeunload events
+		// Note: beforeunload has very limited time, so we use navigator.sendBeacon if available
+		if ('sendBeacon' in navigator) {
+			// For beforeunload events, use sendBeacon for better reliability
+			const updateData = {
+				status: 'cancelled',
+				paymentStatus: 'abandoned',
+				cancellationReason: 'browser_navigation_away',
+				updatedAt: new Date().toISOString(),
+			}
+
+			// Convert to form data for sendBeacon
+			const formData = new FormData()
+			formData.append('bookingId', this.booking.id)
+			formData.append('updateData', JSON.stringify(updateData))
+
+			// Send beacon to a cleanup endpoint (you'd need to implement this)
+			// navigator.sendBeacon('/api/cleanup-booking', formData)
+		}
+
+		// Also try the RxJS approach for other cases
+		from(
+			updateDoc(bookingRef, {
+				status: 'cancelled',
+				paymentStatus: 'abandoned',
+				cancellationReason: 'browser_navigation_away',
+				updatedAt: new Date().toISOString(),
+			})
+		)
+			.pipe(
+				tap(() => {
+					console.log(`Successfully released booking hold ${this.booking.id}`)
+					// Clear the booking ID from context to prevent reuse
+					bookingContext.set({ id: '', status: 'holding' }, true)
+				}),
+				catchError(error => {
+					console.error('Error releasing booking hold:', error)
+					// Still clear the booking ID even if the update fails
+					bookingContext.set({ id: '', status: 'holding' }, true)
+					return of(null)
+				}),
+				takeUntil(this.disconnecting)
+			)
+			.subscribe()
 	}
 
 	// SETUP METHODS

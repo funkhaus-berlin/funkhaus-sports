@@ -944,11 +944,6 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Toggle between list and map view modes
 	 */
 	private toggleViewMode(mode: ViewMode): void {
-		// Don't allow view mode changes if a court is already selected
-		if (this.booking?.courtId) {
-			return
-		}
-		
 		this.viewMode = mode
 		this.requestUpdate()
 	}
@@ -1067,12 +1062,8 @@ export class CourtSelectStep extends $LitElement(css`
 		// Don't render filters if there are no courts or only one court
 		if (this.selectedVenueCourts.length <= 1) return html``;
 		
-		// Only show filters section if we have filter options
-		const hasFilters = courtTypeOptions.length > 0 || playerCountOptions.length > 0;
 		
-		if (!hasFilters && !this.isActive) {
-			return html``; // Return empty if no filters and not active
-		}
+		
 		
 		return html`
 			<div class="filter-section py-2 px-1">
@@ -1112,7 +1103,7 @@ export class CourtSelectStep extends $LitElement(css`
 					</div>
 
 					<!-- View mode toggles - only show when active -->
-					<!-- <div class="flex gap-1 shrink-0 ml-auto">
+					<div class="flex gap-1 shrink-0 ml-auto">
 						<schmancy-icon-button
 							size="sm"
 							variant="${this.viewMode === ViewMode.LIST ? 'filled tonal' : 'text'}"
@@ -1129,7 +1120,7 @@ export class CourtSelectStep extends $LitElement(css`
 							aria-label="Map view"
 							>map</schmancy-icon-button
 						>
-					</div> -->
+					</div>
 				</div>
 			</div>
 		`
@@ -1245,21 +1236,48 @@ export class CourtSelectStep extends $LitElement(css`
 		// Check if any courts have map coordinates
 		const courtsWithCoordinates = this.selectedVenueCourts.filter(c => c.mapCoordinates)
 		
+		console.log('Map view debug:', {
+			totalCourts: this.selectedVenueCourts.length,
+			courtsWithCoordinates: courtsWithCoordinates.length,
+			venue: this.venue,
+			courts: this.selectedVenueCourts.map(c => ({ id: c.id, name: c.name, mapCoordinates: c.mapCoordinates }))
+		})
+		
 		if (courtsWithCoordinates.length > 0) {
 			// Use Google Maps when courts have real coordinates
 			return html`
-				<court-map-google
-					.courts=${this.selectedVenueCourts}
-					.selectedCourtId=${this.booking?.courtId}
-					.courtAvailability=${this.courtAvailability}
-					.venueAddress=${this.venue?.address}
-					.venueName=${this.venue?.name || 'Venue'}
-					@court-select=${(e: CustomEvent) => this.handleCourtSelect(e.detail.court)}
-				></court-map-google>
+				<div class="h-96 w-full">
+					<court-map-google
+						.courts=${this.selectedVenueCourts}
+						.selectedCourtId=${this.booking?.courtId}
+						.courtAvailability=${this.courtAvailability}
+						.venueAddress=${this.venue?.address}
+						.venueName=${this.venue?.name || 'Venue'}
+						@court-select=${(e: CustomEvent) => this.handleCourtSelect(e.detail.court)}
+					></court-map-google>
+				</div>
 			`
 		} else {
-			// Fallback to list view when no map coordinates available
-			return this.renderCourtsList()
+			// Show a message when no map coordinates are available
+			return html`
+				<div class="text-center py-12">
+					<schmancy-icon size="48px" class="text-surface-on-variant opacity-50 mb-4">map</schmancy-icon>
+					<schmancy-typography type="body" token="md" class="mb-4">
+						Map view is not available for this venue.
+					</schmancy-typography>
+					<schmancy-typography type="body" token="sm" class="text-surface-on-variant">
+						Courts don't have map coordinates configured.
+					</schmancy-typography>
+					<schmancy-button 
+						variant="text" 
+						@click=${() => this.toggleViewMode(ViewMode.LIST)}
+						class="mt-4"
+					>
+						<schmancy-icon slot="prefix">view_list</schmancy-icon>
+						Switch to List View
+					</schmancy-button>
+				</div>
+			`
 		}
 	}
 
@@ -1347,7 +1365,9 @@ export class CourtSelectStep extends $LitElement(css`
 					: ''}
 
 				<!-- Court Filters - Only show when active -->
-				${this.isActive ? this.renderFilters() : ''}
+			<section class="block lg:hidden">
+        ${this.renderFilters()}
+      </section>
 
 				<!-- If active, show based on view mode, otherwise always show list view -->
 				${cache(
