@@ -8,7 +8,7 @@ import { cache } from 'lit/directives/cache.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
-import { combineLatest, distinctUntilChanged, filter, map, takeUntil } from 'rxjs'
+import { combineLatest, distinctUntilChanged, filter, map, of, switchMap, take, takeUntil, tap, timer } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 import {
@@ -310,7 +310,7 @@ export class CourtSelectStep extends $LitElement(css`
 				return isValid
 			}),
 			// Calculate court availability on the fly
-			map(([booking, availability, courts, venues]) => {
+			map(([booking, availability, courts, venues, progress]) => {
 				// Pure function to calculate court availability for this component
 				const calculateCourtAvailability = () => {
 					const venue = venues.get(booking.venueId)
@@ -349,7 +349,7 @@ export class CourtSelectStep extends $LitElement(css`
 							const startHour = dayjs(booking.startTime).hour()
 							const startMinute = dayjs(booking.startTime).minute()
 							const timeValue = startHour * 60 + startMinute
-							
+
 							// Check if any booking conflicts with this time
 							const hasConflict = availability.bookings.some(existingBooking => {
 								if (existingBooking.courtId !== court.id) return false
@@ -395,6 +395,7 @@ export class CourtSelectStep extends $LitElement(css`
 					availability,
 					courts,
 					venues,
+					progress,
 					calculatedCourtAvailability: calculateCourtAvailability()
 				}
 			}),
@@ -409,20 +410,49 @@ export class CourtSelectStep extends $LitElement(css`
 				prev.availability.date === curr.availability.date &&
 				prev.availability.venueId === curr.availability.venueId &&
 				JSON.stringify(prev.availability.bookings) === JSON.stringify(curr.availability.bookings) &&
-				prev.courts.size === curr.courts.size
-			)
-		).subscribe(({booking, availability, calculatedCourtAvailability}) => {
-			console.log('Context updated - refreshing court availability')
-			console.log('Bookings available:', availability.bookings?.length || 0)
-			
-			// Update court availability from calculated data
-			this.courtAvailability = calculatedCourtAvailability
-			
-			this.loadCourtsWithAvailability()
-			
-			// Note: We don't automatically clear court selection even if there are conflicts
-			// The user should be able to keep their selection and resolve conflicts manually
-		})
+				prev.courts.size === curr.courts.size &&
+				prev.progress.expandedSteps === curr.progress.expandedSteps
+			),
+			// Handle scrolling to selected court after DOM is ready
+			switchMap(({booking, availability, calculatedCourtAvailability, progress}) => {
+				console.log('Context updated - refreshing court availability')
+				console.log('Bookings available:', availability.bookings?.length || 0)
+				
+				// Update court availability from calculated data
+				this.courtAvailability = calculatedCourtAvailability
+				
+				this.loadCourtsWithAvailability()
+				
+				// Check if we need to scroll to selected court
+				if (!booking?.courtId || this.viewMode !== ViewMode.LIST) {
+					return of(null)
+				}
+				
+				const isExpanded = progress.expandedSteps.includes(BookingStep.Court)
+				if (!isExpanded) {
+					return of(null)
+				}
+				
+				// Retry logic to wait for DOM elements to be ready (similar to duration-select)
+				return timer(0, 50).pipe(
+					map(() => this.courtRefs.get(booking.courtId!)),
+					filter(element => {
+						const isReady = !!element && !!this.scrollContainerRef.value
+						if (!isReady) {
+							console.log('Waiting for court DOM elements to be ready...')
+						}
+						return isReady
+					}),
+					take(1), // Take the first successful attempt
+					tap((_) => {
+						console.log('Auto-scrolling to selected court:', booking.courtId)
+						// Add a small delay to ensure render is complete
+						setTimeout(() => this.scrollToSelectedCourt(), 10)
+					}),
+					takeUntil(timer(3000)) // Give up after 3 seconds
+				)
+			})
+		).subscribe()
 
 		// Initial load
 		this.loadCourtsWithAvailability()
@@ -480,23 +510,7 @@ export class CourtSelectStep extends $LitElement(css`
 	}
 
 
-	/**
-	 * Handle errors when loading courts
-	 */
-	private handleLoadingError(error: unknown): void {
-		console.error('Error loading court availability:', error)
 
-		// Use last successful data if available
-		if (this.lastSuccessfulData) {
-			this.selectedVenueCourts = this.lastSuccessfulData.courts
-			this.error = 'Unable to refresh court data. Showing previously loaded courts.'
-		} else {
-			this.error = 'Failed to load available courts. Please try again.'
-		}
-
-		this.loading = false
-		this.requestUpdate()
-	}
 
 	/**
 	 * Retry loading courts after an error
@@ -944,6 +958,7 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Toggle between list and map view modes
 	 */
 	private toggleViewMode(mode: ViewMode): void {
+		
 		this.viewMode = mode
 		this.requestUpdate()
 	}
@@ -1236,48 +1251,21 @@ export class CourtSelectStep extends $LitElement(css`
 		// Check if any courts have map coordinates
 		const courtsWithCoordinates = this.selectedVenueCourts.filter(c => c.mapCoordinates)
 		
-		console.log('Map view debug:', {
-			totalCourts: this.selectedVenueCourts.length,
-			courtsWithCoordinates: courtsWithCoordinates.length,
-			venue: this.venue,
-			courts: this.selectedVenueCourts.map(c => ({ id: c.id, name: c.name, mapCoordinates: c.mapCoordinates }))
-		})
-		
 		if (courtsWithCoordinates.length > 0) {
 			// Use Google Maps when courts have real coordinates
 			return html`
-				<div class="h-96 w-full">
-					<court-map-google
-						.courts=${this.selectedVenueCourts}
-						.selectedCourtId=${this.booking?.courtId}
-						.courtAvailability=${this.courtAvailability}
-						.venueAddress=${this.venue?.address}
-						.venueName=${this.venue?.name || 'Venue'}
-						@court-select=${(e: CustomEvent) => this.handleCourtSelect(e.detail.court)}
-					></court-map-google>
-				</div>
+				<court-map-google
+					.courts=${this.selectedVenueCourts}
+					.selectedCourtId=${this.booking?.courtId}
+					.courtAvailability=${this.courtAvailability}
+					.venueAddress=${this.venue?.address}
+					.venueName=${this.venue?.name || 'Venue'}
+					@court-select=${(e: CustomEvent) => this.handleCourtSelect(e.detail.court)}
+				></court-map-google>
 			`
 		} else {
-			// Show a message when no map coordinates are available
-			return html`
-				<div class="text-center py-12">
-					<schmancy-icon size="48px" class="text-surface-on-variant opacity-50 mb-4">map</schmancy-icon>
-					<schmancy-typography type="body" token="md" class="mb-4">
-						Map view is not available for this venue.
-					</schmancy-typography>
-					<schmancy-typography type="body" token="sm" class="text-surface-on-variant">
-						Courts don't have map coordinates configured.
-					</schmancy-typography>
-					<schmancy-button 
-						variant="text" 
-						@click=${() => this.toggleViewMode(ViewMode.LIST)}
-						class="mt-4"
-					>
-						<schmancy-icon slot="prefix">view_list</schmancy-icon>
-						Switch to List View
-					</schmancy-button>
-				</div>
-			`
+			// Fallback to list view when no map coordinates available
+			return this.renderCourtsList()
 		}
 	}
 
@@ -1371,7 +1359,7 @@ export class CourtSelectStep extends $LitElement(css`
 
 				<!-- If active, show based on view mode, otherwise always show list view -->
 				${cache(
-					this.isActive && this.viewMode === ViewMode.MAP ? this.renderMapView() : this.renderCourtsList(),
+					this.viewMode === ViewMode.MAP ? this.renderMapView() : this.renderCourtsList(),
 				)}
 			</div>
 		`
