@@ -2,7 +2,7 @@ import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { css, html } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { BehaviorSubject, EMPTY, Subject, combineLatest, from, fromEvent, of } from 'rxjs'
+import { BehaviorSubject, EMPTY, Subject, combineLatest, from, fromEvent, merge, of } from 'rxjs'
 import { catchError, debounceTime, distinctUntilChanged, filter, finalize, map, switchMap, take, takeUntil, tap, toArray } from 'rxjs/operators'
 import { Court, SportTypeEnum } from 'src/types/booking/court.types'
 import { VenueAddress } from 'src/types/booking/venue.types'
@@ -92,23 +92,74 @@ class CourtDisplayOverlay {
 			takeUntil(this.destroyed$)
 		).subscribe()
 	}
+	
+	private setupInteractionHandling(element: HTMLElement): void {
+		if (!element) return
+		
+		// Click event stream for desktop
+		const click$ = fromEvent<MouseEvent>(element, 'click')
+		
+		// Touch event streams for mobile
+		const touchStart$ = fromEvent<TouchEvent>(element, 'touchstart', { passive: true })
+		const touchMove$ = fromEvent<TouchEvent>(element, 'touchmove', { passive: true })
+		const touchEnd$ = fromEvent<TouchEvent>(element, 'touchend', { passive: false })
+		
+		// Create touch tap stream (tap = touchstart + touchend without significant movement)
+		const touchTap$ = touchStart$.pipe(
+			filter(e => e.touches.length === 1),
+			switchMap(startEvent => {
+				const startX = startEvent.touches[0].clientX
+				const startY = startEvent.touches[0].clientY
+				let moved = false
+				
+				// Track movement
+				const moveTracker = touchMove$.pipe(
+					tap(moveEvent => {
+						if (moveEvent.touches.length === 1) {
+							const deltaX = Math.abs(moveEvent.touches[0].clientX - startX)
+							const deltaY = Math.abs(moveEvent.touches[0].clientY - startY)
+							moved = deltaX > 10 || deltaY > 10
+						}
+					}),
+					takeUntil(touchEnd$)
+				).subscribe()
+				
+				return touchEnd$.pipe(
+					take(1),
+					filter(() => !moved),
+					tap(() => moveTracker.unsubscribe())
+				)
+			})
+		)
+		
+		// Merge all interaction events
+		merge(click$, touchTap$).pipe(
+			filter(() => this.availability !== 'none'),
+			tap(e => {
+				e.preventDefault()
+				e.stopPropagation()
+				console.log('Court image clicked:', this.courtName)
+				this.onClick()
+			}),
+			takeUntil(this.destroyed$)
+		).subscribe()
+	}
 
 	onAdd() {
 		// Create wrapper div that won't rotate
 		this.div = document.createElement('div')
 		this.div.style.position = 'absolute'
-		this.div.style.cursor = 'pointer'
+		this.div.style.pointerEvents = 'none' // Disable pointer events on container
 		this.div.style.userSelect = 'none'
+		// Fix for mobile Safari
+		;(this.div.style as any).webkitUserSelect = 'none'
+		;(this.div.style as any).webkitTapHighlightColor = 'transparent'
 		
-		// Handle click
-		this.div.addEventListener('click', (e) => {
-			e.stopPropagation()
-			this.onClick()
-		})
+		// Don't setup interactions here - will be on the image itself
 		
 		// Create inner container for rotating court
 		this.courtDiv = document.createElement('div')
-		this.courtDiv.style.cssText = 'width: 100%; height: 100%; position: absolute;'
+		this.courtDiv.style.cssText = 'width: 100%; height: 100%; position: absolute; pointer-events: none;'
 		
 		// Create court SVG container
 		const svgContainer = this.createSvgContainer()
@@ -123,27 +174,32 @@ class CourtDisplayOverlay {
 		this.markerElement = marker
 		this.div.appendChild(this.markerDiv)
 		
-		// Add to map pane - use overlayLayer for better z-index control
+		// Add to map pane - use overlayMouseTarget for better interaction handling
 		const panes = this.getPanes()
-		if (panes?.overlayLayer) {
+		if (panes?.overlayMouseTarget) {
+			panes.overlayMouseTarget.appendChild(this.div)
+		} else if (panes?.overlayLayer) {
 			panes.overlayLayer.appendChild(this.div)
 		}
 	}
 
 	private createSvgContainer(): HTMLDivElement {
 		const container = document.createElement('div')
-		container.style.cssText = 'width: 100%; height: 100%; position: relative;'
+		container.style.cssText = 'width: 100%; height: 100%; position: relative; pointer-events: none;'
 		
 		// Add court SVG image
 		const img = this.createCourtImage()
 		container.appendChild(img)
 		
-		// Add info panel
-		const infoPanel = this.createInfoPanel()
-		container.appendChild(infoPanel)
+		// // Add info panel
+		// const infoPanel = this.createInfoPanel()
+		// container.appendChild(infoPanel)
 		
-		// Setup hover interactions
-		this.setupHoverInteractions(container, infoPanel)
+		// // Setup hover interactions on the image itself
+		// this.setupHoverInteractions(img, infoPanel)
+		
+		// Setup click/touch interactions on the image
+		this.setupInteractionHandling(img)
 		
 		return container
 	}
@@ -154,8 +210,13 @@ class CourtDisplayOverlay {
 		img.src = this.getSvgPath(this.courtType)
 		// Apply opacity and enhanced shadow for selected courts
 		const shadowIntensity = this.isSelected ? '0.5' : '0.3'
-		img.style.cssText = `width: 100%; height: 100%; object-fit: contain; opacity: ${styles.opacity}; filter: drop-shadow(0 2px 4px rgba(0,0,0,${shadowIntensity})); pointer-events: none;`
+		const cursor = this.availability === 'none' ? 'not-allowed' : 'pointer'
+		img.style.cssText = `width: 100%; height: 100%; object-fit: contain; opacity: ${styles.opacity}; filter: drop-shadow(0 2px 4px rgba(0,0,0,${shadowIntensity})); pointer-events: auto; cursor: ${cursor};`
 		img.alt = `${String(this.courtType)} court`
+		img.draggable = false // Prevent image dragging on mobile
+		// Fix for mobile Safari
+		;(img.style as any).webkitUserSelect = 'none'
+		;(img.style as any).webkitTapHighlightColor = 'transparent'
 		return img
 	}
 	
@@ -262,46 +323,28 @@ class CourtDisplayOverlay {
 		
 		return panel
 	}
-	
-	private setupHoverInteractions(container: HTMLElement, infoPanel: HTMLElement): void {
-		const mouseEnter$ = fromEvent(container, 'mouseenter')
-		const mouseLeave$ = fromEvent(container, 'mouseleave')
-		
-		// Handle mouse enter
-		mouseEnter$.pipe(
-			filter(() => this.div !== null && this.availability !== 'none'),
-			tap(() => {
-				if (this.div) {
-					// No scaling on hover
-					infoPanel.style.opacity = '1'
-					infoPanel.style.transform = 'translateX(-50%) translateY(0)'
-				}
-			}),
-			takeUntil(this.destroyed$)
-		).subscribe()
-		
-		// Handle mouse leave
-		mouseLeave$.pipe(
-			filter(() => this.div !== null),
-			tap(() => {
-				if (this.div) {
-					// No transform changes needed
-					infoPanel.style.opacity = '0'
-					infoPanel.style.transform = 'translateX(-50%) translateY(10px)'
-				}
-			}),
-			takeUntil(this.destroyed$)
-		).subscribe()
-	}
 
 	private getOverlayStyles() {
+		// Set opacity based on availability
+		let opacity = '1' // Default to full visibility
+		
+		// Apply reduced opacity for unavailable courts (similar to court-select step)
+		if (this.availability === 'none') {
+			opacity = '0.5' // 50% opacity for unavailable courts
+		} else if (this.availability === 'partial') {
+			opacity = '0.9' // 90% opacity for partially available courts
+		}
+		
+		// Selected courts always have full opacity
+		if (this.isSelected) {
+			opacity = '1'
+		}
+		
 		const styles = {
-			// Remove opacity for selected courts
-			opacity: this.isSelected ? '1' : '0.7',  
+			opacity: opacity,
 			backgroundColor: 'rgba(255, 255, 255, 0.9)',  // White background like editor
 			textColor: '#1f2937',  // Dark text
 			border: 'none',
-			// No scaling for selected courts
 			scale: '1'
 		}
 		
@@ -1076,7 +1119,10 @@ export class CourtMapGoogle extends $LitElement(css`
 	private handleCourtSelect(court: Court): void {
 		// Only allow selection of available courts
 		const status = this.courtAvailability.get(court.id)
-		if (!status || !status.available) return
+		if (!status || !status.available) {
+			console.log('Court not available:', court.name, status)
+			return
+		}
 
 		// Dispatch event to parent
 		this.dispatchEvent(

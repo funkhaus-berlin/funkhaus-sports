@@ -20,7 +20,6 @@ import { Duration } from '../../types'
 import { Venue } from 'src/types'
 
 const DURATION_LABELS: Record<number, { full: string; compact: string }> = {
-	15: { full: '15 minutes', compact: '15m' },
 	30: { full: '30 minutes', compact: '30m' },
 	45: { full: '45 minutes', compact: '45m' },
 	60: { full: '1 hour', compact: '1h' },
@@ -225,80 +224,121 @@ export class DurationSelectionStep extends $LitElement(css`
 		// Get bookings from availability context
 		const bookings = this.availability?.bookings || []
 
-		// Filter available durations
-		const durations = standardDurations
-			.map(duration => {
-				// Check if duration would exceed closing time
-				if (startMinutes + duration.value > closingMinutes) {
-					return null
+		// Helper function to check if a duration is available
+		const checkDurationAvailability = (duration: { label: string, value: number }) => {
+			// Check if duration would exceed closing time
+			if (startMinutes + duration.value > closingMinutes) {
+				return null
+			}
+
+			const endTime = startTimeDayjs.add(duration.value, 'minute')
+
+			// If court is already selected, check if duration is available for that court
+			if (this.booking.courtId) {
+				// Check for conflicts with existing bookings
+				const hasConflict = bookings.some(existingBooking => {
+					if (existingBooking.courtId !== this.booking.courtId) return false
+					
+					const existingStart = dayjs(existingBooking.startTime)
+					const existingEnd = dayjs(existingBooking.endTime)
+					
+					// Check for overlap
+					return startTimeDayjs.isBefore(existingEnd) && endTime.isAfter(existingStart)
+				})
+				
+				if (hasConflict) return null
+				
+				// Calculate price for the specific court
+				const court = this.courts.get(this.booking.courtId)
+				if (!court) return null
+				
+				// Calculate price inline
+				const durationHours = endTime.diff(startTimeDayjs, 'hour', true)
+				const basePrice = court.pricing?.baseHourlyRate || 50
+				const price = Math.round(basePrice * durationHours * 100) / 100
+				
+				return {
+					...duration,
+					price
 				}
-
-				const endTime = startTimeDayjs.add(duration.value, 'minute')
-
-				// If court is already selected, check if duration is available for that court
-				if (this.booking.courtId) {
-					// Check for conflicts with existing bookings
+			} else {
+				// No court selected - check if any court is available for this duration
+				const activeCourts = Array.from(this.courts.values())
+					.filter(court => court.status === 'active' && court.venueId === this.booking.venueId)
+				
+				let totalPrice = 0
+				let availableCourtCount = 0
+				
+				for (const court of activeCourts) {
 					const hasConflict = bookings.some(existingBooking => {
-						if (existingBooking.courtId !== this.booking.courtId) return false
+						if (existingBooking.courtId !== court.id) return false
 						
 						const existingStart = dayjs(existingBooking.startTime)
 						const existingEnd = dayjs(existingBooking.endTime)
 						
-						// Check for overlap
 						return startTimeDayjs.isBefore(existingEnd) && endTime.isAfter(existingStart)
 					})
 					
-					if (hasConflict) return null
-					
-					// Calculate price for the specific court
-					const court = this.courts.get(this.booking.courtId)
-					if (!court) return null
-					
-					// Calculate price inline
-					const durationHours = endTime.diff(startTimeDayjs, 'hour', true)
-					const basePrice = court.pricing?.baseHourlyRate || 50
-					const price = Math.round(basePrice * durationHours * 100) / 100
-					
-					return {
-						...duration,
-						price
-					}
-				} else {
-					// No court selected - check if any court is available for this duration
-					const activeCourts = Array.from(this.courts.values())
-						.filter(court => court.status === 'active' && court.venueId === this.booking.venueId)
-					
-					let totalPrice = 0
-					let availableCourtCount = 0
-					
-					for (const court of activeCourts) {
-						const hasConflict = bookings.some(existingBooking => {
-							if (existingBooking.courtId !== court.id) return false
-							
-							const existingStart = dayjs(existingBooking.startTime)
-							const existingEnd = dayjs(existingBooking.endTime)
-							
-							return startTimeDayjs.isBefore(existingEnd) && endTime.isAfter(existingStart)
-						})
-						
-						if (!hasConflict) {
-							availableCourtCount++
-							// Calculate price inline
-							const durationHours = endTime.diff(startTimeDayjs, 'hour', true)
-							const basePrice = court.pricing?.baseHourlyRate || 50
-							totalPrice += Math.round(basePrice * durationHours * 100) / 100
-						}
-					}
-					
-					if (availableCourtCount === 0) return null
-					
-					return {
-						...duration,
-						price: Math.round((totalPrice / availableCourtCount + Number.EPSILON) * 100) / 100
+					if (!hasConflict) {
+						availableCourtCount++
+						// Calculate price inline
+						const durationHours = endTime.diff(startTimeDayjs, 'hour', true)
+						const basePrice = court.pricing?.baseHourlyRate || 50
+						totalPrice += Math.round(basePrice * durationHours * 100) / 100
 					}
 				}
-			})
+				
+				if (availableCourtCount === 0) return null
+				
+				return {
+					...duration,
+					price: Math.round((totalPrice / availableCourtCount + Number.EPSILON) * 100) / 100
+				}
+			}
+		}
+
+		// Filter available durations from standard list
+		let durations = standardDurations
+			.map(duration => checkDurationAvailability(duration))
 			.filter(Boolean) as Duration[]
+
+		// If no standard durations are available, check for smaller slots
+		if (durations.length === 0 && minTime > 30) {
+			console.log('No standard durations available, checking for smaller slots...')
+			
+			// Calculate the maximum possible duration before closing or next booking
+			const timeUntilClose = closingMinutes - startMinutes
+			let maxPossibleDuration = timeUntilClose
+			
+			// Find the next booking to determine max possible duration
+			if (this.booking.courtId) {
+				const nextBookings = bookings
+					.filter(b => b.courtId === this.booking.courtId && dayjs(b.startTime).isAfter(startTimeDayjs))
+					.sort((a, b) => dayjs(a.startTime).diff(dayjs(b.startTime)))
+				
+				if (nextBookings.length > 0) {
+					const minutesUntilNext = dayjs(nextBookings[0].startTime).diff(startTimeDayjs, 'minute')
+					maxPossibleDuration = Math.min(maxPossibleDuration, minutesUntilNext)
+				}
+			}
+			
+			// Generate smaller durations if they fit
+			const smallerDurations = []
+			for (let minutes = 30; minutes < minTime && minutes <= maxPossibleDuration; minutes += 15) {
+				const label = generateDurationLabel(minutes)
+				smallerDurations.push({ label, value: minutes })
+			}
+			
+			// Check availability for smaller durations
+			const availableSmallerDurations = smallerDurations
+				.map(duration => checkDurationAvailability(duration))
+				.filter(Boolean) as Duration[]
+			
+			if (availableSmallerDurations.length > 0) {
+				console.log(`Found ${availableSmallerDurations.length} smaller duration options`)
+				durations = availableSmallerDurations
+			}
+		}
 
 		return durations
 	}
@@ -486,7 +526,7 @@ export class DurationSelectionStep extends $LitElement(css`
 				` : nothing}
 				
 				<div ${ref(this.scrollContainerRef)} 
-					class="flex py-2 overflow-x-auto scrollbar-hide gap-3" 
+					class="flex py-2 overflow-x-auto scrollbar-hide gap-3 first:pl-2 last:pr-2" 
 					role="listbox"
 					aria-label="Available Duration Options">
 					${this.renderDurations(this.durations)}

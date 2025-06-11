@@ -8,7 +8,7 @@ import { cache } from 'lit/directives/cache.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
-import { combineLatest, distinctUntilChanged, filter, map, of, switchMap, take, takeUntil, tap, timer } from 'rxjs'
+import { combineLatest, distinctUntilChanged, filter, fromEvent, map, of, switchMap, take, takeUntil, tap, timer, debounceTime } from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 import {
@@ -254,8 +254,41 @@ export class CourtSelectStep extends $LitElement(css`
 
 			this.requestUpdate()
 		})
+
+		// Add window resize observer to switch from map to list view on larger screens
+		this.setupWindowResizeObserver()
 	}
 
+	/**
+	 * Setup window resize observer using RxJS
+	 * Switches from map view to list view when window width exceeds lg breakpoint (1024px)
+	 */
+	private setupWindowResizeObserver(): void {
+		// Tailwind lg breakpoint is 1024px
+		const LG_BREAKPOINT = 1024
+		
+		// Create resize observable with debounce for performance
+		fromEvent(window, 'resize').pipe(
+			debounceTime(300),
+			map(() => window.innerWidth),
+			distinctUntilChanged(),
+			tap(width => {
+				// If we're in map view and window width is >= lg breakpoint, switch to list view
+				if (this.viewMode === ViewMode.MAP && width >= LG_BREAKPOINT) {
+					console.log('Window resized above lg breakpoint, switching to list view')
+					this.viewMode = ViewMode.LIST
+					this.requestUpdate()
+				}
+			}),
+			takeUntil(this.disconnecting)
+		).subscribe()
+		
+		// Also check initial window size
+		if (window.innerWidth >= LG_BREAKPOINT && this.viewMode === ViewMode.MAP) {
+			this.viewMode = ViewMode.LIST
+			this.requestUpdate()
+		}
+	}
 	
 	/**
 	 * Clear court references when component is disconnected
@@ -534,6 +567,24 @@ export class CourtSelectStep extends $LitElement(css`
 			return
 		}
 
+		// If we're in map view, switch to list view first
+		if (this.viewMode === ViewMode.MAP) {
+			this.viewMode = ViewMode.LIST
+			// Request update and wait for the next render cycle before proceeding
+			this.requestUpdate()
+			// Use a small delay to ensure the view has switched and DOM is updated
+			setTimeout(() => {
+				this.handleCourtSelectInternal(court)
+			}, 50)
+		} else {
+			this.handleCourtSelectInternal(court)
+		}
+	}
+
+	/**
+	 * Internal court selection handler after view mode is ensured
+	 */
+	private handleCourtSelectInternal(court: Court): void {
 		// Handle filter conflicts
 		this.handleFilterConflicts(court)
 
@@ -640,10 +691,12 @@ export class CourtSelectStep extends $LitElement(css`
 		this.pendingCourtSelection = null
 		this.showConfirmationDialog = false
 		
-		// Highlight the selected court
+		// Highlight the selected court and scroll to it
 		const courtEl = this.courtRefs.get(court.id)
 		if (courtEl) {
 			courtEl.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
+			// Scroll to the selected court after a brief delay to ensure DOM is updated
+			setTimeout(() => this.scrollToSelectedCourt(), 100)
 		}
 
 		// Transition to the next step - this will handle expanded steps automatically
@@ -974,38 +1027,49 @@ export class CourtSelectStep extends $LitElement(css`
 		if (!this.booking?.courtId || this.viewMode !== ViewMode.LIST) return
 		
 		try {
-			const scrollContainer = this.scrollContainerRef.value
 			const courtEl = this.courtRefs.get(this.booking.courtId)
+			if (!courtEl) return
 			
-			if (!scrollContainer || !courtEl) return
-			
-			// Check if element is already in view
-			const containerRect = scrollContainer.getBoundingClientRect()
-			const elementRect = courtEl.getBoundingClientRect()
-			
-			// Calculate if element is fully visible
-			const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
-			
-			// If the element is already fully visible, just highlight it
-			if (isFullyVisible) {
-				this.highlightCourtElement(courtEl)
-				return
+			// For compact mode (horizontal scroll)
+			if (!this.isActive) {
+				const scrollContainer = this.scrollContainerRef.value
+				if (!scrollContainer) return
+				
+				// Check if element is already in view
+				const containerRect = scrollContainer.getBoundingClientRect()
+				const elementRect = courtEl.getBoundingClientRect()
+				
+				// Calculate if element is fully visible
+				const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
+				
+				// If the element is already fully visible, just highlight it
+				if (isFullyVisible) {
+					this.highlightCourtElement(courtEl)
+					return
+				}
+				
+				// Calculate scroll position to center the element
+				const containerWidth = scrollContainer.clientWidth
+				const elementOffset = courtEl.offsetLeft
+				const elementWidth = courtEl.offsetWidth
+				const scrollPosition = elementOffset - containerWidth / 2 + elementWidth / 2
+				
+				// Smooth scroll to the calculated position
+				scrollContainer.scrollTo({
+					left: scrollPosition,
+					behavior: 'smooth',
+				})
+			} else {
+				// For grid mode (vertical scroll) - scroll the court element into view
+				courtEl.scrollIntoView({
+					behavior: 'smooth',
+					block: 'center',
+					inline: 'center'
+				})
 			}
 			
-			// Calculate scroll position to center the element
-			const containerWidth = scrollContainer.clientWidth
-			const elementOffset = courtEl.offsetLeft
-			const elementWidth = courtEl.offsetWidth
-			const scrollPosition = elementOffset - containerWidth / 2 + elementWidth / 2
-			
-			// Smooth scroll to the calculated position
-			scrollContainer.scrollTo({
-				left: scrollPosition,
-				behavior: 'smooth',
-			})
-			
-			// Highlight the element
-			this.highlightCourtElement(courtEl)
+			// Highlight the element after scrolling
+			setTimeout(() => this.highlightCourtElement(courtEl), 300)
 		} catch (error) {
 			console.error('Error scrolling to selected court:', error)
 		}
@@ -1121,7 +1185,7 @@ export class CourtSelectStep extends $LitElement(css`
 					<div class="flex gap-1 shrink-0 ml-auto">
 						<schmancy-icon-button
 							size="sm"
-							variant="${this.viewMode === ViewMode.LIST ? 'filled tonal' : 'text'}"
+							variant="${this.viewMode === ViewMode.LIST ? 'filled' : 'text'}"
 							@click=${() => this.toggleViewMode(ViewMode.LIST)}
 							aria-pressed=${this.viewMode === ViewMode.LIST}
 							aria-label="List view"
@@ -1129,7 +1193,7 @@ export class CourtSelectStep extends $LitElement(css`
 						>
 						<schmancy-icon-button
 							size="sm"
-							variant="${this.viewMode === ViewMode.MAP ? 'filled tonal' : 'text'}"
+							variant="${this.viewMode === ViewMode.MAP ? 'filled' : 'text'}"
 							@click=${() => this.toggleViewMode(ViewMode.MAP)}
 							aria-pressed=${this.viewMode === ViewMode.MAP}
 							aria-label="Map view"

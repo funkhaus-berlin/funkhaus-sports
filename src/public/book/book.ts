@@ -552,18 +552,37 @@ export class CourtBookingSystem extends $LitElement() {
                   const courtsWithCoordinates = venueCourts.filter(c => c.mapCoordinates)
                   
                   if (courtsWithCoordinates.length > 0) {
+                    // Calculate court availability for the map
+                    const courtAvailabilityMap = new Map()
+                    venueCourts.forEach(court => {
+                      // Basic availability check - all courts available for now
+                      // This could be enhanced with actual availability logic if needed
+                      courtAvailabilityMap.set(court.id, {
+                        courtId: court.id,
+                        courtName: court.name,
+                        available: true,
+                        fullyAvailable: true,
+                        availableTimeSlots: [],
+                        unavailableTimeSlots: []
+                      })
+                    })
+
                     // Show courts on map
                     return html`
                       <court-map-google
                         .courts=${venueCourts}
                         .selectedCourtId=${this.booking?.courtId || ''}
-                        .courtAvailability=${new Map()} 
+                        .courtAvailability=${courtAvailabilityMap}
                         .venueAddress=${venueContext.value?.address}
                         .venueName=${venueContext.value?.name || 'Venue'}
                         zoom=${18}
                         class="h-64 w-full rounded-lg overflow-hidden"
                         @court-select=${(e: CustomEvent) => {
                           console.log('Court selected from map:', e.detail.court)
+                          // Handle court selection by updating the booking context
+                          if (e.detail.court) {
+                            bookingContext.set({ courtId: e.detail.court.id }, true)
+                          }
                         }}
                       ></court-map-google>
                     `

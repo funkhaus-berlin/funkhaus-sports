@@ -7,15 +7,15 @@ import { css, html, nothing, PropertyValues } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
-import { combineLatest, filter, takeUntil, timer, of } from 'rxjs'
-import { distinctUntilChanged, tap, switchMap, map, take } from 'rxjs/operators'
+import { combineLatest, filter, of, takeUntil, timer } from 'rxjs'
+import { distinctUntilChanged, map, switchMap, take, tap } from 'rxjs/operators'
+import { venueContext } from 'src/admin/venues/venue-context'
 import {
   availabilityContext,
   AvailabilityData,
   availabilityLoading$,
 } from 'src/availability-context'
 import { toUTC } from 'src/utils/timezone'
-import { venueContext } from 'src/admin/venues/venue-context'
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 
@@ -606,7 +606,7 @@ export class TimeSelectionStep extends $LitElement(css`
 		return html`
 			<div
 				${ref(this.scrollContainerRef)}
-				class="flex grid-flow-col py-2 overflow-x-auto scrollbar-hide gap-3"
+				class="flex grid-flow-col py-2 overflow-x-auto scrollbar-hide gap-3 first:pl-2 last:pr-2"
 				role="listbox">
 				${repeat(displaySlots, (item, index) => 
 					'placeholder' in item ? `placeholder-${index}` : item.value,
