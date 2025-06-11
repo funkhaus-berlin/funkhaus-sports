@@ -24,6 +24,7 @@ import { BookingErrorService } from './components/errors/booking-error-service'
 import './components/steps/court-map-google'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep, ErrorCategory } from './context'
 import { PaymentStatusHandler } from './payment-status-handler'
+import { transitionToNextStep } from './booking-steps-utils'
 
 /**
  * Court booking system component
@@ -552,8 +553,11 @@ export class CourtBookingSystem extends $LitElement() {
                   const isOnDateStep = dateStep && this.bookingProgress.currentStep === dateStep.step
                   const hasDateSelected = !!this.booking?.date
                   
-                  // Show venue map if on date step without date selected
-                  if (isOnDateStep && !hasDateSelected) {
+                  // Check if on payment step
+                  const isOnPaymentStep = this.bookingProgress.currentStep === 5 // Payment step is always 5
+                  
+                  // Show venue map if on date step without date selected OR on payment step
+                  if ((isOnDateStep && !hasDateSelected) || isOnPaymentStep) {
                     return html`
                       <venue-map
                         .address=${venueContext.value?.address}
@@ -598,10 +602,12 @@ export class CourtBookingSystem extends $LitElement() {
                         zoom=${18}
                         class="h-64 w-full rounded-lg overflow-hidden"
                         @court-select=${(e: CustomEvent) => {
-                          console.log('Court selected from map:', e.detail.court)
-                          // Handle court selection by updating the booking context
+                          console.log('Court selected from preview map:', e.detail.court)
+                          // Update courtId and transition to next step
                           if (e.detail.court) {
                             bookingContext.set({ courtId: e.detail.court.id }, true)
+                            // Use transitionToNextStep to properly handle the transition
+                            transitionToNextStep('Court')
                           }
                         }}
                       ></court-map-google>

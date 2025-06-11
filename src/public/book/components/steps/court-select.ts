@@ -111,8 +111,8 @@ export class CourtSelectStep extends $LitElement(css`
 
 	private lastSuccessfulData: { courts: Court[] } | null = null
 
-	// Configuration flags
-	private switchToListOnMapSelection: boolean = false // Set to true to automatically switch from map to list view after selection
+	// Configuration flags // keep this true 
+	private switchToListOnMapSelection: boolean = true // Set to true to automatically switch from map to list view after selection
 
 	// Refs for scroll functionality
 	private scrollContainerRef: Ref<HTMLElement> = createRef<HTMLElement>()
@@ -316,19 +316,20 @@ export class CourtSelectStep extends $LitElement(css`
 							} else {
 								// No time selected - check if court has any availability today
 								const courtBookings = availability.bookings.filter(b => b.courtId === court.id)
-								const hasAnyAvailability =
-									courtBookings.length === 0 ||
-									// Simple check - if court has less than 10 hours of bookings, it has some availability
-									courtBookings.reduce((total, booking) => {
-										const duration = dayjs(booking.endTime).diff(dayjs(booking.startTime), 'hour')
-										return total + duration
-									}, 0) < 10
+								const totalBookedHours = courtBookings.reduce((total, booking) => {
+									const duration = dayjs(booking.endTime).diff(dayjs(booking.startTime), 'hour')
+									return total + duration
+								}, 0)
+								
+								// When no time is selected, courts are either available or unavailable
+								// No "limited" status since we don't have a specific time period to check
+								const hasAnyAvailability = totalBookedHours < 10
 
 								courtAvailabilityMap.set(court.id, {
 									courtId: court.id,
 									courtName: court.name,
 									available: hasAnyAvailability,
-									fullyAvailable: courtBookings.length === 0,
+									fullyAvailable: hasAnyAvailability, // When no time selected, available = fullyAvailable
 								})
 							}
 						})
@@ -468,24 +469,35 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Shows confirmation dialog for partially available courts
 	 */
 	private handleCourtSelect(court: Court): void {
+
+		console.log('handleCourtSelect called with court:', court.name, 'viewMode:', this.viewMode)
+		
 		// Don't allow selecting unavailable courts
 		if (!this.canSelectCourt(court.id)) {
+      alert()
+			console.log('Court not available, returning early')
 			return
 		}
 
 		// If we're in map view and flag is enabled, switch to list view first
 		if (this.viewMode === ViewMode.MAP && this.switchToListOnMapSelection) {
+			console.log('Switching from map to list view before selection')
 			this.viewMode = ViewMode.LIST
 			// Request update and wait for the next render cycle before proceeding
 			this.requestUpdate()
-			// Use a small delay to ensure the view has switched and DOM is updated
-			setTimeout(() => {
+			// Wait for the component to finish updating before processing selection
+			this.updateComplete.then(() => {
+				console.log('Processing selection after view switch and render complete')
 				this.handleCourtSelectInternal(court)
-			}, 50)
+			})
 		} else if (this.viewMode === ViewMode.MAP) {
 			// Stay in map view but still handle the selection
+			console.log('Handling selection in map view')
 			this.handleCourtSelectInternal(court)
+     
+
 		} else {
+			console.log('Handling selection in list view')
 			this.handleCourtSelectInternal(court)
 		}
 	}
@@ -571,6 +583,8 @@ export class CourtSelectStep extends $LitElement(css`
 	 * and transitioning to the next step in the flow
 	 */
 	private processCourtSelection(court: Court, timeSlot?: TimeSlot): void {
+		console.log('processCourtSelection called for court:', court.name)
+		
 		// Update booking context with selected court
 		const bookingUpdate: Partial<Booking> = {
 			courtId: court.id,
@@ -594,6 +608,7 @@ export class CourtSelectStep extends $LitElement(css`
 		// Note: timeSlot parameter is legacy and not used in current implementation
 
 		// Update booking context
+		console.log('Updating booking context with:', bookingUpdate)
 		bookingContext.set(bookingUpdate, true)
 
 		// Reset dialog state if applicable
@@ -603,12 +618,16 @@ export class CourtSelectStep extends $LitElement(css`
 		// Highlight the selected court and scroll to it
 		const courtEl = this.courtRefs.get(court.id)
 		if (courtEl) {
+			console.log('Animating court element in list view')
 			courtEl.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
 			// Scroll to the selected court after a brief delay to ensure DOM is updated
 			setTimeout(() => this.scrollToSelectedCourt(), 100)
+		} else {
+			console.log('Court element not found in list view (might be in map view)')
 		}
 
 		// Transition to the next step - this will handle expanded steps automatically
+		console.log('Calling transitionToNextStep with "Court"')
 		transitionToNextStep('Court')
 	}
 
@@ -1232,7 +1251,10 @@ export class CourtSelectStep extends $LitElement(css`
 					.courtAvailability=${this.courtAvailability}
 					.venueAddress=${this.venue?.address}
 					.venueName=${this.venue?.name || 'Venue'}
-					@court-select=${(e: CustomEvent) => this.handleCourtSelect(e.detail.court)}
+					@court-select=${(e: CustomEvent) => {
+            console.log(e.detail)
+            this.handleCourtSelect(e.detail.court)
+          }}
 				></court-map-google>
 			`
 		} else {

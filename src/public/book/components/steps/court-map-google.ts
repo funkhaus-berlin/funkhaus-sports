@@ -134,11 +134,11 @@ class CourtDisplayOverlay {
 		
 		// Merge all interaction events
 		merge(click$, touchTap$).pipe(
-			filter(() => this.availability !== 'none'),
 			tap(e => {
 				e.preventDefault()
 				e.stopPropagation()
 				console.log('Court image clicked:', this.courtName)
+				console.log('Calling onClick callback')
 				this.onClick()
 			}),
 			takeUntil(this.destroyed$)
@@ -210,8 +210,7 @@ class CourtDisplayOverlay {
 		img.src = this.getSvgPath(this.courtType)
 		// Apply opacity and enhanced shadow for selected courts
 		const shadowIntensity = this.isSelected ? '0.5' : '0.3'
-		const cursor = this.availability === 'none' ? 'not-allowed' : 'pointer'
-		img.style.cssText = `width: 100%; height: 100%; object-fit: contain; opacity: ${styles.opacity}; filter: drop-shadow(0 2px 4px rgba(0,0,0,${shadowIntensity})); pointer-events: auto; cursor: ${cursor};`
+		img.style.cssText = `width: 100%; height: 100%; object-fit: contain; opacity: ${styles.opacity}; filter: drop-shadow(0 2px 4px rgba(0,0,0,${shadowIntensity})); pointer-events: auto; cursor: pointer;`
 		img.alt = `${String(this.courtType)} court`
 		img.draggable = false // Prevent image dragging on mobile
 		// Fix for mobile Safari
@@ -750,7 +749,6 @@ export class CourtMapGoogle extends $LitElement(css`
 		]).pipe(
 			filter(() => this.mapLoaded),
 			tap(() => {
-				console.log('Selection or availability changed, updating overlays')
 				this.updateCourtOverlays()
 			}),
 			takeUntil(this.destroyed$)
@@ -773,7 +771,6 @@ export class CourtMapGoogle extends $LitElement(css`
 		
 		// Handle selectedCourtId changes
 		if (changedProperties.has('selectedCourtId')) {
-			console.log('Selected court ID changed to:', this.selectedCourtId)
 			this.selectedCourtId$.next(this.selectedCourtId)
 		}
 		
@@ -1090,12 +1087,10 @@ export class CourtMapGoogle extends $LitElement(css`
 	 * Update overlay states without recreating them
 	 */
 	private updateCourtOverlays() {
-		console.log('Updating court overlays. Selected court:', this.selectedCourtId)
 		this.courtOverlays.forEach((overlay, courtId) => {
 			const availabilityStatus = this.getCourtAvailabilityStatus(courtId)
 			const isSelected = this.selectedCourtId === courtId
 			
-			console.log(`Court ${courtId}: isSelected=${isSelected}`)
 			overlay.updateAvailability(availabilityStatus)
 			overlay.updateSelection(isSelected)
 		})
@@ -1117,21 +1112,15 @@ export class CourtMapGoogle extends $LitElement(css`
 	 * Handle court selection
 	 */
 	private handleCourtSelect(court: Court): void {
-		// Only allow selection of available courts
-		const status = this.courtAvailability.get(court.id)
-		if (!status || !status.available) {
-			console.log('Court not available:', court.name, status)
-			return
-		}
-
-		// Dispatch event to parent
-		this.dispatchEvent(
-			new CustomEvent('court-select', {
-				detail: { court },
-				bubbles: true,
-				composed: true,
-			})
-		)
+		// Dispatch event to parent - let the parent component handle availability checks
+		// and all selection logic including confirmation dialogs
+		const event = new CustomEvent('court-select', {
+			detail: { court },
+			bubbles: true,
+			composed: true,
+		})
+		console.log('Dispatching court-select event')
+		this.dispatchEvent(event)
 	}
 
 	render() {
