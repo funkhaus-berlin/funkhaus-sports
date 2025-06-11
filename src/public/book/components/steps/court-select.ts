@@ -8,12 +8,23 @@ import { cache } from 'lit/directives/cache.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
-import { combineLatest, distinctUntilChanged, filter, fromEvent, map, of, switchMap, take, takeUntil, tap, timer, debounceTime } from 'rxjs'
+import {
+	combineLatest,
+	distinctUntilChanged,
+	filter,
+	fromEvent,
+	map,
+	of,
+	switchMap,
+	take,
+	takeUntil,
+	tap,
+	timer,
+	debounceTime,
+} from 'rxjs'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
-import {
-  availabilityContext,
-} from 'src/availability-context'
+import { availabilityContext } from 'src/availability-context'
 import { BookingFlowType, CourtPreferences, TimeSlot } from 'src/types'
 import { Court, CourtTypeEnum, SportTypeEnum } from 'src/types/booking/court.types'
 import { Venue } from 'src/types/booking/venue.types'
@@ -35,7 +46,6 @@ enum ViewMode {
  * Availability status types for courts
  */
 type AvailabilityStatus = 'full' | 'partial' | 'none'
-
 
 interface CourtAvailabilityStatus {
 	courtId: string
@@ -59,111 +69,9 @@ const PULSE_ANIMATION = {
  */
 @customElement('court-select-step')
 export class CourtSelectStep extends $LitElement(css`
-	/* Animation for selected elements */
-	@keyframes pulse {
-		0% {
-			transform: scale(1);
-			box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5);
-		}
-		70% {
-			transform: scale(1.05);
-			box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
-		}
-		100% {
-			transform: scale(1);
-			box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
-		}
-	}
-
-	.pulse-animation {
-		animation: pulse 1.5s ease-out;
-	}
-
-	/* Filter styles */
-	.filter-section {
-		padding: 0.75rem 1rem;
-		border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-		margin-bottom: 0.5rem;
-	}
-
-	.filter-chip {
-		padding: 0.15rem 0.5rem;
-		border-radius: 9999px;
-		font-size: 0.7rem;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		margin-right: 0.2rem;
-		margin-bottom: 0.2rem;
-		min-width: 1.8rem;
-		height: 1.8rem;
-	}
-
-	.filter-chip.selected {
-		background-color: var(--schmancy-sys-color-primary-default, #4f46e5);
-		color: white;
-	}
-
-	.filter-chip:not(.selected) {
-		background-color: var(--schmancy-sys-color-surface-variant, #f3f4f6);
-		color: var(--schmancy-sys-color-on-surface-variant, #4b5563);
-	}
-
-	.filter-chip:hover:not(.selected) {
-		background-color: var(--schmancy-sys-color-surface-variant-hover, #e5e7eb);
-	}
-
-	.filter-label {
-		font-size: 0.875rem;
-		font-weight: 500;
-		display: inline-block;
-		white-space: nowrap;
-	}
-
-	.filter-group {
-		margin-bottom: 0.75rem;
-	}
-
-	/* Scrollbar hiding */
-	.scrollbar-hide {
-		-ms-overflow-style: none; /* IE and Edge */
-		scrollbar-width: none; /* Firefox */
-	}
-
-	.scrollbar-hide::-webkit-scrollbar {
-		display: none; /* Chrome, Safari, and Opera */
-	}
-
-	/* Transition styles for view changes */
-	.transition-container {
-		transition: all 0.3s ease;
-	}
-
-	/* View transition system */
-	.view-container {
-		position: relative;
-		min-height: 100px; /* Minimum height to prevent collapse during transitions */
-	}
-
-	.grid-view,
-	.list-view {
-		opacity: 0;
-		visibility: hidden;
-		transition: opacity 300ms ease, visibility 0ms 300ms;
-		position: absolute;
-		width: 100%;
-		top: 0;
-		left: 0;
-	}
-
-	.grid-view.active,
-	.list-view.active {
-		opacity: 1;
-		visibility: visible;
-		transition: opacity 300ms ease, visibility 0ms;
-		position: relative;
+	/* Only keep minimal CSS for :host */
+	:host {
+		display: block;
 	}
 `) {
 	//#region Context and State
@@ -184,7 +92,7 @@ export class CourtSelectStep extends $LitElement(css`
 		date: string
 		bookingFlowType: BookingFlowType
 	}
-	
+
 	@select(venueContext)
 	venue!: Partial<Venue>
 
@@ -202,7 +110,10 @@ export class CourtSelectStep extends $LitElement(css`
 	@state() autoScrollAttempted: boolean = false
 
 	private lastSuccessfulData: { courts: Court[] } | null = null
-	
+
+	// Configuration flags
+	private switchToListOnMapSelection: boolean = false // Set to true to automatically switch from map to list view after selection
+
 	// Refs for scroll functionality
 	private scrollContainerRef: Ref<HTMLElement> = createRef<HTMLElement>()
 	private courtRefs = new Map<string, HTMLElement>()
@@ -239,7 +150,7 @@ export class CourtSelectStep extends $LitElement(css`
 				// Keep it collapsed if trying to expand with a court already selected
 				return
 			}
-			
+
 			// Set transitioning flag to enable smooth animations
 			this.isTransitioning = true
 
@@ -266,30 +177,32 @@ export class CourtSelectStep extends $LitElement(css`
 	private setupWindowResizeObserver(): void {
 		// Tailwind lg breakpoint is 1024px
 		const LG_BREAKPOINT = 1024
-		
+
 		// Create resize observable with debounce for performance
-		fromEvent(window, 'resize').pipe(
-			debounceTime(300),
-			map(() => window.innerWidth),
-			distinctUntilChanged(),
-			tap(width => {
-				// If we're in map view and window width is >= lg breakpoint, switch to list view
-				if (this.viewMode === ViewMode.MAP && width >= LG_BREAKPOINT) {
-					console.log('Window resized above lg breakpoint, switching to list view')
-					this.viewMode = ViewMode.LIST
-					this.requestUpdate()
-				}
-			}),
-			takeUntil(this.disconnecting)
-		).subscribe()
-		
+		fromEvent(window, 'resize')
+			.pipe(
+				debounceTime(300),
+				map(() => window.innerWidth),
+				distinctUntilChanged(),
+				tap(width => {
+					// If we're in map view and window width is >= lg breakpoint, switch to list view
+					if (this.viewMode === ViewMode.MAP && width >= LG_BREAKPOINT) {
+						console.log('Window resized above lg breakpoint, switching to list view')
+						this.viewMode = ViewMode.LIST
+						this.requestUpdate()
+					}
+				}),
+				takeUntil(this.disconnecting),
+			)
+			.subscribe()
+
 		// Also check initial window size
 		if (window.innerWidth >= LG_BREAKPOINT && this.viewMode === ViewMode.MAP) {
 			this.viewMode = ViewMode.LIST
 			this.requestUpdate()
 		}
 	}
-	
+
 	/**
 	 * Clear court references when component is disconnected
 	 */
@@ -297,7 +210,7 @@ export class CourtSelectStep extends $LitElement(css`
 		super.disconnectedCallback()
 		this.clearCourtRefs()
 	}
-	
+
 	/**
 	 * Clear court element references
 	 */
@@ -314,178 +227,180 @@ export class CourtSelectStep extends $LitElement(css`
 	 */
 	private subscribeToAvailabilityUpdates(): void {
 		// Consolidated reactive pipeline
-		combineLatest([
-			bookingContext.$,
-			availabilityContext.$,
-			courtsContext.$,
-			venuesContext.$,
-			BookingProgressContext.$
-		]).pipe(
-			takeUntil(this.disconnecting),
-			// Filter for valid data
-			filter(([booking, availability, courts, venues]) => {
-				const isValid = !!booking &&
-					!!availability &&
-					availability.bookings !== undefined && // Bookings can be empty array
-					courts && courts.size > 0 &&
-					venues && venues.size > 0
+		combineLatest([bookingContext.$, availabilityContext.$, courtsContext.$, venuesContext.$, BookingProgressContext.$])
+			.pipe(
+				takeUntil(this.disconnecting),
+				// Filter for valid data
+				filter(([booking, availability, courts, venues]) => {
+					const isValid =
+						!!booking &&
+						!!availability &&
+						availability.bookings !== undefined && // Bookings can be empty array
+						courts &&
+						courts.size > 0 &&
+						venues &&
+						venues.size > 0
 
-				console.log('Court select filter check:', {
-					booking: !!booking,
-					availability: !!availability,
-					bookings: availability?.bookings !== undefined,
-					bookingsCount: availability?.bookings?.length || 0,
-					courts: courts?.size || 0,
-					venues: venues?.size || 0,
-					isValid
-				})
-
-				return isValid
-			}),
-			// Calculate court availability on the fly
-			map(([booking, availability, courts, venues, progress]) => {
-				// Pure function to calculate court availability for this component
-				const calculateCourtAvailability = () => {
-					const venue = venues.get(booking.venueId)
-					if (!venue || !booking.date) return new Map()
-					
-					// Get active courts for this venue
-					const activeCourts = Array.from(courts.values())
-						.filter(court => court.status === 'active' && court.venueId === booking.venueId)
-					
-					const courtAvailabilityMap = new Map<string, CourtAvailabilityStatus>()
-					
-					activeCourts.forEach(court => {
-						// Check if court has any bookings that conflict with selected time/duration
-						if (booking.startTime && booking.endTime) {
-							// Check for conflicts with selected time and duration
-							const hasConflict = availability.bookings.some(existingBooking => {
-								if (existingBooking.courtId !== court.id) return false
-								
-								const bookingStart = dayjs(booking.startTime)
-								const bookingEnd = dayjs(booking.endTime)
-								const existingStart = dayjs(existingBooking.startTime)
-								const existingEnd = dayjs(existingBooking.endTime)
-								
-								// Check for overlap
-								return bookingStart.isBefore(existingEnd) && bookingEnd.isAfter(existingStart)
-							})
-							
-							courtAvailabilityMap.set(court.id, {
-								courtId: court.id,
-								courtName: court.name,
-								available: !hasConflict,
-								fullyAvailable: !hasConflict
-							})
-						} else if (booking.startTime) {
-							// Check if court is available at the selected start time
-							const startHour = dayjs(booking.startTime).hour()
-							const startMinute = dayjs(booking.startTime).minute()
-							const timeValue = startHour * 60 + startMinute
-
-							// Check if any booking conflicts with this time
-							const hasConflict = availability.bookings.some(existingBooking => {
-								if (existingBooking.courtId !== court.id) return false
-								
-								const existingStart = dayjs(existingBooking.startTime)
-								const existingEnd = dayjs(existingBooking.endTime)
-								const existingStartMinutes = existingStart.hour() * 60 + existingStart.minute()
-								const existingEndMinutes = existingEnd.hour() * 60 + existingEnd.minute()
-								
-								return timeValue >= existingStartMinutes && timeValue < existingEndMinutes
-							})
-							
-							courtAvailabilityMap.set(court.id, {
-								courtId: court.id,
-								courtName: court.name,
-								available: !hasConflict,
-								fullyAvailable: !hasConflict
-							})
-						} else {
-							// No time selected - check if court has any availability today
-							const courtBookings = availability.bookings.filter(b => b.courtId === court.id)
-							const hasAnyAvailability = courtBookings.length === 0 || 
-								// Simple check - if court has less than 10 hours of bookings, it has some availability
-								courtBookings.reduce((total, booking) => {
-									const duration = dayjs(booking.endTime).diff(dayjs(booking.startTime), 'hour')
-									return total + duration
-								}, 0) < 10
-							
-							courtAvailabilityMap.set(court.id, {
-								courtId: court.id,
-								courtName: court.name,
-								available: hasAnyAvailability,
-								fullyAvailable: courtBookings.length === 0
-							})
-						}
+					console.log('Court select filter check:', {
+						booking: !!booking,
+						availability: !!availability,
+						bookings: availability?.bookings !== undefined,
+						bookingsCount: availability?.bookings?.length || 0,
+						courts: courts?.size || 0,
+						venues: venues?.size || 0,
+						isValid,
 					})
-					
-					return courtAvailabilityMap
-				}
-				
-				return {
-					booking,
-					availability,
-					courts,
-					venues,
-					progress,
-					calculatedCourtAvailability: calculateCourtAvailability()
-				}
-			}),
-			// Extract relevant data for comparison
-			distinctUntilChanged((prev, curr) => 
-				// Compare relevant fields
-				prev.booking.startTime === curr.booking.startTime &&
-				prev.booking.endTime === curr.booking.endTime &&
-				prev.booking.date === curr.booking.date &&
-				prev.booking.venueId === curr.booking.venueId &&
-				prev.booking.courtId === curr.booking.courtId &&
-				prev.availability.date === curr.availability.date &&
-				prev.availability.venueId === curr.availability.venueId &&
-				JSON.stringify(prev.availability.bookings) === JSON.stringify(curr.availability.bookings) &&
-				prev.courts.size === curr.courts.size &&
-				prev.progress.expandedSteps === curr.progress.expandedSteps
-			),
-			// Handle scrolling to selected court after DOM is ready
-			switchMap(({booking, availability, calculatedCourtAvailability, progress}) => {
-				console.log('Context updated - refreshing court availability')
-				console.log('Bookings available:', availability.bookings?.length || 0)
-				
-				// Update court availability from calculated data
-				this.courtAvailability = calculatedCourtAvailability
-				
-				this.loadCourtsWithAvailability()
-				
-				// Check if we need to scroll to selected court
-				if (!booking?.courtId || this.viewMode !== ViewMode.LIST) {
-					return of(null)
-				}
-				
-				const isExpanded = progress.expandedSteps.includes(BookingStep.Court)
-				if (!isExpanded) {
-					return of(null)
-				}
-				
-				// Retry logic to wait for DOM elements to be ready (similar to duration-select)
-				return timer(0, 50).pipe(
-					map(() => this.courtRefs.get(booking.courtId!)),
-					filter(element => {
-						const isReady = !!element && !!this.scrollContainerRef.value
-						if (!isReady) {
-							console.log('Waiting for court DOM elements to be ready...')
-						}
-						return isReady
-					}),
-					take(1), // Take the first successful attempt
-					tap((_) => {
-						console.log('Auto-scrolling to selected court:', booking.courtId)
-						// Add a small delay to ensure render is complete
-						setTimeout(() => this.scrollToSelectedCourt(), 10)
-					}),
-					takeUntil(timer(3000)) // Give up after 3 seconds
-				)
-			})
-		).subscribe()
+
+					return isValid
+				}),
+				// Calculate court availability on the fly
+				map(([booking, availability, courts, venues, progress]) => {
+					// Pure function to calculate court availability for this component
+					const calculateCourtAvailability = () => {
+						const venue = venues.get(booking.venueId)
+						if (!venue || !booking.date) return new Map()
+
+						// Get active courts for this venue
+						const activeCourts = Array.from(courts.values()).filter(
+							court => court.status === 'active' && court.venueId === booking.venueId,
+						)
+
+						const courtAvailabilityMap = new Map<string, CourtAvailabilityStatus>()
+
+						activeCourts.forEach(court => {
+							// Check if court has any bookings that conflict with selected time/duration
+							if (booking.startTime && booking.endTime) {
+								// Check for conflicts with selected time and duration
+								const hasConflict = availability.bookings.some(existingBooking => {
+									if (existingBooking.courtId !== court.id) return false
+
+									const bookingStart = dayjs(booking.startTime)
+									const bookingEnd = dayjs(booking.endTime)
+									const existingStart = dayjs(existingBooking.startTime)
+									const existingEnd = dayjs(existingBooking.endTime)
+
+									// Check for overlap
+									return bookingStart.isBefore(existingEnd) && bookingEnd.isAfter(existingStart)
+								})
+
+								courtAvailabilityMap.set(court.id, {
+									courtId: court.id,
+									courtName: court.name,
+									available: !hasConflict,
+									fullyAvailable: !hasConflict,
+								})
+							} else if (booking.startTime) {
+								// Check if court is available at the selected start time
+								const startHour = dayjs(booking.startTime).hour()
+								const startMinute = dayjs(booking.startTime).minute()
+								const timeValue = startHour * 60 + startMinute
+
+								// Check if any booking conflicts with this time
+								const hasConflict = availability.bookings.some(existingBooking => {
+									if (existingBooking.courtId !== court.id) return false
+
+									const existingStart = dayjs(existingBooking.startTime)
+									const existingEnd = dayjs(existingBooking.endTime)
+									const existingStartMinutes = existingStart.hour() * 60 + existingStart.minute()
+									const existingEndMinutes = existingEnd.hour() * 60 + existingEnd.minute()
+
+									return timeValue >= existingStartMinutes && timeValue < existingEndMinutes
+								})
+
+								courtAvailabilityMap.set(court.id, {
+									courtId: court.id,
+									courtName: court.name,
+									available: !hasConflict,
+									fullyAvailable: !hasConflict,
+								})
+							} else {
+								// No time selected - check if court has any availability today
+								const courtBookings = availability.bookings.filter(b => b.courtId === court.id)
+								const hasAnyAvailability =
+									courtBookings.length === 0 ||
+									// Simple check - if court has less than 10 hours of bookings, it has some availability
+									courtBookings.reduce((total, booking) => {
+										const duration = dayjs(booking.endTime).diff(dayjs(booking.startTime), 'hour')
+										return total + duration
+									}, 0) < 10
+
+								courtAvailabilityMap.set(court.id, {
+									courtId: court.id,
+									courtName: court.name,
+									available: hasAnyAvailability,
+									fullyAvailable: courtBookings.length === 0,
+								})
+							}
+						})
+
+						return courtAvailabilityMap
+					}
+
+					return {
+						booking,
+						availability,
+						courts,
+						venues,
+						progress,
+						calculatedCourtAvailability: calculateCourtAvailability(),
+					}
+				}),
+				// Extract relevant data for comparison
+				distinctUntilChanged(
+					(prev, curr) =>
+						// Compare relevant fields
+						prev.booking.startTime === curr.booking.startTime &&
+						prev.booking.endTime === curr.booking.endTime &&
+						prev.booking.date === curr.booking.date &&
+						prev.booking.venueId === curr.booking.venueId &&
+						prev.booking.courtId === curr.booking.courtId &&
+						prev.availability.date === curr.availability.date &&
+						prev.availability.venueId === curr.availability.venueId &&
+						JSON.stringify(prev.availability.bookings) === JSON.stringify(curr.availability.bookings) &&
+						prev.courts.size === curr.courts.size &&
+						prev.progress.expandedSteps === curr.progress.expandedSteps,
+				),
+				// Handle scrolling to selected court after DOM is ready
+				switchMap(({ booking, availability, calculatedCourtAvailability, progress }) => {
+					console.log('Context updated - refreshing court availability')
+					console.log('Bookings available:', availability.bookings?.length || 0)
+
+					// Update court availability from calculated data
+					this.courtAvailability = calculatedCourtAvailability
+
+					this.loadCourtsWithAvailability()
+
+					// Check if we need to scroll to selected court
+					if (!booking?.courtId || this.viewMode !== ViewMode.LIST) {
+						return of(null)
+					}
+
+					const isExpanded = progress.expandedSteps.includes(BookingStep.Court)
+					if (!isExpanded) {
+						return of(null)
+					}
+
+					// Retry logic to wait for DOM elements to be ready (similar to duration-select)
+					return timer(0, 50).pipe(
+						map(() => this.courtRefs.get(booking.courtId!)),
+						filter(element => {
+							const isReady = !!element && !!this.scrollContainerRef.value
+							if (!isReady) {
+								console.log('Waiting for court DOM elements to be ready...')
+							}
+							return isReady
+						}),
+						take(1), // Take the first successful attempt
+						tap(_ => {
+							console.log('Auto-scrolling to selected court:', booking.courtId)
+							// Add a small delay to ensure render is complete
+							setTimeout(() => this.scrollToSelectedCourt(), 10)
+						}),
+						takeUntil(timer(3000)), // Give up after 3 seconds
+					)
+				}),
+			)
+			.subscribe()
 
 		// Initial load
 		this.loadCourtsWithAvailability()
@@ -494,9 +409,6 @@ export class CourtSelectStep extends $LitElement(css`
 	//#endregion
 
 	//#region Availability Checking Methods
-
-
-
 
 	/**
 	 * Check if a court can be selected based on its availability
@@ -514,8 +426,6 @@ export class CourtSelectStep extends $LitElement(css`
 		if (!status || !status.available) return 'none'
 		return status.fullyAvailable ? 'full' : 'partial'
 	}
-
-
 
 	//#endregion
 
@@ -542,16 +452,12 @@ export class CourtSelectStep extends $LitElement(css`
 		this.requestUpdate()
 	}
 
-
-
-
 	/**
 	 * Retry loading courts after an error
 	 */
 	private retryLoading(): void {
 		this.loadCourtsWithAvailability()
 	}
-
 
 	//#endregion
 
@@ -567,8 +473,8 @@ export class CourtSelectStep extends $LitElement(css`
 			return
 		}
 
-		// If we're in map view, switch to list view first
-		if (this.viewMode === ViewMode.MAP) {
+		// If we're in map view and flag is enabled, switch to list view first
+		if (this.viewMode === ViewMode.MAP && this.switchToListOnMapSelection) {
 			this.viewMode = ViewMode.LIST
 			// Request update and wait for the next render cycle before proceeding
 			this.requestUpdate()
@@ -576,6 +482,9 @@ export class CourtSelectStep extends $LitElement(css`
 			setTimeout(() => {
 				this.handleCourtSelectInternal(court)
 			}, 50)
+		} else if (this.viewMode === ViewMode.MAP) {
+			// Stay in map view but still handle the selection
+			this.handleCourtSelectInternal(court)
 		} else {
 			this.handleCourtSelectInternal(court)
 		}
@@ -669,16 +578,16 @@ export class CourtSelectStep extends $LitElement(css`
 
 		// Check if we need to clear duration for non-fully available courts
 		const availabilityStatus = this.getCourtAvailabilityStatus(court.id)
-		
+
 		// If court is not fully available and duration was previously selected, clear it
 		const hasDuration = !!this.booking?.startTime && !!this.booking?.endTime
 		if (availabilityStatus !== 'full' && hasDuration && !timeSlot) {
 			bookingUpdate.endTime = ''
 			bookingUpdate.price = 0
-			
+
 			// Notify user that duration was cleared
 			$notify.info('Duration selection cleared. This court has limited availability.', {
-				duration: 3000
+				duration: 3000,
 			})
 		}
 
@@ -690,7 +599,7 @@ export class CourtSelectStep extends $LitElement(css`
 		// Reset dialog state if applicable
 		this.pendingCourtSelection = null
 		this.showConfirmationDialog = false
-		
+
 		// Highlight the selected court and scroll to it
 		const courtEl = this.courtRefs.get(court.id)
 		if (courtEl) {
@@ -728,63 +637,63 @@ export class CourtSelectStep extends $LitElement(css`
 	//#endregion
 
 	//#region Filter Methods
-	
+
 	/**
 	 * Get unique court type options from all venue courts
 	 * Only returns options if there's more than one unique value
 	 */
 	private getCourtTypeOptions(): CourtTypeEnum[] {
 		// Get all courts for the current venue
-		const venueCourts = this.selectedVenueCourts || [];
-		
+		const venueCourts = this.selectedVenueCourts || []
+
 		// Skip calculation if no courts available
 		if (venueCourts.length === 0) {
-			return [];
+			return []
 		}
-		
+
 		// Calculate unique court types from available courts
-		const courtTypes = new Set<CourtTypeEnum>();
-		
+		const courtTypes = new Set<CourtTypeEnum>()
+
 		venueCourts.forEach(court => {
 			if (court.courtType) {
-				courtTypes.add(court.courtType as CourtTypeEnum);
+				courtTypes.add(court.courtType as CourtTypeEnum)
 			}
-		});
-		
+		})
+
 		// Convert to array and return
-		const uniqueTypes = Array.from(courtTypes);
-		
+		const uniqueTypes = Array.from(courtTypes)
+
 		// Only return the array if there's more than one option
-		return uniqueTypes.length > 1 ? uniqueTypes : [];
+		return uniqueTypes.length > 1 ? uniqueTypes : []
 	}
-	
+
 	/**
 	 * Get unique player count options from all venue courts
 	 * Only returns options if there's more than one unique value
 	 */
 	private getPlayerCountOptions(): number[] {
 		// Get all courts for the current venue
-		const venueCourts = this.selectedVenueCourts || [];
-		
+		const venueCourts = this.selectedVenueCourts || []
+
 		// Skip calculation if no courts available
 		if (venueCourts.length === 0) {
-			return [];
+			return []
 		}
-		
+
 		// Calculate max players for each court and collect unique values
-		const playerCounts = new Set<number>();
-		
+		const playerCounts = new Set<number>()
+
 		venueCourts.forEach(court => {
 			// Get max player count for each court
-			const maxPlayers = this.getMaxPlayerCount(court);
-			playerCounts.add(maxPlayers);
-		});
-		
+			const maxPlayers = this.getMaxPlayerCount(court)
+			playerCounts.add(maxPlayers)
+		})
+
 		// Convert to array, sort, and return
-		const uniqueCounts = Array.from(playerCounts).sort((a, b) => a - b);
-		
+		const uniqueCounts = Array.from(playerCounts).sort((a, b) => a - b)
+
 		// Only return the array if there's more than one option
-		return uniqueCounts.length > 1 ? uniqueCounts : [];
+		return uniqueCounts.length > 1 ? uniqueCounts : []
 	}
 
 	/**
@@ -793,31 +702,32 @@ export class CourtSelectStep extends $LitElement(css`
 	 */
 	private getMaxPlayerCount(court: Court): number {
 		// Check sport types of the court
-		const sports = court.sportTypes || ['pickleball'];
-		
+		const sports = court.sportTypes || ['pickleball']
+
 		// Determine max player count based on sport type
 		if (sports.includes('volleyball')) {
-			return 12; // Volleyball courts can support up to 12 players
+			return 12 // Volleyball courts can support up to 12 players
 		} else if (sports.includes('pickleball') || sports.includes('padel')) {
-			return 4; // Pickleball and Padel typically allow up to 4 players
+			return 4 // Pickleball and Padel typically allow up to 4 players
 		}
-		
+
 		// For other sports or if no specific type, use court dimensions
 		if (court.dimensions) {
-			const area = court.dimensions.length * court.dimensions.width;
-			const areaInSquareMeters = court.dimensions.unit === 'feet'
-				? area * 0.092903 // Convert sq feet to sq meters
-				: area;
-			
+			const area = court.dimensions.length * court.dimensions.width
+			const areaInSquareMeters =
+				court.dimensions.unit === 'feet'
+					? area * 0.092903 // Convert sq feet to sq meters
+					: area
+
 			if (areaInSquareMeters >= 150) {
-				return 6; // Large courts support 6+ players
+				return 6 // Large courts support 6+ players
 			} else if (areaInSquareMeters >= 100) {
-				return 4; // Medium courts support 4 players
+				return 4 // Medium courts support 4 players
 			}
 		}
-		
+
 		// Default for small courts or unknown dimensions
-		return 2;
+		return 2
 	}
 
 	/**
@@ -835,7 +745,7 @@ export class CourtSelectStep extends $LitElement(css`
 		// but maintain name sort within each group
 		const matchingCourts: Court[] = []
 		const nonMatchingCourts: Court[] = []
-		
+
 		courts.forEach(court => {
 			if (this.courtMatchesFilters(court)) {
 				matchingCourts.push(court)
@@ -843,7 +753,7 @@ export class CourtSelectStep extends $LitElement(css`
 				nonMatchingCourts.push(court)
 			}
 		})
-		
+
 		// Return matching courts first, then non-matching courts
 		// Both groups maintain their name-based sorting from the input
 		return [...matchingCourts, ...nonMatchingCourts]
@@ -1011,7 +921,6 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Toggle between list and map view modes
 	 */
 	private toggleViewMode(mode: ViewMode): void {
-		
 		this.viewMode = mode
 		this.requestUpdate()
 	}
@@ -1019,41 +928,41 @@ export class CourtSelectStep extends $LitElement(css`
 	//#endregion
 
 	//#region Scroll Methods
-	
+
 	/**
 	 * Scroll to selected court with smooth animation
 	 */
 	private scrollToSelectedCourt(): void {
 		if (!this.booking?.courtId || this.viewMode !== ViewMode.LIST) return
-		
+
 		try {
 			const courtEl = this.courtRefs.get(this.booking.courtId)
 			if (!courtEl) return
-			
+
 			// For compact mode (horizontal scroll)
 			if (!this.isActive) {
 				const scrollContainer = this.scrollContainerRef.value
 				if (!scrollContainer) return
-				
+
 				// Check if element is already in view
 				const containerRect = scrollContainer.getBoundingClientRect()
 				const elementRect = courtEl.getBoundingClientRect()
-				
+
 				// Calculate if element is fully visible
 				const isFullyVisible = elementRect.left >= containerRect.left && elementRect.right <= containerRect.right
-				
+
 				// If the element is already fully visible, just highlight it
 				if (isFullyVisible) {
 					this.highlightCourtElement(courtEl)
 					return
 				}
-				
+
 				// Calculate scroll position to center the element
 				const containerWidth = scrollContainer.clientWidth
 				const elementOffset = courtEl.offsetLeft
 				const elementWidth = courtEl.offsetWidth
 				const scrollPosition = elementOffset - containerWidth / 2 + elementWidth / 2
-				
+
 				// Smooth scroll to the calculated position
 				scrollContainer.scrollTo({
 					left: scrollPosition,
@@ -1064,24 +973,24 @@ export class CourtSelectStep extends $LitElement(css`
 				courtEl.scrollIntoView({
 					behavior: 'smooth',
 					block: 'center',
-					inline: 'center'
+					inline: 'center',
 				})
 			}
-			
+
 			// Highlight the element after scrolling
 			setTimeout(() => this.highlightCourtElement(courtEl), 300)
 		} catch (error) {
 			console.error('Error scrolling to selected court:', error)
 		}
 	}
-	
+
 	/**
 	 * Highlight court element with animation
 	 */
 	private highlightCourtElement(element: HTMLElement): void {
 		element.animate(PULSE_ANIMATION.keyframes, PULSE_ANIMATION.options)
 	}
-	
+
 	//#endregion
 
 	//#region UI Helper Methods
@@ -1098,7 +1007,7 @@ export class CourtSelectStep extends $LitElement(css`
 		const classes = []
 
 		if (isSelected) {
-			classes.push('pulse-animation')
+			classes.push('animate-pulse')
 		}
 
 		if (!isAvailable) {
@@ -1120,7 +1029,7 @@ export class CourtSelectStep extends $LitElement(css`
 			'py-2': true,
 			'transition-all': true,
 			'duration-300': true,
-      "first:pl-2 last:pr-2":!this.isActive
+			'first:pl-2 last:pr-2': !this.isActive,
 		}
 	}
 
@@ -1133,72 +1042,71 @@ export class CourtSelectStep extends $LitElement(css`
 	 */
 	private renderFilters() {
 		// Get dynamic court type options instead of using the enum directly
-		const courtTypeOptions = this.getCourtTypeOptions();
-		
+		const courtTypeOptions = this.getCourtTypeOptions()
+
 		// Get dynamic player count options
-		const playerCountOptions = this.getPlayerCountOptions();
-		
+		const playerCountOptions = this.getPlayerCountOptions()
+
 		// Don't render filters if there are no courts or only one court
-		if (this.selectedVenueCourts.length <= 1) return html``;
-		
-		
-		
-		
+		if (this.selectedVenueCourts.length <= 1) return html``
+
 		return html`
-			<div class="filter-section py-2 px-1">
+			<div class="px-1 pb-1">
 				<!-- Combined filter chips in one line -->
 				<div class="flex flex-wrap items-center justify-between gap-2">
 					<div class="flex flex-wrap gap-1.5">
-						<!-- Court Type Filters - Only shown if multiple options -->
-						${courtTypeOptions.length > 0
-							? courtTypeOptions.map(type => {
-									const isSelected = this.isCourtTypeSelected(type);
-									const typeIcon = type === 'indoor' ? 'home' : type === 'outdoor' ? 'wb_sunny' : 'sports_tennis';
-
-									return html`
-										<schmancy-chip .selected="${isSelected}" @click=${() => this.toggleCourtTypeFilter(type)}>
-											<schmancy-icon slot="leading" size="16px">${typeIcon}</schmancy-icon>
-											${this.formatCourtType(type)}
-										</schmancy-chip>
-									`;
-								})
-							: ''}
-
-						<!-- Player Count Filters - Only shown if multiple options -->
-						${playerCountOptions.length > 0
-							? playerCountOptions.map(count => {
-									// Label for the player count chip
-									const label = count >= 6 ? '6+' : count.toString();
-									const isSelected = this.courtPreferences.playerCount === count;
-
-									return html`
-										<schmancy-chip .selected="${isSelected}" @click=${() => this.handlePlayerCountChipClick(count)}>
-											<schmancy-icon slot="leading" size="16px">group</schmancy-icon>
-											${label}
-										</schmancy-chip>
-									`;
-								})
-							: ''}
-					</div>
-
-					<!-- View mode toggles - only show when active -->
-					<div class="flex gap-1 shrink-0 ml-auto">
 						<schmancy-icon-button
 							size="sm"
 							variant="${this.viewMode === ViewMode.LIST ? 'filled' : 'text'}"
 							@click=${() => this.toggleViewMode(ViewMode.LIST)}
 							aria-pressed=${this.viewMode === ViewMode.LIST}
 							aria-label="List view"
-							>view_list</schmancy-icon-button
-						>
+							>view_list
+						</schmancy-icon-button>
 						<schmancy-icon-button
 							size="sm"
 							variant="${this.viewMode === ViewMode.MAP ? 'filled' : 'text'}"
 							@click=${() => this.toggleViewMode(ViewMode.MAP)}
 							aria-pressed=${this.viewMode === ViewMode.MAP}
 							aria-label="Map view"
-							>map</schmancy-icon-button
+							>
+              map
+              </schmancy-icon-button
 						>
+
+						<!-- Player Count Filters - Only shown if multiple options -->
+						${playerCountOptions.length > 0
+							? playerCountOptions.map(count => {
+									// Label for the player count chip
+									const label = count >= 6 ? '6+' : count.toString()
+									const isSelected = this.courtPreferences.playerCount === count
+
+									return html`
+										<schmancy-chip .selected="${isSelected}" @click=${() => this.handlePlayerCountChipClick(count)}>
+											<schmancy-icon slot="leading" size="16px">group</schmancy-icon>
+											${label}
+										</schmancy-chip>
+									`
+								})
+							: ''}
+					</div>
+
+					<!-- View mode toggles - only show when active -->
+					<div class="flex gap-1 shrink-0 ml-auto">
+						<!-- Court Type Filters - Only shown if multiple options -->
+						${courtTypeOptions.length > 0
+							? courtTypeOptions.map(type => {
+									const isSelected = this.isCourtTypeSelected(type)
+									const typeIcon = type === 'indoor' ? 'home' : type === 'outdoor' ? 'wb_sunny' : 'sports_tennis'
+
+									return html`
+										<schmancy-chip .selected="${isSelected}" @click=${() => this.toggleCourtTypeFilter(type)}>
+											<schmancy-icon slot="leading" size="16px">${typeIcon}</schmancy-icon>
+											${this.formatCourtType(type)}
+										</schmancy-chip>
+									`
+								})
+							: ''}
 					</div>
 				</div>
 			</div>
@@ -1229,7 +1137,7 @@ export class CourtSelectStep extends $LitElement(css`
 									this.courtRefs.set(court.id, element as HTMLElement)
 								}
 							}
-							
+
 							return html`
 								<div
 									${ref(courtRef)}
@@ -1277,7 +1185,7 @@ export class CourtSelectStep extends $LitElement(css`
 										this.courtRefs.set(court.id, element as HTMLElement)
 									}
 								}
-								
+
 								return html`
 									<div
 										${ref(courtRef)}
@@ -1314,7 +1222,7 @@ export class CourtSelectStep extends $LitElement(css`
 	private renderMapView() {
 		// Check if any courts have map coordinates
 		const courtsWithCoordinates = this.selectedVenueCourts.filter(c => c.mapCoordinates)
-		
+
 		if (courtsWithCoordinates.length > 0) {
 			// Use Google Maps when courts have real coordinates
 			return html`
@@ -1404,27 +1312,23 @@ export class CourtSelectStep extends $LitElement(css`
 							@cancel-selection=${this.handleDialogCancel}
 							@dialog-close=${() => (this.showConfirmationDialog = false)}
 						></court-availability-dialog>
-				  `
+					`
 				: ''}
-			<div class="mt-3 bg-surface-container-low rounded-lg px-2 transition-container">
+			<div class="bg-surface-container-low rounded-lg px-2 transition-all duration-300">
 				${this.error
 					? html`
 							<div class="bg-error-container p-2 rounded-t-lg text-error-on-container text-sm text-center">
 								${this.error}
 								<button @click=${() => this.retryLoading()} class="ml-2 underline font-medium">Refresh</button>
 							</div>
-					  `
+						`
 					: ''}
 
 				<!-- Court Filters - Only show when active -->
-			<section class="block lg:hidden">
-        ${this.renderFilters()}
-      </section>
+				<section class="block lg:hidden">${this.renderFilters()}</section>
 
 				<!-- If active, show based on view mode, otherwise always show list view -->
-				${cache(
-					this.viewMode === ViewMode.MAP ? this.renderMapView() : this.renderCourtsList(),
-				)}
+				${cache(this.viewMode === ViewMode.MAP ? this.renderMapView() : this.renderCourtsList())}
 			</div>
 		`
 	}
