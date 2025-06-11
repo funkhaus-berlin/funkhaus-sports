@@ -343,7 +343,6 @@ export class CheckoutForm extends $LitElement() {
 						},
 					},
 					return_url: `${window.location.href.split('?')[0]}?booking=${booking.id}`,
-					receipt_email: booking.customerEmail || '',
 				},
 				redirect: 'if_required',
 			})
