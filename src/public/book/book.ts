@@ -546,7 +546,26 @@ export class CourtBookingSystem extends $LitElement() {
                 
                 <!-- Map Component -->
                 ${(() => {
-                  // Check if any courts have map coordinates
+                  // Check if on date step without date selected
+                  const dateStep = flowSteps.find(s => s.label === 'Date')
+                  const isOnDateStep = dateStep && this.bookingProgress.currentStep === dateStep.step
+                  const hasDateSelected = !!this.booking?.date
+                  
+                  // Show venue map if on date step without date selected
+                  if (isOnDateStep && !hasDateSelected) {
+                    return html`
+                      <venue-map
+                        .address=${venueContext.value?.address}
+                        .venueName=${venueContext.value?.name || 'Venue'}
+                        zoom=${16}
+                        showMarker
+                        interactive
+                        class="h-64 w-full rounded-lg overflow-hidden"
+                      ></venue-map>
+                    `
+                  }
+                  
+                  // Otherwise check if any courts have map coordinates
                   const courtsArray = Array.from(this.availableCourts?.values() || [])
                   const venueCourts = courtsArray.filter(court => court.venueId === this.booking?.venueId)
                   const courtsWithCoordinates = venueCourts.filter(c => c.mapCoordinates)
