@@ -7,17 +7,17 @@ import { customElement, property, state } from 'lit/decorators.js'
 import { createRef, ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { catchError, combineLatest, of, takeUntil } from 'rxjs'
-import { distinctUntilChanged, filter, tap } from 'rxjs/operators'
+import { map, tap } from 'rxjs/operators'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
-import { availabilityContext, availabilityLoading$, getAvailableDurations } from 'src/availability-context'
+import { availabilityContext } from 'src/availability-context'
 import { BookingService } from 'src/bookingServices/booking.service'
 import { db } from 'src/firebase/firebase'
-import { BookingFlowType } from 'src/types'
 import { Court } from 'src/types/booking/court.types'
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import { Duration } from '../../types'
+import { Venue } from 'src/types'
 
 const DURATION_LABELS: Record<number, { full: string; compact: string }> = {
 	30: { full: '30 minutes', compact: '30m' },
@@ -53,13 +53,12 @@ export class DurationSelectionStep extends $LitElement(css`
 	@select(bookingContext) booking!: Booking
 	@select(courtsContext) courts!: Map<string, Court>
 	@select(BookingProgressContext) bookingProgress!: BookingProgress
-	@select(availabilityContext) availability!: any
-	@select(venuesContext) venues!: Map<string, any>
+	@select(availabilityContext) availability!: typeof availabilityContext.value
+	@select(venuesContext) venues!: Map<string, Venue>
 
 	// Core state
 	@state() durations: Duration[] = []
 	@state() loading = true
-	@state() error: string | null = null
 	@state() isExpanded = false
 	@state() isCreatingBooking = false
 	@state() isMobileScreen = window.innerWidth < 768
@@ -71,15 +70,7 @@ export class DurationSelectionStep extends $LitElement(css`
 
 	connectedCallback(): void {
 		super.connectedCallback()
-		this.setupObservers()
-	}
-
-	disconnectedCallback(): void {
-		super.disconnectedCallback()
-		this.durationRefs.clear()
-	}
-
-	private setupObservers(): void {
+		
 		// Watch screen size changes
 		const checkScreenSize = () => {
 			const newIsMobile = window.innerWidth < 768
@@ -89,187 +80,173 @@ export class DurationSelectionStep extends $LitElement(css`
 		}
 		window.addEventListener('resize', checkScreenSize)
 
-		// Consolidated reactive pipeline
+		// Main reactive pipeline
 		combineLatest([
 			bookingContext.$,
 			availabilityContext.$,
 			venuesContext.$,
-			BookingProgressContext.$,
-			availabilityLoading$
+			courtsContext.$,
+			BookingProgressContext.$
 		]).pipe(
 			takeUntil(this.disconnecting),
-			tap(([booking, _, __, progress, loading]) => {
-				// Update loading state
-				this.loading = loading
-				
-				// Update expanded state from progress
+			map(([booking, _, __, ___, progress]) => {
+				// Update expanded state
 				this.isExpanded = progress.expandedSteps.includes(BookingStep.Duration)
 				
-				// Scroll to selected duration if endTime exists
+				// Calculate durations if we have required data
+				if (booking?.date && booking?.startTime && booking?.venueId) {
+					const durations = this.calculateAvailableDurations()
+					return { durations, booking }
+				}
+				
+				return { durations: [], booking }
+			}),
+			tap(({ durations, booking }) => {
+				this.durations = durations
+				this.loading = false
+				
+				// Scroll to selected duration if exists
 				if (booking?.endTime) {
 					setTimeout(() => this.scrollToSelectedDuration(), 250)
 				}
-			}),
-			// Only process durations when we have required data and contexts are ready
-			filter(([booking, _, __, ___, loading]) => 
-				!!booking?.date && 
-				!!booking?.startTime && 
-				availabilityContext.ready && 
-				courtsContext.ready &&
-				venuesContext.ready &&
-				!loading
-			),
-			distinctUntilChanged(([prevBooking, prevAvail], [currBooking, currAvail]) => 
-				prevBooking.date === currBooking.date &&
-				prevBooking.startTime === currBooking.startTime &&
-				prevBooking.courtId === currBooking.courtId &&
-				prevAvail.date === currAvail.date
-			)
-		).subscribe(([booking, availability]) => {
-			// Load durations
-			this.loadDurations()
-			
-			// Check if selected duration is still valid
-			if (booking.endTime) {
-				const currentDuration = this.getCurrentDuration()
-				if (currentDuration > 0) {
-					// Check if it exceeds closing time
-					const exceedsClosing = this.wouldExceedClosingTime({ value: currentDuration } as Duration)
+				
+				// Validate current selection
+				if (booking?.endTime) {
+					const currentDuration = this.getCurrentDuration()
+					const isValid = durations.some(d => d.value === currentDuration)
 					
-					if (exceedsClosing) {
-						console.log('Selected duration exceeds closing time, clearing selection')
+					if (!isValid && currentDuration > 0) {
+						console.log('Selected duration is no longer valid, clearing selection')
 						bookingContext.set({ endTime: '', price: 0 }, true)
-					} else {
-						// Get available durations based on current context
-						const courtId = availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION 
-							? booking.courtId : undefined
-						const availableDurations = getAvailableDurations(booking.startTime, courtId)
-						
-						// Check if current duration is still available
-						const isDurationValid = availableDurations.some(d => d.value === currentDuration)
-						
-						if (!isDurationValid) {
-							console.log('Selected duration is no longer available, clearing selection')
-							bookingContext.set({ endTime: '', price: 0 }, true)
-						}
 					}
 				}
-			}
-		})
-	}
-
-	private loadDurations(): void {
-		this.loading = true
-		this.error = null
-
-		try {
-			// Check if all required contexts are ready
-			if (!availabilityContext.ready || !courtsContext.ready || !venuesContext.ready) {
-				console.log('Contexts not ready, using estimated durations')
-				this.durations = this.generateEstimatedDurations()
-				this.error = 'Loading availability data...'
-				return
-			}
-
-			const courtId = this.availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION 
-				? this.booking.courtId : undefined
-			
-			console.log('Loading durations:', {
-				startTime: this.booking.startTime,
-				courtId,
-				bookingFlowType: this.availability.bookingFlowType,
-				venueId: this.booking.venueId
 			})
-			
-			const durations = getAvailableDurations(this.booking.startTime, courtId)
-			
-			if (durations.length > 0) {
-				this.durations = durations
-				this.error = null
-			} else {
-				// No available durations - check why
-				const venue = venuesContext.value.get(this.booking.venueId)
-				const startTime = dayjs(this.booking.startTime)
-				const dayOfWeek = dayjs(this.booking.date).format('dddd').toLowerCase()
-				const closeTime = venue?.operatingHours?.[dayOfWeek as keyof typeof venue.operatingHours]?.close
-				
-				console.warn('No durations available:', {
-					startTime: startTime.format('HH:mm'),
-					closeTime,
-					venue: venue?.name
-				})
-				
-				this.durations = []
-				this.error = null
-			}
-		} catch (error) {
-			console.error('Error loading durations:', error)
-			this.durations = this.generateEstimatedDurations()
-			this.error = 'Error loading durations. Using estimates instead.'
-		} finally {
-			this.loading = false
-		}
+		).subscribe()
 	}
 
-	private generateEstimatedDurations(): Duration[] {
-		const venue = venuesContext.value.get(this.booking?.venueId || '')
-		const baseRate = this.getAverageHourlyRate()
-		const minTime = venue?.settings?.minBookingTime || 30
-		const maxTime = venue?.settings?.maxBookingTime || 180
-		const timeStep = venue?.settings?.bookingTimeStep || 30
-		
-		const durations: Duration[] = []
-		for (let minutes = minTime; minutes <= maxTime; minutes += timeStep) {
-			// Don't include durations that would exceed closing time
-			if (!this.wouldExceedClosingTime({ value: minutes } as Duration)) {
-				durations.push({
-					label: DURATION_LABELS[minutes]?.compact || `${minutes}m`,
-					value: minutes,
-					price: Math.round(baseRate * minutes / 60)
-				})
-			}
+	disconnectedCallback(): void {
+		super.disconnectedCallback()
+		this.durationRefs.clear()
+	}
+
+
+	private calculateAvailableDurations(): Duration[] {
+		if (!this.booking?.startTime || !this.booking?.date || !this.booking?.venueId) {
+			return []
 		}
-		
+
+		const venue = this.venues.get(this.booking.venueId)
+		if (!venue) return []
+
+		// Get venue closing time
+		const dayOfWeek = dayjs(this.booking.date).format('dddd').toLowerCase()
+		const operatingHours = venue.operatingHours?.[dayOfWeek as keyof typeof venue.operatingHours]
+		const closeHour = operatingHours?.close ? parseInt(operatingHours.close.split(':')[0]) : 22
+		const closeMinute = operatingHours?.close ? parseInt(operatingHours.close.split(':')[1] || '0') : 0
+		const closingMinutes = closeHour * 60 + closeMinute
+
+		// Get start time in minutes
+		const startTimeDayjs = dayjs(this.booking.startTime)
+		const startMinutes = startTimeDayjs.hour() * 60 + startTimeDayjs.minute()
+
+		// Standard durations
+		const standardDurations = [
+			{ label: '30m', value: 30 },
+			{ label: '1h', value: 60 },
+			{ label: '1.5h', value: 90 },
+			{ label: '2h', value: 120 },
+			{ label: '2.5h', value: 150 },
+			{ label: '3h', value: 180 },
+			{ label: '3.5h', value: 210 },
+			{ label: '4h', value: 240 },
+			{ label: '4.5h', value: 270 },
+			{ label: '5h', value: 300 },
+		]
+
+		// Get bookings from availability context
+		const bookings = this.availability?.bookings || []
+
+		// Filter available durations
+		const durations = standardDurations
+			.map(duration => {
+				// Check if duration would exceed closing time
+				if (startMinutes + duration.value > closingMinutes) {
+					return null
+				}
+
+				const endTime = startTimeDayjs.add(duration.value, 'minute')
+
+				// If court is already selected, check if duration is available for that court
+				if (this.booking.courtId) {
+					// Check for conflicts with existing bookings
+					const hasConflict = bookings.some(existingBooking => {
+						if (existingBooking.courtId !== this.booking.courtId) return false
+						
+						const existingStart = dayjs(existingBooking.startTime)
+						const existingEnd = dayjs(existingBooking.endTime)
+						
+						// Check for overlap
+						return startTimeDayjs.isBefore(existingEnd) && endTime.isAfter(existingStart)
+					})
+					
+					if (hasConflict) return null
+					
+					// Calculate price for the specific court
+					const court = this.courts.get(this.booking.courtId)
+					if (!court) return null
+					
+					// Calculate price inline
+					const durationHours = endTime.diff(startTimeDayjs, 'hour', true)
+					const basePrice = court.pricing?.baseHourlyRate || 50
+					const price = Math.round(basePrice * durationHours * 100) / 100
+					
+					return {
+						...duration,
+						price
+					}
+				} else {
+					// No court selected - check if any court is available for this duration
+					const activeCourts = Array.from(this.courts.values())
+						.filter(court => court.status === 'active' && court.venueId === this.booking.venueId)
+					
+					let totalPrice = 0
+					let availableCourtCount = 0
+					
+					for (const court of activeCourts) {
+						const hasConflict = bookings.some(existingBooking => {
+							if (existingBooking.courtId !== court.id) return false
+							
+							const existingStart = dayjs(existingBooking.startTime)
+							const existingEnd = dayjs(existingBooking.endTime)
+							
+							return startTimeDayjs.isBefore(existingEnd) && endTime.isAfter(existingStart)
+						})
+						
+						if (!hasConflict) {
+							availableCourtCount++
+							// Calculate price inline
+							const durationHours = endTime.diff(startTimeDayjs, 'hour', true)
+							const basePrice = court.pricing?.baseHourlyRate || 50
+							totalPrice += Math.round(basePrice * durationHours * 100) / 100
+						}
+					}
+					
+					if (availableCourtCount === 0) return null
+					
+					return {
+						...duration,
+						price: Math.round((totalPrice / availableCourtCount + Number.EPSILON) * 100) / 100
+					}
+				}
+			})
+			.filter(Boolean) as Duration[]
+
 		return durations
-	}
-
-	private getAverageHourlyRate(): number {
-		if (!courtsContext.ready || !this.courts?.size) return 30
-		
-		const activeCourts = Array.from(this.courts.values()).filter(c => c.status === 'active')
-		if (!activeCourts.length) return 30
-		
-		const totalRate = activeCourts.reduce((sum, court) => sum + (court.pricing?.baseHourlyRate || 30), 0)
-		return Math.round(totalRate / activeCourts.length)
 	}
 
 	private getCurrentDuration(): number {
 		if (!this.booking?.startTime || !this.booking?.endTime) return 0
 		return Math.max(0, dayjs(this.booking.endTime).diff(dayjs(this.booking.startTime), 'minute'))
-	}
-
-
-	private wouldExceedClosingTime(duration: Duration): boolean {
-		if (!this.booking?.startTime || !this.booking?.date || !this.booking?.venueId) return false
-		
-		const venue = venuesContext.value.get(this.booking.venueId)
-		if (!venue) return false
-		
-		const startTime = dayjs(this.booking.startTime)
-		const endTime = startTime.add(duration.value, 'minute')
-		const dayOfWeek = dayjs(this.booking.date).format('dddd').toLowerCase()
-		const operatingHours = venue.operatingHours?.[dayOfWeek as keyof typeof venue.operatingHours]
-		
-		if (!operatingHours?.close) {
-			// No closing time specified, use default
-			const defaultClosing = dayjs(this.booking.date).hour(22).minute(0)
-			return endTime.isAfter(defaultClosing)
-		}
-		
-		const [closeHour, closeMinute] = operatingHours.close.split(':').map(Number)
-		const closingTime = dayjs(this.booking.date).hour(closeHour).minute(closeMinute || 0)
-		
-		return endTime.isAfter(closingTime)
 	}
 
 	private handleDurationSelect(duration: Duration): void {
@@ -382,7 +359,6 @@ export class DurationSelectionStep extends $LitElement(css`
 
 	private renderDurationOption(duration: Duration) {
 		const isSelected = this.getCurrentDuration() === duration.value
-		const isDisabled = this.wouldExceedClosingTime(duration)
 		const label = DURATION_LABELS[duration.value]?.compact || `${duration.value}m`
 		
 		return html`
@@ -390,14 +366,12 @@ export class DurationSelectionStep extends $LitElement(css`
 				${ref(el => el && this.durationRefs.set(duration.value, el as HTMLElement))}
 				?selected=${isSelected}
 				?compact=${this.isMobileScreen}
-				icon=${isDisabled ? 'timer_off' : 'timer'}
+				icon="timer"
 				label=${label}
 				.dataValue=${duration.value.toString()}
 				.showPrice=${true}
 				price=${duration.price}
-				?disabled=${isDisabled}
-				description=${isDisabled ? 'Exceeds closing time' : ''}
-				@click=${() => !isDisabled && this.handleDurationSelect(duration)}
+				@click=${() => this.handleDurationSelect(duration)}
 				type="duration">
 			</selection-tile>
 		`
@@ -420,17 +394,6 @@ export class DurationSelectionStep extends $LitElement(css`
 	render() {
 		if (this.hidden || !this.isExpanded) return nothing
 		
-		if (this.loading && this.durations.length === 0) {
-			return html`
-				<div class="text-center py-6">
-					<div class="inline-block w-8 h-8 border-3 border-primary-default border-t-transparent rounded-full animate-spin"></div>
-					<schmancy-typography type="body" token="sm" class="mt-2 text-surface-on-variant">
-						Loading durations...
-					</schmancy-typography>
-				</div>
-			`
-		}
-		
 		if (!this.loading && this.durations.length === 0) {
 			return html`
 				<div class="text-center py-6 grid gap-4 justify-center">
@@ -442,12 +405,6 @@ export class DurationSelectionStep extends $LitElement(css`
 		
 		return html`
 			<div class="w-full bg-surface-low/50 rounded-lg transition-all duration-300 p-2">
-				${this.error ? html`
-					<div class="bg-error-container p-2 rounded-t-lg text-error-on-container text-sm text-center mb-3">
-						${this.error}
-					</div>
-				` : nothing}
-				
 				${!this.hasValidSelection() && this.durations.length > 0 ? html`
 					<div class="mb-2">
 						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
@@ -467,12 +424,6 @@ export class DurationSelectionStep extends $LitElement(css`
 				${!this.hasValidSelection() ? html`
 					<div class="text-center text-xs pb-2">
 						<p class="text-surface-on-variant">All prices include VAT</p>
-						${this.error ? html`
-							<p class="text-warning-default mt-1">
-								<schmancy-icon class="mr-1" size="12px">info</schmancy-icon>
-								Estimated prices. Actual price may vary.
-							</p>
-						` : nothing}
 					</div>
 				` : nothing}
 				

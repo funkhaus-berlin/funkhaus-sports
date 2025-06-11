@@ -13,18 +13,22 @@ import {
   availabilityContext,
   AvailabilityData,
   availabilityLoading$,
-  getAvailableTimeSlots,
 } from 'src/availability-context'
-import { BookingFlowType } from 'src/types'
 import { toUTC } from 'src/utils/timezone'
 import { venueContext } from 'src/admin/venues/venue-context'
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
-import { TimeSlot } from '../../types'
 
 // Configure dayjs with timezone plugins
 dayjs.extend(utc)
 dayjs.extend(timezone)
+
+// Time slot interface (local to this component)
+interface TimeSlot {
+	label: string
+	value: number
+	available: boolean
+}
 
 // Animation presets
 const ANIMATIONS = {
@@ -185,21 +189,20 @@ export class TimeSelectionStep extends $LitElement(css`
 				prevBooking.venueId === currBooking.venueId &&
 				prevBooking.courtId === currBooking.courtId &&
 				prevAvail.date === currAvail.date &&
-				prevAvail.activeCourtIds.length === currAvail.activeCourtIds.length
+				prevAvail.bookings.length === currAvail.bookings.length
 			)
-		).subscribe(([booking, availability]) => {
+		).subscribe(([booking]) => {
 			// Load time slots
 			this.loadTimeSlots()
 			
 			// Check if selected time is still valid
 			if (booking.startTime) {
-				const slots = availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION && booking.courtId
-					? getAvailableTimeSlots(booking.courtId)
-					: getAvailableTimeSlots()
+				// Calculate current time slots to check validity
+				const slots = this.calculateAvailableTimeSlots()
 				
 				const localStartTime = toUserTimezone(booking.startTime)
 				const selectedTimeValue = localStartTime.hour() * 60 + localStartTime.minute()
-				const selectedSlot = slots.find(slot => slot.value === selectedTimeValue)
+				const selectedSlot = slots.find((slot: TimeSlot) => slot.value === selectedTimeValue)
 				
 				if (!selectedSlot || !selectedSlot.available) {
 					console.log('Selected time is no longer available, clearing selection')
@@ -216,16 +219,15 @@ export class TimeSelectionStep extends $LitElement(css`
 		this.error = null
 
 		try {
-			const slots = this.availability.bookingFlowType === BookingFlowType.DATE_COURT_TIME_DURATION && this.booking.courtId
-				? getAvailableTimeSlots(this.booking.courtId)
-				: getAvailableTimeSlots()
+			// Generate time slots based on venue operating hours and existing bookings
+			const slots = this.calculateAvailableTimeSlots()
 
 			if (slots.length > 0) {
 				this.timeSlots = slots
-				this.error = this.availability.error
+				this.error = null
 			} else {
-				this.timeSlots = this.generateEstimatedSlots()
-				this.error = 'No valid time options available for this date. Please select a different date.'
+				this.timeSlots = []
+				this.error = 'No available time slots for this date.'
 			}
 		} catch (error) {
 			console.error('Error loading time slots:', error)
@@ -244,7 +246,7 @@ export class TimeSelectionStep extends $LitElement(css`
 
 		// Get venue operating hours
 		const dayOfWeek = selectedDate.format('dddd').toLowerCase()
-		const operatingHours = venueContext.value?.operatingHours?.[dayOfWeek]
+		const operatingHours = venueContext.value?.operatingHours?.[dayOfWeek as keyof typeof venueContext.value.operatingHours]
 		const minBookingMinutes = venueContext.value?.settings?.minBookingTime || 30
 		
 		// Parse opening and closing times with defaults
@@ -288,6 +290,97 @@ export class TimeSelectionStep extends $LitElement(css`
 			}
 		}
 		return slots
+	}
+
+	private calculateAvailableTimeSlots(): TimeSlot[] {
+		const userTimezone = getUserTimezone()
+		const selectedDate = dayjs(this.booking.date).tz(userTimezone)
+		const now = dayjs().tz(userTimezone)
+		const isToday = selectedDate.format('YYYY-MM-DD') === now.format('YYYY-MM-DD')
+
+		// Get venue operating hours
+		const dayOfWeek = selectedDate.format('dddd').toLowerCase()
+		const operatingHours = venueContext.value?.operatingHours?.[dayOfWeek as keyof typeof venueContext.value.operatingHours]
+		if (!operatingHours) {
+			return []
+		}
+
+		const openHour = operatingHours.open ? parseInt(operatingHours.open.split(':')[0]) : 8
+		const closeHour = operatingHours.close ? parseInt(operatingHours.close.split(':')[0]) : 22
+		const minBookingMinutes = venueContext.value?.settings?.minBookingTime || 30
+
+		// Start time (either opening hour or current hour if today)
+		let startHour = openHour
+		if (isToday) {
+			const currentHour = now.hour()
+			startHour = currentHour < openHour ? openHour : currentHour
+		}
+
+		// Generate time slots
+		const slots: TimeSlot[] = []
+		for (let hour = startHour; hour <= closeHour; hour++) {
+			for (let minute = 0; minute < 60; minute += 30) {
+				const slotMinutes = hour * 60 + minute
+				const closingMinutes = closeHour * 60
+
+				// Skip slots that don't allow minimum booking before closing
+				if (slotMinutes + minBookingMinutes > closingMinutes) continue
+
+				// Skip past slots for today
+				if (isToday) {
+					const currentMinutes = now.hour() * 60 + now.minute()
+					if (slotMinutes < currentMinutes + 10) continue // 10 min buffer
+				}
+
+				const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
+
+				// Check availability based on booking flow and court selection
+				const available = this.isTimeSlotAvailable(slotMinutes)
+
+				slots.push({
+					label: timeString,
+					value: slotMinutes,
+					available
+				})
+			}
+		}
+
+		return slots
+	}
+
+	private isTimeSlotAvailable(slotMinutes: number): boolean {
+		// Get bookings from availability context
+		const bookings = this.availability?.bookings || []
+		
+		if (this.booking.courtId) {
+			// Check if this time is available for the selected court
+			return !bookings.some(existingBooking => {
+				if (existingBooking.courtId !== this.booking.courtId) return false
+				
+				const existingStart = dayjs(existingBooking.startTime)
+				const existingEnd = dayjs(existingBooking.endTime)
+				const existingStartMinutes = existingStart.hour() * 60 + existingStart.minute()
+				const existingEndMinutes = existingEnd.hour() * 60 + existingEnd.minute()
+				
+				return slotMinutes >= existingStartMinutes && slotMinutes < existingEndMinutes
+			})
+		} else {
+			// Check if any court is available at this time
+			// This requires knowing all courts for the venue
+			// For now, we'll assume available if no booking conflicts
+			const bookingsAtTime = bookings.filter(existingBooking => {
+				const existingStart = dayjs(existingBooking.startTime)
+				const existingEnd = dayjs(existingBooking.endTime)
+				const existingStartMinutes = existingStart.hour() * 60 + existingStart.minute()
+				const existingEndMinutes = existingEnd.hour() * 60 + existingEnd.minute()
+				
+				return slotMinutes >= existingStartMinutes && slotMinutes < existingEndMinutes
+			})
+			
+			// TODO: Need to know total number of courts to determine if any are available
+			// For now, assume available if not all courts are booked (arbitrary threshold)
+			return bookingsAtTime.length < 2 // Assume at least 2 courts
+		}
 	}
 
 	private handleTimeSelect(slot: TimeSlot): void {

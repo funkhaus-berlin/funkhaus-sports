@@ -4,7 +4,12 @@ import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { BehaviorSubject, EMPTY, Subject, combineLatest, from, fromEvent, of } from 'rxjs'
 import { catchError, debounceTime, distinctUntilChanged, filter, finalize, map, switchMap, take, takeUntil, tap, toArray } from 'rxjs/operators'
-// CourtAvailabilityStatus interface is defined in court-select component
+import { Court } from 'src/types/booking/court.types'
+import { VenueAddress } from 'src/types/booking/venue.types'
+
+type CourtAvailabilityType = 'full' | 'partial' | 'none'
+
+// CourtAvailabilityStatus interface (from court-select component)
 interface CourtAvailabilityStatus {
 	courtId: string
 	courtName: string
@@ -13,10 +18,8 @@ interface CourtAvailabilityStatus {
 	unavailableTimeSlots: string[]
 	fullyAvailable: boolean
 }
-import { Court, SportTypeEnum } from 'src/types/booking/court.types'
-import { VenueAddress } from 'src/types/booking/venue.types'
 
-type CourtAvailabilityType = 'full' | 'partial' | 'none'
+type SportTypeEnum = 'padel' | 'volleyball' | 'pickleball'
 
 // Court overlay class for displaying courts on the map
 class CourtDisplayOverlay {

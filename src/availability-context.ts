@@ -92,32 +92,6 @@ export const availabilityError$ = availabilityContext.$.pipe(
 	shareReplay(1)
 )
 
-// Pure functions for calculating availability data
-// These are used by components to calculate their specific data needs
-
-/**
- * Calculate available time slots for a given date and venue
- * @param courtId Optional court ID to check availability for a specific court
- * @returns Array of time slots with availability status
- */
-export function getAvailableTimeSlots(courtId?: string): any[] {
-	// This is a placeholder - components should calculate this themselves
-	// using the raw bookings data from the context
-	return []
-}
-
-/**
- * Calculate available durations for a given start time
- * @param startTime The selected start time
- * @param courtId Optional court ID to check availability for a specific court
- * @returns Array of durations with pricing
- */
-export function getAvailableDurations(startTime: string, courtId?: string): any[] {
-	// This is a placeholder - components should calculate this themselves
-	// using the raw bookings data from the context
-	return []
-}
-
 
 /**
  * Initialize the availability context and set up subscriptions

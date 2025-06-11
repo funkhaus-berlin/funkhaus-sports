@@ -16,7 +16,7 @@ import {
 import { Court, CourtTypeEnum, SportTypeEnum } from 'src/types/booking/court.types'
 import { Venue } from 'src/types/booking/venue.types'
 import { transitionToNextStep } from '../../booking-steps-utils'
-import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
+import { Booking, bookingContext, BookingProgress, BookingProgressContext } from '../../context'
 import './court-availability-dialog'
 import './court-map-google'
 import './sport-court-card'
@@ -36,13 +36,6 @@ enum ViewMode {
  */
 type AvailabilityStatus = 'full' | 'partial' | 'none'
 
-/**
- * Time slot selection for court booking
- */
-interface TimeSlot {
-	start: string
-	end: string
-}
 
 /**
  * Cache entry for court availability information
