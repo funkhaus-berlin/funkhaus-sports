@@ -12,17 +12,16 @@ import { combineLatest, distinctUntilChanged, filter, map, takeUntil } from 'rxj
 import { courtsContext } from 'src/admin/venues/courts/context'
 import {
   availabilityContext,
-  CourtAvailabilityStatus,
-  getAllCourtsAvailability,
 } from 'src/availability-context'
 import { Court, CourtTypeEnum, SportTypeEnum } from 'src/types/booking/court.types'
+import { Venue } from 'src/types/booking/venue.types'
 import { transitionToNextStep } from '../../booking-steps-utils'
 import { Booking, bookingContext, BookingProgress, BookingProgressContext, BookingStep } from '../../context'
 import './court-availability-dialog'
 import './court-map-google'
 import './sport-court-card'
 import { BookingFlowType, CourtPreferences } from 'src/types'
-import { venueContext } from 'src/admin/venues/venue-context'
+import { venueContext, venuesContext } from 'src/admin/venues/venue-context'
 
 /**
  * View modes for court selection
@@ -51,6 +50,15 @@ interface TimeSlot {
 interface CourtAvailabilityInfo {
 	canSelect: boolean
 	status: AvailabilityStatus
+}
+
+interface CourtAvailabilityStatus {
+	courtId: string
+	courtName: string
+	available: boolean
+	availableTimeSlots: string[]
+	unavailableTimeSlots: string[]
+	fullyAvailable: boolean
 }
 
 // Simple animation preset for selected court
@@ -189,16 +197,13 @@ export class CourtSelectStep extends $LitElement(css`
 
 	@select(availabilityContext)
 	availability!: {
-		timeSlots: Array<{
-			timeValue: number
-			courtAvailability: Record<string, boolean>
-		}>
+		bookings: Booking[]
 		date: string
 		bookingFlowType: BookingFlowType
 	}
 	
 	@select(venueContext)
-	venue!: any
+	venue!: Partial<Venue>
 
 	// Component state
 	@state() selectedVenueCourts: Court[] = []
@@ -335,34 +340,115 @@ export class CourtSelectStep extends $LitElement(css`
 			bookingContext.$,
 			availabilityContext.$,
 			courtsContext.$,
+			venuesContext.$,
 			BookingProgressContext.$
 		]).pipe(
 			takeUntil(this.disconnecting),
 			// Filter for valid data
-			filter(([booking, availability, courts, progress]) => 
+			filter(([booking, availability, courts, venues, progress]) => 
 				!!booking &&
 				!!availability &&
-				!!availability.timeSlots && // Ensure time slots are loaded
-				courts && courts.size > 0
+				!!availability.bookings && // Ensure bookings are loaded
+				courts && courts.size > 0 &&
+				venues && venues.size > 0
 			),
+			// Calculate court availability on the fly
+			map(([booking, availability, courts, venues, progress]) => {
+				// Pure function to calculate court availability for this component
+				const calculateCourtAvailability = () => {
+					const venue = venues.get(booking.venueId)
+					if (!venue || !booking.date) return new Map()
+					
+					// Get active courts for this venue
+					const activeCourts = Array.from(courts.values())
+						.filter(court => court.status === 'active' && court.venueId === booking.venueId)
+					
+					const courtAvailabilityMap = new Map<string, CourtAvailabilityStatus>()
+					
+					activeCourts.forEach(court => {
+						// Check if court has any bookings that conflict with selected time/duration
+						if (booking.startTime && booking.endTime) {
+							// Check for conflicts with selected time and duration
+							const hasConflict = availability.bookings.some(existingBooking => {
+								if (existingBooking.courtId !== court.id) return false
+								
+								const bookingStart = dayjs(booking.startTime)
+								const bookingEnd = dayjs(booking.endTime)
+								const existingStart = dayjs(existingBooking.startTime)
+								const existingEnd = dayjs(existingBooking.endTime)
+								
+								// Check for overlap
+								return bookingStart.isBefore(existingEnd) && bookingEnd.isAfter(existingStart)
+							})
+							
+							courtAvailabilityMap.set(court.id, {
+								courtId: court.id,
+								courtName: court.name,
+								available: !hasConflict,
+								fullyAvailable: !hasConflict,
+								availableTimeSlots: [],
+								unavailableTimeSlots: []
+							})
+						} else if (booking.startTime) {
+							// Check if court is available at the selected start time
+							const startHour = dayjs(booking.startTime).hour()
+							const startMinute = dayjs(booking.startTime).minute()
+							const timeValue = startHour * 60 + startMinute
+							
+							// Check if any booking conflicts with this time
+							const hasConflict = availability.bookings.some(existingBooking => {
+								if (existingBooking.courtId !== court.id) return false
+								
+								const existingStart = dayjs(existingBooking.startTime)
+								const existingEnd = dayjs(existingBooking.endTime)
+								const existingStartMinutes = existingStart.hour() * 60 + existingStart.minute()
+								const existingEndMinutes = existingEnd.hour() * 60 + existingEnd.minute()
+								
+								return timeValue >= existingStartMinutes && timeValue < existingEndMinutes
+							})
+							
+							courtAvailabilityMap.set(court.id, {
+								courtId: court.id,
+								courtName: court.name,
+								available: !hasConflict,
+								fullyAvailable: !hasConflict,
+								availableTimeSlots: [],
+								unavailableTimeSlots: []
+							})
+						} else {
+							// No time selected - check if court has any availability today
+							const courtBookings = availability.bookings.filter(b => b.courtId === court.id)
+							const hasAnyAvailability = courtBookings.length === 0 || 
+								// Simple check - if court has less than 10 hours of bookings, it has some availability
+								courtBookings.reduce((total, booking) => {
+									const duration = dayjs(booking.endTime).diff(dayjs(booking.startTime), 'hour')
+									return total + duration
+								}, 0) < 10
+							
+							courtAvailabilityMap.set(court.id, {
+								courtId: court.id,
+								courtName: court.name,
+								available: hasAnyAvailability,
+								fullyAvailable: courtBookings.length === 0,
+								availableTimeSlots: [],
+								unavailableTimeSlots: []
+							})
+						}
+					})
+					
+					return courtAvailabilityMap
+				}
+				
+				return {
+					booking,
+					availability,
+					courts,
+					venues,
+					progress,
+					calculatedCourtAvailability: calculateCourtAvailability()
+				}
+			}),
 			// Extract relevant data for comparison
-			map(([booking, availability, courts, progress]) => ({
-				booking: {
-					startTime: booking.startTime,
-					endTime: booking.endTime,
-					date: booking.date,
-					venueId: booking.venueId,
-					courtId: booking.courtId
-				},
-				availability: {
-					bookings: availability.bookings,
-					date: availability.date,
-					venueId: availability.venueId,
-					timeSlots: availability.timeSlots
-				},
-				courtsSize: courts.size,
-				currentStep: progress.currentStep
-			})),
 			distinctUntilChanged((prev, curr) => 
 				// Compare relevant fields
 				prev.booking.startTime === curr.booking.startTime &&
@@ -373,12 +459,14 @@ export class CourtSelectStep extends $LitElement(css`
 				prev.availability.date === curr.availability.date &&
 				prev.availability.venueId === curr.availability.venueId &&
 				JSON.stringify(prev.availability.bookings) === JSON.stringify(curr.availability.bookings) &&
-				JSON.stringify(prev.availability.timeSlots) === JSON.stringify(curr.availability.timeSlots) &&
-				prev.courtsSize === curr.courtsSize
+				prev.courts.size === curr.courts.size
 			)
-		).subscribe(({booking, availability}) => {
+		).subscribe(({booking, availability, calculatedCourtAvailability}) => {
 			console.log('Context updated - refreshing court availability')
-			console.log('Time slots available:', availability.timeSlots?.length || 0)
+			console.log('Bookings available:', availability.bookings?.length || 0)
+			
+			// Update court availability from calculated data
+			this.courtAvailability = calculatedCourtAvailability
 			
 			// Clear cache to force re-evaluation of court availability
 			this.resetAvailabilityCache()
@@ -404,26 +492,8 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Check if a court has any available time slots
 	 */
 	private hasAnyAvailableTimeSlots(courtId: string): boolean {
-		const timeSlots = availabilityContext.value?.timeSlots || []
-		
-		// Debug: log the check
-		console.log(`Checking availability for court ${courtId}:`, {
-			timeSlotsCount: timeSlots.length,
-			availabilityContextReady: !!availabilityContext.value,
-			firstFewSlots: timeSlots.slice(0, 3).map(slot => ({
-				time: slot.time || slot.timeValue,
-				courtAvailable: slot.courtAvailability?.[courtId]
-			}))
-		})
-		
-		const hasSlots = timeSlots.some(slot => slot.courtAvailability?.[courtId] === true)
-		
-		// Debug logging
-		if (!hasSlots && timeSlots.length > 0) {
-			console.log(`Court ${courtId} has NO available time slots out of ${timeSlots.length} total slots`)
-		}
-		
-		return hasSlots
+		const courtAvailabilityInfo = this.courtAvailability.get(courtId)
+		return courtAvailabilityInfo?.available || false
 	}
 
 	/**
@@ -431,15 +501,24 @@ export class CourtSelectStep extends $LitElement(css`
 	 */
 	private isTimeAvailableForCourt(courtId: string, timeString: string): boolean {
 		if (!timeString) return false
-
+		
+		// Check against bookings in availability context
+		const bookings = this.availability?.bookings || []
 		const timeValue = dayjs(timeString).hour() * 60 + dayjs(timeString).minute()
-		const slot = availabilityContext.value?.timeSlots?.find(s => s.timeValue === timeValue)
-
-		if (!slot || !slot.courtAvailability?.[courtId]) {
-			return false
-		}
-
-		return slot.courtAvailability[courtId] === true
+		
+		// Check if any booking conflicts with this time
+		const hasConflict = bookings.some(existingBooking => {
+			if (existingBooking.courtId !== courtId) return false
+			
+			const existingStart = dayjs(existingBooking.startTime)
+			const existingEnd = dayjs(existingBooking.endTime)
+			const existingStartMinutes = existingStart.hour() * 60 + existingStart.minute()
+			const existingEndMinutes = existingEnd.hour() * 60 + existingEnd.minute()
+			
+			return timeValue >= existingStartMinutes && timeValue < existingEndMinutes
+		})
+		
+		return !hasConflict
 	}
 
 	/**
@@ -582,16 +661,8 @@ export class CourtSelectStep extends $LitElement(css`
 		}
 
 		try {
-			// Get court availabilities based on current booking time and duration
-			const courtAvailabilities = getAllCourtsAvailability(this.booking.startTime, this.calculateDuration())
-
-			// Create map of court ID to availability status for efficient lookups
-			const availabilityMap = new Map<string, CourtAvailabilityStatus>()
-			courtAvailabilities.forEach(status => {
-				availabilityMap.set(status.courtId, status)
-			})
-
-			this.courtAvailability = availabilityMap
+			// Court availability is already calculated in the subscription
+			// No need to recalculate here
 
 			// Load venue courts and sort by name with natural number ordering
 			const venueCourts = Array.from(this.allCourts.values())

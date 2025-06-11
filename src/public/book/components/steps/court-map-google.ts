@@ -4,7 +4,15 @@ import { customElement, property, query, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
 import { BehaviorSubject, EMPTY, Subject, combineLatest, from, fromEvent, of } from 'rxjs'
 import { catchError, debounceTime, distinctUntilChanged, filter, finalize, map, switchMap, take, takeUntil, tap, toArray } from 'rxjs/operators'
-import { CourtAvailabilityStatus } from 'src/availability-context'
+// CourtAvailabilityStatus interface is defined in court-select component
+interface CourtAvailabilityStatus {
+	courtId: string
+	courtName: string
+	available: boolean
+	availableTimeSlots: string[]
+	unavailableTimeSlots: string[]
+	fullyAvailable: boolean
+}
 import { Court, SportTypeEnum } from 'src/types/booking/court.types'
 import { VenueAddress } from 'src/types/booking/venue.types'
 
