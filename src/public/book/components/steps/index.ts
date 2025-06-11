@@ -5,4 +5,3 @@ export * from './payment-step';
 export * from './shared-selection-tile';
 export * from './sport-court-card';
 export * from './start-time-select';
-export * from './steps';
