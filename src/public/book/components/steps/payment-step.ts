@@ -2,6 +2,7 @@
 
 import { $notify, SchmancyAutocompleteChangeEvent, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
+import countries from '@shared/countries'
 import { Stripe, StripeElements } from '@stripe/stripe-js'
 import dayjs from 'dayjs'
 import { collection, doc, updateDoc } from 'firebase/firestore'
@@ -10,35 +11,34 @@ import { customElement, property, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import {
-	BehaviorSubject,
-	catchError,
-	delay,
-	distinctUntilChanged,
-	filter,
-	finalize,
-	from,
-	interval,
-	map,
-	merge,
-	of,
-	startWith,
-	Subscription,
-	switchMap,
-	takeUntil,
-	tap,
+  BehaviorSubject,
+  catchError,
+  delay,
+  distinctUntilChanged,
+  filter,
+  finalize,
+  from,
+  interval,
+  map,
+  merge,
+  of,
+  startWith,
+  Subscription,
+  switchMap,
+  takeUntil,
+  tap,
 } from 'rxjs'
-import countries from '@shared/countries'
 import { BookingService } from 'src/bookingServices/booking.service'
-import { Court } from 'src/types/booking/court.types'
 import { auth, db } from 'src/firebase/firebase'
 import stripePromise, { $stripeElements } from 'src/public/stripe'
-import '../../../booking-confirmation/booking-confirmation' // Import booking confirmation component
+import { Court } from 'src/types/booking/court.types'
+import '../../../booking-confirmation/booking-confirmation'; // Import booking confirmation component
 import { FunkhausSportsTermsAndConditions } from '../../../shared/components/terms-and-conditions'
 import { createPaymentIntent } from '../../../stripe'
 import { Booking, bookingContext, BookingProgressContext, BookingStep } from '../../context'
 import { FormValidator } from '../../form-validator'
-import '../booking-summery' // Import booking summary component
-import '../booking-timer' // Import timer component
+import '../booking-summery'; // Import booking summary component
+import '../booking-timer'; // Import timer component
 
 /**
  * Checkout form component with Stripe integration

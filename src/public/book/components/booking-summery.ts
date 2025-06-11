@@ -2,9 +2,10 @@ import { select } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import dayjs from 'dayjs'
 import { html } from 'lit'
-import { customElement, property } from 'lit/decorators.js'
+import { customElement, property, state } from 'lit/decorators.js'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venueContext } from 'src/admin/venues/venue-context'
+import { BookingsDB } from 'src/db/bookings.collection'
 import { Court } from 'src/types/booking/court.types'
 import { toUserTimezone } from 'src/utils/timezone'
 import { Booking, bookingContext, BookingProgressContext, BookingStep } from '../context'
@@ -20,6 +21,8 @@ export class BookingSummary extends $LitElement() {
 	@select(venueContext) venue!: any
 
 	@property({ type: Object }) selectedCourt?: Court
+
+  @state() busy:boolean = false
 
 
 	private getSelectedCourt(): Court | undefined {
@@ -53,7 +56,11 @@ export class BookingSummary extends $LitElement() {
 	 * Handle edit button click - go back to the previous completed step
 	 */
 	private handleEdit(): void {
-		const progress = BookingProgressContext.value
+    this.busy = true
+    BookingsDB.delete(this.booking.id).subscribe({
+      next:()=>{
+
+        const progress = BookingProgressContext.value
 		
 		// Find the last completed step before payment
 		let targetStep = BookingStep.Duration // Default to duration step
@@ -74,6 +81,9 @@ export class BookingSummary extends $LitElement() {
 			currentStep: targetStep,
 			expandedSteps: [...progress.expandedSteps, targetStep]
 		})
+      }
+    })
+		
 	}
 
 	render() {
@@ -131,6 +141,7 @@ export class BookingSummary extends $LitElement() {
 							variant="filled tonal"
 							@click=${() => this.handleEdit()}
 							class="px-2 md:px-3"
+              ?disabled=${this.busy}
 						>
 							<schmancy-icon size="18px" class="md:text-[20px]">edit</schmancy-icon>
 							<span class="hidden sm:block ml-1">Change</span>

@@ -7,8 +7,8 @@ import { css, html, nothing, PropertyValues } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { createRef, ref, Ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
-import { combineLatest, filter, takeUntil } from 'rxjs'
-import { distinctUntilChanged, tap } from 'rxjs/operators'
+import { combineLatest, filter, takeUntil, timer, of } from 'rxjs'
+import { distinctUntilChanged, tap, switchMap, map, take } from 'rxjs/operators'
 import {
   availabilityContext,
   AvailabilityData,
@@ -174,10 +174,6 @@ export class TimeSelectionStep extends $LitElement(css`
 				
 				if (this.viewMode !== newViewMode) {
 					this.viewMode = newViewMode
-					// Scroll after transition completes
-					if (hasSelection && newViewMode === 'list') {
-						setTimeout(() => this.scrollToSelectedTime(), 100)
-					}
 				}
 			}),
 			// Only process time slots when we have required data and not loading
@@ -210,6 +206,42 @@ export class TimeSelectionStep extends $LitElement(css`
 				}
 			}
 		})
+
+		// Auto-scroll to selected time using RxJS
+		combineLatest([
+			bookingContext.$,
+			BookingProgressContext.$
+		]).pipe(
+			takeUntil(this.disconnecting),
+			// Handle scrolling to selected time after DOM is ready
+			switchMap(([booking, progress]) => {
+				if (!booking?.startTime || this.viewMode !== 'list' || !this.isExpanded) {
+					return of(null)
+				}
+				
+				const localTime = toUserTimezone(booking.startTime)
+				const timeValue = localTime.hour() * 60 + localTime.minute()
+				
+				// Retry logic to wait for DOM elements to be ready
+				return timer(0, 50).pipe(
+					map(() => this.timeSlotRefs.get(timeValue)),
+					filter(element => {
+						const isReady = !!element && !!this.scrollContainerRef.value
+						if (!isReady) {
+							console.log('Waiting for time slot DOM elements to be ready...')
+						}
+						return isReady
+					}),
+					take(1), // Take the first successful attempt
+					tap(element => {
+						console.log('Auto-scrolling to selected time:', localTime.format('HH:mm'))
+						// Add a small delay to ensure render is complete
+						setTimeout(() => this.scrollToElement(element), 10)
+					}),
+					takeUntil(timer(3000)) // Give up after 3 seconds
+				)
+			})
+		).subscribe()
 	}
 
 	private loadTimeSlots(): void {
@@ -501,24 +533,38 @@ export class TimeSelectionStep extends $LitElement(css`
 		element?.animate(ANIMATIONS.pulse.keyframes, ANIMATIONS.pulse.options)
 	}
 
-	private scrollToSelectedTime(): void {
-		if (!this.booking?.startTime || this.viewMode !== 'list') return
+	private scrollToElement(element?: HTMLElement): void {
+		const container = this.scrollContainerRef.value
+		if (!container || !element) {
+			console.log('Cannot scroll: container or element not found')
+			return
+		}
 		
-		setTimeout(() => {
-			const localTime = toUserTimezone(this.booking.startTime)
-			const timeValue = localTime.hour() * 60 + localTime.minute()
-			const element = this.timeSlotRefs.get(timeValue)
-			const container = this.scrollContainerRef.value
-
-			if (container && element) {
-				const elementOffset = element.offsetLeft
-				const elementWidth = element.offsetWidth
-				const containerWidth = container.clientWidth
-				const scrollPosition = elementOffset - containerWidth / 2 + elementWidth / 2
-
-				container.scrollTo({ left: scrollPosition, behavior: 'instant' })
-			}
-		}, 100)
+		const containerRect = container.getBoundingClientRect()
+		const elementRect = element.getBoundingClientRect()
+		
+		// Check if element is fully visible within the container
+		const isFullyVisible = elementRect.left >= containerRect.left && 
+		                      elementRect.right <= containerRect.right
+		
+		if (isFullyVisible) {
+			console.log('Element already visible, no scroll needed')
+			return
+		}
+		
+		// Calculate the scroll position to center the element
+		const scrollLeft = element.offsetLeft - container.clientWidth / 2 + element.offsetWidth / 2
+		
+		console.log('Scrolling to element:', { 
+			elementOffset: element.offsetLeft, 
+			containerWidth: container.clientWidth,
+			scrollTo: scrollLeft 
+		})
+		
+		container.scrollTo({
+			left: Math.max(0, scrollLeft), // Ensure we don't scroll to negative position
+			behavior: 'smooth'
+		})
 	}
 
 	private renderTimeSlot(slot: TimeSlot) {

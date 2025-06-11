@@ -6,8 +6,8 @@ import { css, html, nothing } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { createRef, ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
-import { catchError, combineLatest, of, takeUntil } from 'rxjs'
-import { map, tap } from 'rxjs/operators'
+import { catchError, combineLatest, of, takeUntil, timer } from 'rxjs'
+import { map, tap, switchMap, filter, take } from 'rxjs/operators'
 import { courtsContext } from 'src/admin/venues/courts/context'
 import { venuesContext } from 'src/admin/venues/venue-context'
 import { availabilityContext } from 'src/availability-context'
@@ -20,16 +20,52 @@ import { Duration } from '../../types'
 import { Venue } from 'src/types'
 
 const DURATION_LABELS: Record<number, { full: string; compact: string }> = {
+	15: { full: '15 minutes', compact: '15m' },
 	30: { full: '30 minutes', compact: '30m' },
+	45: { full: '45 minutes', compact: '45m' },
 	60: { full: '1 hour', compact: '1h' },
+	75: { full: '1 hour 15 minutes', compact: '1h 15m' },
 	90: { full: '1.5 hours', compact: '1.5h' },
+	105: { full: '1 hour 45 minutes', compact: '1h 45m' },
 	120: { full: '2 hours', compact: '2h' },
+	135: { full: '2 hours 15 minutes', compact: '2h 15m' },
 	150: { full: '2.5 hours', compact: '2.5h' },
+	165: { full: '2 hours 45 minutes', compact: '2h 45m' },
 	180: { full: '3 hours', compact: '3h' },
+	195: { full: '3 hours 15 minutes', compact: '3h 15m' },
 	210: { full: '3.5 hours', compact: '3.5h' },
+	225: { full: '3 hours 45 minutes', compact: '3h 45m' },
 	240: { full: '4 hours', compact: '4h' },
+	255: { full: '4 hours 15 minutes', compact: '4h 15m' },
 	270: { full: '4.5 hours', compact: '4.5h' },
+	285: { full: '4 hours 45 minutes', compact: '4h 45m' },
 	300: { full: '5 hours', compact: '5h' },
+	315: { full: '5 hours 15 minutes', compact: '5h 15m' },
+	330: { full: '5.5 hours', compact: '5.5h' },
+	345: { full: '5 hours 45 minutes', compact: '5h 45m' },
+	360: { full: '6 hours', compact: '6h' },
+}
+
+/**
+ * Generate a compact label for a duration in minutes
+ */
+function generateDurationLabel(minutes: number): string {
+	// Check if we have a predefined label
+	if (DURATION_LABELS[minutes]) {
+		return DURATION_LABELS[minutes].compact
+	}
+	
+	// Generate label dynamically
+	const hours = Math.floor(minutes / 60)
+	const remainingMinutes = minutes % 60
+	
+	if (hours === 0) {
+		return `${minutes}m`
+	} else if (remainingMinutes === 0) {
+		return `${hours}h`
+	} else {
+		return `${hours}h ${remainingMinutes}m`
+	}
 }
 
 /**
@@ -105,11 +141,6 @@ export class DurationSelectionStep extends $LitElement(css`
 				this.durations = durations
 				this.loading = false
 				
-				// Scroll to selected duration if exists
-				if (booking?.endTime) {
-					setTimeout(() => this.scrollToSelectedDuration(), 250)
-				}
-				
 				// Validate current selection
 				if (booking?.endTime) {
 					const currentDuration = this.getCurrentDuration()
@@ -120,6 +151,36 @@ export class DurationSelectionStep extends $LitElement(css`
 						bookingContext.set({ endTime: '', price: 0 }, true)
 					}
 				}
+			}),
+			// Handle scrolling to selected duration after DOM is ready
+			switchMap(({ durations, booking }) => {
+				if (!booking?.endTime || durations.length === 0 || !this.isExpanded) {
+					return of(null)
+				}
+				
+				const currentDuration = this.getCurrentDuration()
+				if (currentDuration <= 0) {
+					return of(null)
+				}
+				
+				// Retry logic to wait for DOM elements to be ready
+				return timer(0, 50).pipe(
+					map(() => this.durationRefs.get(currentDuration)),
+					filter(element => {
+						const isReady = !!element && !!this.scrollContainerRef.value
+						if (!isReady) {
+							console.log('Waiting for DOM elements to be ready...')
+						}
+						return isReady
+					}),
+					take(1), // Take the first successful attempt
+					tap(element => {
+						console.log('Auto-scrolling to selected duration:', currentDuration, 'minutes')
+						// Add a small delay to ensure render is complete
+						setTimeout(() => this.scrollToElement(element), 10)
+					}),
+					takeUntil(timer(3000)) // Give up after 3 seconds
+				)
 			})
 		).subscribe()
 	}
@@ -149,19 +210,17 @@ export class DurationSelectionStep extends $LitElement(css`
 		const startTimeDayjs = dayjs(this.booking.startTime)
 		const startMinutes = startTimeDayjs.hour() * 60 + startTimeDayjs.minute()
 
-		// Standard durations
-		const standardDurations = [
-			{ label: '30m', value: 30 },
-			{ label: '1h', value: 60 },
-			{ label: '1.5h', value: 90 },
-			{ label: '2h', value: 120 },
-			{ label: '2.5h', value: 150 },
-			{ label: '3h', value: 180 },
-			{ label: '3.5h', value: 210 },
-			{ label: '4h', value: 240 },
-			{ label: '4.5h', value: 270 },
-			{ label: '5h', value: 300 },
-		]
+		// Generate durations based on venue settings
+		const venueSettings = venue.settings
+		const minTime = venueSettings?.minBookingTime || 30
+		const maxTime = venueSettings?.maxBookingTime || 180
+		const timeStep = venueSettings?.bookingTimeStep || 30
+		
+		const standardDurations = []
+		for (let minutes = minTime; minutes <= maxTime; minutes += timeStep) {
+			const label = generateDurationLabel(minutes)
+			standardDurations.push({ label, value: minutes })
+		}
 
 		// Get bookings from availability context
 		const bookings = this.availability?.bookings || []
@@ -259,28 +318,40 @@ export class DurationSelectionStep extends $LitElement(css`
 		bookingContext.set({ endTime, price: duration.price }, true)
 		
 		this.animateElement(this.durationRefs.get(duration.value))
-		setTimeout(() => this.scrollToSelectedDuration(), 150)
+		// Scrolling will be handled automatically by the RxJS pipeline
 	}
 
-	private scrollToSelectedDuration(): void {
-		const duration = this.getCurrentDuration()
-		if (duration) {
-			const element = this.durationRefs.get(duration)
-			this.scrollToElement(element)
-		}
-	}
 
 	private scrollToElement(element?: HTMLElement): void {
 		const container = this.scrollContainerRef.value
-		if (!container || !element) return
+		if (!container || !element) {
+			console.log('Cannot scroll: container or element not found')
+			return
+		}
 		
 		const containerRect = container.getBoundingClientRect()
 		const elementRect = element.getBoundingClientRect()
 		
-		if (elementRect.left >= containerRect.left && elementRect.right <= containerRect.right) return
+		// Check if element is fully visible within the container
+		const isFullyVisible = elementRect.left >= containerRect.left && 
+		                      elementRect.right <= containerRect.right
+		
+		if (isFullyVisible) {
+			console.log('Element already visible, no scroll needed')
+			return
+		}
+		
+		// Calculate the scroll position to center the element
+		const scrollLeft = element.offsetLeft - container.clientWidth / 2 + element.offsetWidth / 2
+		
+		console.log('Scrolling to element:', { 
+			elementOffset: element.offsetLeft, 
+			containerWidth: container.clientWidth,
+			scrollTo: scrollLeft 
+		})
 		
 		container.scrollTo({
-			left: element.offsetLeft - container.clientWidth / 2 + element.offsetWidth / 2,
+			left: Math.max(0, scrollLeft), // Ensure we don't scroll to negative position
 			behavior: 'smooth'
 		})
 	}
@@ -359,7 +430,7 @@ export class DurationSelectionStep extends $LitElement(css`
 
 	private renderDurationOption(duration: Duration) {
 		const isSelected = this.getCurrentDuration() === duration.value
-		const label = DURATION_LABELS[duration.value]?.compact || `${duration.value}m`
+		const label = generateDurationLabel(duration.value)
 		
 		return html`
 			<selection-tile
