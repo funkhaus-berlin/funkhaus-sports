@@ -124,6 +124,13 @@ export class CourtSelectStep extends $LitElement(css`
 	 */
 	connectedCallback(): void {
 		super.connectedCallback()
+		
+		// On mobile, show map view by default if no court selected
+		const isMobile = window.innerWidth < 1024 // Tailwind lg breakpoint
+		if (isMobile && !this.booking?.courtId) {
+			this.viewMode = ViewMode.MAP
+		}
+		
 		this.subscribeToAvailabilityUpdates()
 		this.subscribeToCourtSelection()
 
@@ -242,6 +249,12 @@ export class CourtSelectStep extends $LitElement(css`
 			filter(({ court }) => !!court), // Ensure court exists
 			tap(({ court }) => {
 				console.log('Court selection changed to:', court!.name)
+				
+				// Scroll to the selected court if in list view
+				if (this.viewMode === ViewMode.LIST) {
+					// Wait for DOM to update before scrolling
+					setTimeout(() => this.scrollToSelectedCourt(), 100)
+				}
 				
 				// Handle filter conflicts
 				this.handleFilterConflicts(court!)
@@ -1032,9 +1045,6 @@ export class CourtSelectStep extends $LitElement(css`
 
 		const classes = []
 
-		if (isSelected) {
-			classes.push('animate-pulse')
-		}
 
 		if (!isAvailable) {
 			classes.push('opacity-50')
