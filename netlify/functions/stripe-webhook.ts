@@ -17,6 +17,16 @@ import { corsHeaders } from './_shared/cors'
 import { db } from './_shared/firebase-admin'
 import stripe from './_shared/stripe'
 import { handler as emailHandler } from './send-booking-email'
+import { renderFile } from 'pug'
+import { resolve } from 'path'
+import resend from './_shared/resend'
+import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
+
+// Set up dayjs plugins
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 
 
@@ -206,6 +216,21 @@ const handler: Handler = async (event) => {
 			case 'charge.refunded':
 				result = await handleChargeRefunded(stripeEvent.data.object as Stripe.Charge)
 				break
+			case 'charge.refund.updated':
+				// Handle refund status updates
+				result = await handleRefundUpdated(stripeEvent.data.object as Stripe.Refund)
+				break
+				
+			case 'refund.created':
+				// Handle new refund creation
+				result = await handleRefundCreated(stripeEvent.data.object as Stripe.Refund)
+				break
+				
+			case 'refund.failed':
+				// Handle failed refunds
+				result = await handleRefundFailed(stripeEvent.data.object as Stripe.Refund)
+				break
+				
 			default:
 				result = `Unhandled event type: ${stripeEvent.type}`
 				console.log(result)
@@ -913,12 +938,16 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
 		const refundAmount = charge.amount_refunded / 100 // Convert from cents
 		const isFullRefund = charge.amount_refunded === charge.amount
 		
+		// Get the actual refund object from charge
+		const refundData = charge.refunds?.data?.[0]
+		const refundStatus = refundData?.status || 'succeeded' // charge.refunded implies succeeded
+		
 		// Update booking with refund information
 		await db.collection('bookings').doc(bookingId).update({
-			refundStatus: isFullRefund ? 'refunded' : 'partially_refunded',
+			refundStatus: refundStatus,
 			refundAmount: refundAmount,
 			refundedAt: new Date().toISOString(),
-			refundId: charge.refunds?.data?.[0]?.id || 'unknown',
+			refundId: refundData?.id || 'unknown',
 			status: 'cancelled',
 			cancellationReason: `Refunded via Stripe: ${isFullRefund ? 'Full refund' : 'Partial refund'}`,
 			updatedAt: new Date().toISOString(),
@@ -927,6 +956,21 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
 		})
 		
 		console.log(`Updated booking ${bookingId} with refund status: ${isFullRefund ? 'fully refunded' : 'partially refunded'} (€${refundAmount})`)
+		
+		// Send refund email to customer
+		try {
+			const refund = charge.refunds?.data?.[0] || { 
+				id: 'unknown', 
+				amount: charge.amount_refunded, 
+				status: 'succeeded' 
+			}
+			
+			await sendRefundEmail(booking, bookingId, refund, booking.refundReason)
+			console.log('Refund email sent successfully via webhook')
+		} catch (emailError) {
+			console.error('Failed to send refund email via webhook:', emailError)
+			// Don't fail the webhook processing if email fails
+		}
 		
 		// Log refund transaction
 		await db.collection('paymentTransactions').add({
@@ -958,6 +1002,329 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
 			error: error.message || 'Failed to process refund webhook' 
 		}
 	}
+}
+
+/**
+ * Handle refund creation webhook
+ */
+async function handleRefundCreated(refund: Stripe.Refund) {
+	console.log('Refund created:', refund.id, 'Status:', refund.status)
+	
+	try {
+		// Find booking by payment intent ID
+		const bookingsSnapshot = await db.collection('bookings')
+			.where('paymentIntentId', '==', refund.payment_intent)
+			.limit(1)
+			.get()
+			
+		if (bookingsSnapshot.empty) {
+			console.error(`No booking found for payment intent ${refund.payment_intent}`)
+			return { success: false, error: 'Booking not found' }
+		}
+		
+		const bookingDoc = bookingsSnapshot.docs[0]
+		const bookingId = bookingDoc.id
+		const booking = bookingDoc.data()
+		
+		// Update booking with initial refund status
+		const updateData: any = {
+			refundId: refund.id,
+			refundStatus: refund.status, // Will be 'pending' initially
+			refundAmount: refund.amount / 100,
+			refundCreatedAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString()
+		}
+		
+		// Only update cancellation status if refund is already succeeded
+		if (refund.status === 'succeeded') {
+			updateData.status = 'cancelled'
+			updateData.refundedAt = new Date().toISOString()
+		}
+		
+		await db.collection('bookings').doc(bookingId).update(updateData)
+		
+		console.log(`Booking ${bookingId} updated with refund creation: ${refund.status}`)
+		
+		// Don't send email yet if refund is pending - wait for succeeded status
+		if (refund.status === 'pending') {
+			console.log('Refund is pending, will send email when succeeded')
+			return {
+				success: true,
+				action: 'refund_initiated_pending',
+				bookingId,
+				refundStatus: refund.status
+			}
+		}
+		
+		return {
+			success: true,
+			action: 'refund_created',
+			bookingId,
+			refundStatus: refund.status
+		}
+		
+	} catch (error) {
+		console.error('Error handling refund created:', error)
+		return { 
+			success: false, 
+			error: error.message || 'Failed to process refund creation' 
+		}
+	}
+}
+
+/**
+ * Handle refund status update webhook
+ */
+async function handleRefundUpdated(refund: Stripe.Refund) {
+	console.log('Refund updated:', refund.id, 'Status:', refund.status)
+	
+	try {
+		// Find booking by payment intent ID
+		const bookingsSnapshot = await db.collection('bookings')
+			.where('paymentIntentId', '==', refund.payment_intent)
+			.limit(1)
+			.get()
+			
+		if (bookingsSnapshot.empty) {
+			console.error(`No booking found for payment intent ${refund.payment_intent}`)
+			return { success: false, error: 'Booking not found' }
+		}
+		
+		const bookingDoc = bookingsSnapshot.docs[0]
+		const bookingId = bookingDoc.id
+		const booking = bookingDoc.data()
+		
+		// Update booking with new refund status
+		const updateData: any = {
+			refundStatus: refund.status,
+			updatedAt: new Date().toISOString()
+		}
+		
+		// Handle different status transitions
+		switch (refund.status) {
+			case 'succeeded':
+				// Refund has succeeded - mark booking as cancelled and send email
+				updateData.status = 'cancelled'
+				updateData.refundedAt = new Date().toISOString()
+				updateData.cancellationReason = booking.cancellationReason || `Refunded: ${booking.refundReason || 'Customer request'}`
+				
+				await db.collection('bookings').doc(bookingId).update(updateData)
+				
+				// Send refund success email
+				try {
+					await sendRefundEmail(booking, bookingId, refund, booking.refundReason)
+					console.log('Refund success email sent')
+				} catch (emailError) {
+					console.error('Failed to send refund success email:', emailError)
+				}
+				break
+				
+			case 'failed':
+				// Refund failed - update status but don't cancel booking
+				updateData.refundFailedAt = new Date().toISOString()
+				updateData.refundFailureReason = refund.failure_reason || 'Unknown failure reason'
+				
+				await db.collection('bookings').doc(bookingId).update(updateData)
+				
+				// TODO: Send failure notification to admin/venue
+				console.error(`Refund failed for booking ${bookingId}: ${refund.failure_reason}`)
+				break
+				
+			case 'canceled':
+				// Refund was canceled
+				updateData.refundCanceledAt = new Date().toISOString()
+				await db.collection('bookings').doc(bookingId).update(updateData)
+				break
+				
+			case 'requires_action':
+				// Customer action required
+				updateData.refundRequiresAction = true
+				await db.collection('bookings').doc(bookingId).update(updateData)
+				// TODO: Send notification to customer about required action
+				break
+				
+			default:
+				// Just update the status
+				await db.collection('bookings').doc(bookingId).update(updateData)
+		}
+		
+		console.log(`Booking ${bookingId} refund status updated to: ${refund.status}`)
+		
+		return {
+			success: true,
+			action: 'refund_status_updated',
+			bookingId,
+			refundStatus: refund.status
+		}
+		
+	} catch (error) {
+		console.error('Error handling refund update:', error)
+		return { 
+			success: false, 
+			error: error.message || 'Failed to process refund update' 
+		}
+	}
+}
+
+/**
+ * Handle failed refund webhook
+ */
+async function handleRefundFailed(refund: Stripe.Refund) {
+	console.log('Refund failed:', refund.id, 'Reason:', refund.failure_reason)
+	
+	try {
+		// Find booking by payment intent ID
+		const bookingsSnapshot = await db.collection('bookings')
+			.where('paymentIntentId', '==', refund.payment_intent)
+			.limit(1)
+			.get()
+			
+		if (bookingsSnapshot.empty) {
+			console.error(`No booking found for payment intent ${refund.payment_intent}`)
+			return { success: false, error: 'Booking not found' }
+		}
+		
+		const bookingDoc = bookingsSnapshot.docs[0]
+		const bookingId = bookingDoc.id
+		const booking = bookingDoc.data()
+		
+		// Update booking with failure information
+		await db.collection('bookings').doc(bookingId).update({
+			refundStatus: 'failed',
+			refundFailedAt: new Date().toISOString(),
+			refundFailureReason: refund.failure_reason || 'Unknown failure reason',
+			updatedAt: new Date().toISOString()
+		})
+		
+		// Log critical failure for admin attention
+		await db.collection('refundFailures').add({
+			bookingId,
+			refundId: refund.id,
+			paymentIntentId: refund.payment_intent,
+			amount: refund.amount / 100,
+			failureReason: refund.failure_reason,
+			failureBalanceTransaction: refund.failure_balance_transaction,
+			customerEmail: booking.customerEmail || booking.userEmail,
+			timestamp: admin.firestore.FieldValue.serverTimestamp(),
+			needsManualIntervention: true
+		})
+		
+		console.error(`Critical: Refund failed for booking ${bookingId}. Manual intervention required.`)
+		
+		// TODO: Send notification to admin about failed refund requiring manual processing
+		
+		return {
+			success: true,
+			action: 'refund_failure_logged',
+			bookingId,
+			requiresManualIntervention: true
+		}
+		
+	} catch (error) {
+		console.error('Error handling refund failure:', error)
+		return { 
+			success: false, 
+			error: error.message || 'Failed to process refund failure' 
+		}
+	}
+}
+
+/**
+ * Send refund notification email to customer with venue CC
+ */
+async function sendRefundEmail(booking: any, bookingId: string, refund: any, reason?: string): Promise<void> {
+  try {
+    // Get court and venue details
+    let courtName = 'Court'
+    let venueName = 'Funkhaus Sports'
+    let venueEmail: string | null = null
+    
+    if (booking.courtId) {
+      const courtDoc = await db.collection('courts').doc(booking.courtId).get()
+      if (courtDoc.exists) {
+        const courtData = courtDoc.data()
+        courtName = courtData?.name || 'Court'
+        
+        if (courtData?.venueId) {
+          const venueDoc = await db.collection('venues').doc(courtData.venueId).get()
+          if (venueDoc.exists) {
+            const venueData = venueDoc.data()
+            venueName = venueData?.name || 'Funkhaus Sports'
+            venueEmail = venueData?.email || null
+          }
+        }
+      }
+    }
+    
+    // Format times for display
+    const userTimezone = 'Europe/Berlin' // Default timezone
+    let startTime = booking.startTime
+    let endTime = booking.endTime
+    
+    // Convert to 24-hour format
+    if (startTime && startTime.includes('T')) {
+      startTime = dayjs(startTime).tz(userTimezone).format('HH:mm')
+    }
+    if (endTime && endTime.includes('T')) {
+      endTime = dayjs(endTime).tz(userTimezone).format('HH:mm')
+    }
+    
+    const timeDisplay = `${startTime} - ${endTime}`
+    
+    // Format booking date
+    const bookingDate = new Date(booking.date)
+    const formattedDate = bookingDate.toLocaleDateString('en-GB', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    })
+    
+    // Format refund status for display
+    const refundStatusDisplay = refund.status === 'succeeded' ? 'Processing' : 
+                               refund.status === 'pending' ? 'Pending' : 
+                               'In Progress'
+    
+    // Render the refund email template
+    const html = renderFile(resolve(__dirname, './_shared/refund.pug'), {
+      customer: {
+        name: booking.userName || 'Customer',
+        email: booking.customerEmail || booking.userEmail
+      },
+      bookingId: bookingId,
+      booking: {
+        date: formattedDate,
+        court: courtName,
+        venue: venueName,
+        price: booking.price?.toFixed(2) || '0.00'
+      },
+      timeDisplay,
+      refund: {
+        amount: (refund.amount / 100).toFixed(2),
+        status: refundStatusDisplay,
+        id: refund.id,
+        reason: reason || 'Refunded via payment processor'
+      }
+    })
+    
+    // Prepare recipients - customer email + venue CC if available
+    const toEmails = [booking.customerEmail || booking.userEmail || '']
+    const ccEmails = venueEmail ? [venueEmail] : []
+    
+    // Send email via Resend
+    await resend.emails.send({
+      from: 'Funkhaus Sports <ticket@funkhaus-berlin.net>',
+      to: toEmails,
+      cc: ccEmails.length > 0 ? ccEmails : undefined,
+      subject: `Funkhaus Sports - Booking Cancelled & Refund Processed - ${formattedDate}`,
+      html: html
+    })
+    
+    console.log(`Refund email sent to ${booking.customerEmail || booking.userEmail} with CC to ${venueEmail || 'no venue email'}`)
+  } catch (error) {
+    console.error('Error sending refund email:', error)
+    throw error
+  }
 }
 
 export { handlePaymentIntentSucceededRx, handler }

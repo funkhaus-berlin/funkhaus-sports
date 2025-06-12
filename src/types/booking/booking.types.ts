@@ -68,12 +68,17 @@ export interface Booking {
 	cancellationReason?: string // Track why bookings are cancelled
 	// Refund related fields
 	refundId?: string // Stripe refund ID
-	refundStatus?: 'refunded' | 'partially_refunded' | 'pending' | 'failed'
+	refundStatus?: 'pending' | 'processing' | 'succeeded' | 'failed' | 'canceled' | 'requires_action'
 	refundAmount?: number // Amount refunded
 	refundedAt?: string // When refund was processed
 	refundReason?: string // Reason for refund
 	refundedBy?: string // Admin user ID who initiated refund
 	refundedByEmail?: string // Admin email for tracking
+	refundCreatedAt?: string // When refund was created/initiated
+	refundFailedAt?: string // When refund failed
+	refundFailureReason?: string // Why refund failed
+	refundCanceledAt?: string // When refund was canceled
+	refundRequiresAction?: boolean // If customer action is required
 }
 
 

@@ -4,6 +4,16 @@ import stripe from './_shared/stripe'
 import { corsHeaders } from './_shared/cors'
 import { Booking } from './types/shared-types'
 import type { Stripe } from 'stripe'
+import { renderFile } from 'pug'
+import { resolve } from 'path'
+import resend from './_shared/resend'
+import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
+
+// Set up dayjs plugins
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 interface RefundRequest {
   bookingId: string
@@ -186,20 +196,43 @@ export const handler: Handler = async (event: HandlerEvent) => {
       },
     })
 
-    // Update booking in Firestore
+    // Update booking in Firestore based on refund status
     const isPartialRefund = refundAmount < chargeAmount
-    await bookingRef.update({
+    const updateData: any = {
       refundId: refund.id,
-      refundStatus: isPartialRefund ? 'partially_refunded' : 'refunded',
+      refundStatus: refund.status, // Use actual refund status from Stripe
       refundAmount: refundAmount / 100, // Convert back to currency units
-      refundedAt: new Date().toISOString(),
+      refundCreatedAt: new Date().toISOString(),
       refundReason: reason || 'Admin initiated refund',
       refundedBy: decodedToken.uid,
       refundedByEmail: decodedToken.email ?? '',
-      status: 'cancelled', // Update booking status
-      cancellationReason: `Refunded: ${reason || 'Admin initiated'}`,
       updatedAt: new Date().toISOString(),
-    })
+    }
+    
+    // Only mark as cancelled and refunded if the refund succeeded immediately
+    if (refund.status === 'succeeded') {
+      updateData.status = 'cancelled'
+      updateData.refundedAt = new Date().toISOString()
+      updateData.cancellationReason = `Refunded: ${reason || 'Admin initiated'}`
+    } else if (refund.status === 'pending') {
+      // Keep original status, refund is still processing
+      console.log(`Refund ${refund.id} is pending, booking status will update when refund completes`)
+    }
+    
+    await bookingRef.update(updateData)
+
+    // Send refund email to customer only if refund succeeded immediately
+    if (refund.status === 'succeeded') {
+      try {
+        await sendRefundEmail(booking, refund, reason)
+        console.log('Refund email sent successfully')
+      } catch (emailError) {
+        console.error('Failed to send refund email:', emailError)
+        // Don't fail the refund if email fails - continue with success response
+      }
+    } else if (refund.status === 'pending') {
+      console.log('Refund is pending, email will be sent when refund succeeds via webhook')
+    }
 
     // Return success response
     const response: RefundResponse = {
@@ -318,5 +351,103 @@ export const handler: Handler = async (event: HandlerEvent) => {
         canRetry: statusCode === 503 || statusCode === 429 || errorCode === 'connection_error'
       }),
     }
+  }
+}
+
+/**
+ * Send refund notification email to customer
+ */
+async function sendRefundEmail(booking: Booking, refund: any, reason?: string): Promise<void> {
+  try {
+    // Get court and venue details
+    let courtName = 'Court'
+    let venueName = 'Funkhaus Sports'
+    let venueEmail: string | null = null
+    
+    if (booking.courtId) {
+      const courtDoc = await db.collection('courts').doc(booking.courtId).get()
+      if (courtDoc.exists) {
+        const courtData = courtDoc.data()
+        courtName = courtData?.name || 'Court'
+        
+        if (courtData?.venueId) {
+          const venueDoc = await db.collection('venues').doc(courtData.venueId).get()
+          if (venueDoc.exists) {
+            const venueData = venueDoc.data()
+            venueName = venueData?.name || 'Funkhaus Sports'
+            venueEmail = venueData?.email || null
+          }
+        }
+      }
+    }
+    
+    // Format times for display
+    const userTimezone = 'Europe/Berlin' // Default timezone
+    let startTime = booking.startTime
+    let endTime = booking.endTime
+    
+    // Convert to 24-hour format
+    if (startTime && startTime.includes('T')) {
+      startTime = dayjs(startTime).tz(userTimezone).format('HH:mm')
+    }
+    if (endTime && endTime.includes('T')) {
+      endTime = dayjs(endTime).tz(userTimezone).format('HH:mm')
+    }
+    
+    const timeDisplay = `${startTime} - ${endTime}`
+    
+    // Format booking date
+    const bookingDate = new Date(booking.date)
+    const formattedDate = bookingDate.toLocaleDateString('en-GB', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    })
+    
+    // Format refund status for display
+    const refundStatusDisplay = refund.status === 'succeeded' ? 'Processing' : 
+                               refund.status === 'pending' ? 'Pending' : 
+                               'In Progress'
+    
+    // Render the refund email template
+    const html = renderFile(resolve(__dirname, './_shared/refund.pug'), {
+      customer: {
+        name: booking.userName || 'Customer',
+        email: booking.customerEmail || booking.userEmail
+      },
+      bookingId: booking.id,
+      booking: {
+        date: formattedDate,
+        court: courtName,
+        venue: venueName,
+        price: booking.price?.toFixed(2) || '0.00'
+      },
+      timeDisplay,
+      refund: {
+        amount: (refund.amount / 100).toFixed(2),
+        status: refundStatusDisplay,
+        id: refund.id,
+        reason: reason || 'Admin initiated refund'
+      }
+    })
+    
+    // Prepare recipients - customer email + venue CC if available
+    const toEmails = [booking.customerEmail || booking.userEmail || '']
+    const ccEmails = venueEmail ? [venueEmail] : []
+    
+    // Send email via Resend
+    await resend.emails.send({
+      from: 'Funkhaus Sports <ticket@funkhaus-berlin.net>',
+      to: toEmails,
+      cc: ccEmails.length > 0 ? ccEmails : undefined,
+      subject: `Funkhaus Sports - Booking Cancelled & Refund Processed - ${formattedDate}`,
+      html: html
+    })
+    
+    console.log(`Refund email sent to ${booking.customerEmail || booking.userEmail} with CC to ${venueEmail || 'no venue email'}`)
+  } catch (error) {
+    console.error('Error sending refund email:', error)
+    throw error
   }
 }
