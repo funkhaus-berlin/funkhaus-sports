@@ -92,7 +92,7 @@ export class BookingDetails extends $LitElement() {
             <schmancy-typography type="headline" token="sm" class="mb-1">Booking Details</schmancy-typography>
             <div class="flex items-center text-gray-500 text-sm">
               <schmancy-icon size="16px" class="mr-1">confirmation_number</schmancy-icon>
-              <span class="break-all">${this.booking.id}</span>
+              <span>Booking #${this.booking.orderNumber || this.booking.invoiceNumber || this.booking.id}</span>
             </div>
           </div>
           <div class="flex items-center gap-2 flex-wrap">

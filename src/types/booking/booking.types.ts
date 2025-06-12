@@ -62,6 +62,7 @@ export interface Booking {
 	lastRetryAt?: string // Last retry attempt timestamp
 	courtPreference?: 'indoor' | 'outdoor'
 	invoiceNumber?: string
+	orderNumber?: string // Same as invoice number for friendly display
 	invoiceGeneratedAt?: string
 	notes?: string // Added for optional booking notes
 	recurringBookingId?: string // For recurring bookings

@@ -96,7 +96,7 @@ export class BookingDetailsSheet extends $LitElement() {
                   ${this.booking.status === 'completed' ? 'Checked In' : 'Check-In'}
                 </schmancy-typography>
                 <schmancy-typography type="body" token="md" class="opacity-90">
-                  Booking #${this.booking.id.slice(-8).toUpperCase()}
+                  Booking #${this.booking.orderNumber || this.booking.invoiceNumber || this.booking.id.slice(-8).toUpperCase()}
                 </schmancy-typography>
               </div>
               <schmancy-button 

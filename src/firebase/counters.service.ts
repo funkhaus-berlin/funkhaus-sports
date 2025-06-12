@@ -16,7 +16,7 @@ export class CountersService {
    * @param initialValue The initial value if counter doesn't exist (default: 1000)
    * @returns Promise with the next counter value
    */
-  async getNextCounterValue(counterName: string, initialValue: number = 1000): Promise<number> {
+  async getNextCounterValue(counterName: string, initialValue: number = 1): Promise<number> {
     const counterRef = doc(db, this.collectionName, counterName)
     
     try {
@@ -55,15 +55,13 @@ export class CountersService {
   }
 
   /**
-   * Format an invoice number with prefix and padding
+   * Format an invoice number
    * 
    * @param value The counter value
-   * @param prefix The prefix to use (default: 'FBB')
-   * @param padLength The length to pad to (default: 6)
    * @returns Formatted invoice number
    */
-  formatInvoiceNumber(value: number, prefix: string = 'FBB', padLength: number = 6): string {
-    return `${prefix}-${value.toString().padStart(padLength, '0')}`
+  formatInvoiceNumber(value: number): string {
+    return value.toString()
   }
 }
 

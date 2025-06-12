@@ -16,7 +16,7 @@ export class CounterUtils {
   static async getNextCounterValue(
     db: FirebaseFirestore.Firestore,
     counterName: string,
-    initialValue: number = 1000
+    initialValue: number = 1
   ): Promise<number> {
     const counterRef = db.collection('counters').doc(counterName)
     
@@ -56,14 +56,12 @@ export class CounterUtils {
   }
 
   /**
-   * Format an invoice number with prefix and padding
+   * Format an invoice number
    * 
    * @param value The counter value
-   * @param prefix The prefix to use (default: 'FBB')
-   * @param padLength The length to pad to (default: 6)
    * @returns Formatted invoice number
    */
-  static formatInvoiceNumber(value: number, padLength: number = 6): string {
-    return `${value.toString().padStart(padLength, '0')}`
+  static formatInvoiceNumber(value: number): string {
+    return value.toString()
   }
 }

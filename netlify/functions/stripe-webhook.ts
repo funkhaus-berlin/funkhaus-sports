@@ -39,7 +39,7 @@ dayjs.extend(timezone)
  * @param initialValue The initial counter value if not exists
  * @returns The generated invoice number
  */
-async function generateInvoiceNumber(db: FirebaseFirestore.Firestore, bookingId: string, initialValue: number = 1000): Promise<string> {
+async function generateInvoiceNumber(db: FirebaseFirestore.Firestore, bookingId: string, initialValue: number = 1): Promise<string> {
 	// First, check if this booking already has an invoice number
 	const bookingRef = db.collection('bookings').doc(bookingId)
 	const bookingDoc = await bookingRef.get()
@@ -80,14 +80,15 @@ async function generateInvoiceNumber(db: FirebaseFirestore.Firestore, bookingId:
 			return nextValue
 		})
 		
-		// Format the invoice number
-		const formattedInvoiceNumber = `${invoiceNumber.toString().padStart(6, '0')}`;
+		// Use simple number without padding
+		const formattedInvoiceNumber = invoiceNumber.toString();
 		
 		// Only update the booking if it exists
 		if (bookingDoc.exists) {
 			try {
 				await bookingRef.update({
 					invoiceNumber: formattedInvoiceNumber,
+					orderNumber: formattedInvoiceNumber,
 					invoiceSequence: invoiceNumber
 				})
 				console.log(`Updated booking ${bookingId} with invoice number ${formattedInvoiceNumber}`)
@@ -106,7 +107,10 @@ async function generateInvoiceNumber(db: FirebaseFirestore.Firestore, bookingId:
 		// Don't try to update non-existent booking
 		if (bookingDoc.exists) {
 			try {
-				await bookingRef.update({ invoiceNumber: fallbackNumber })
+				await bookingRef.update({ 
+					invoiceNumber: fallbackNumber,
+					orderNumber: fallbackNumber
+				})
 			} catch (updateError) {
 				console.error('Error updating booking with fallback invoice number:', updateError)
 			}
@@ -618,7 +622,8 @@ function createEmergencyBooking(paymentIntent: Stripe.PaymentIntent, bookingId: 
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 				recoveredFromPayment: true,
-				invoiceNumber: invoiceNumber
+				invoiceNumber: invoiceNumber,
+				orderNumber: invoiceNumber
 			}
 
 			return from(db.collection('bookings').doc(bookingId).set(newBooking)).pipe(
@@ -1364,7 +1369,7 @@ async function sendRefundDelayEmail(booking: any, bookingId: string, refund: Str
     await resend.emails.send({
       from: 'Funkhaus Sports <ticket@funkhaus-berlin.net>',
       to: booking.customerEmail || booking.userEmail || '',
-      subject: `Funkhaus Sports - Refund Processing Update - Booking #${bookingId}`,
+      subject: `Funkhaus Sports - Refund Processing Update - Booking #${booking.orderNumber || booking.invoiceNumber || bookingId}`,
       html: html
     })
     
@@ -1437,6 +1442,8 @@ async function sendRefundCompletionEmail(booking: any, bookingId: string, refund
         email: booking.customerEmail || booking.userEmail
       },
       bookingId: bookingId,
+      orderNumber: booking.orderNumber,
+      invoiceNumber: booking.invoiceNumber,
       booking: {
         date: formattedDate,
         court: courtName,
@@ -1540,6 +1547,8 @@ async function sendRefundInitiatedEmail(booking: any, bookingId: string, refund:
         email: booking.customerEmail || booking.userEmail
       },
       bookingId: bookingId,
+      orderNumber: booking.orderNumber,
+      invoiceNumber: booking.invoiceNumber,
       booking: {
         date: formattedDate,
         court: courtName,
