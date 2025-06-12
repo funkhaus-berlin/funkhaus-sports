@@ -83,19 +83,34 @@ async function generateInvoiceNumber(db: FirebaseFirestore.Firestore, bookingId:
 		// Format the invoice number
 		const formattedInvoiceNumber = `${invoiceNumber.toString().padStart(6, '0')}`;
 		
-		// Update the booking with the new invoice number
-		await bookingRef.update({
-			invoiceNumber: formattedInvoiceNumber,
-			invoiceSequence: invoiceNumber
-		})
+		// Only update the booking if it exists
+		if (bookingDoc.exists) {
+			try {
+				await bookingRef.update({
+					invoiceNumber: formattedInvoiceNumber,
+					invoiceSequence: invoiceNumber
+				})
+				console.log(`Updated booking ${bookingId} with invoice number ${formattedInvoiceNumber}`)
+			} catch (updateError) {
+				console.error('Error updating booking with invoice number:', updateError)
+			}
+		} else {
+			console.log(`Generated invoice number ${formattedInvoiceNumber} (booking ${bookingId} will be created with this number)`)
+		}
 		
-		console.log(`Generated invoice number ${formattedInvoiceNumber} for booking ${bookingId}`)
 		return formattedInvoiceNumber
 	} catch (error) {
 		console.error('Error generating invoice number:', error)
 		// Fallback to a simple invoice number based on timestamp (without prefix)
 		const fallbackNumber = `${Date.now().toString().substring(3)}`
-		await bookingRef.update({ invoiceNumber: fallbackNumber })
+		// Don't try to update non-existent booking
+		if (bookingDoc.exists) {
+			try {
+				await bookingRef.update({ invoiceNumber: fallbackNumber })
+			} catch (updateError) {
+				console.error('Error updating booking with fallback invoice number:', updateError)
+			}
+		}
 		return fallbackNumber
 	}
 }
@@ -1016,6 +1031,9 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
 
 /**
  * Handle refund creation webhook
+ * 
+ * For instant refunds (most cards): status will be 'succeeded' immediately
+ * For delayed refunds: status will be 'pending' and later update to 'succeeded'
  */
 async function handleRefundCreated(refund: Stripe.Refund) {
 	console.log('Refund created:', refund.id, 'Status:', refund.status)
@@ -1054,20 +1072,40 @@ async function handleRefundCreated(refund: Stripe.Refund) {
 		
 		console.log(`Booking ${bookingId} updated with refund creation: ${refund.status}`)
 		
-		// Send refund initiated email
+		// Handle email based on refund status
 		const booking = bookingDoc.data()
-		if (!booking.refundInitiatedEmailSent) {
-			try {
-				console.log(`Sending refund initiated email for booking ${bookingId}`)
-				await sendRefundInitiatedEmail(booking, bookingId, refund, booking.refundReason)
-				
-				// Mark initial email as sent
-				await db.collection('bookings').doc(bookingId).update({
-					refundInitiatedEmailSent: true,
-					refundInitiatedEmailSentAt: new Date().toISOString()
-				})
-			} catch (emailError) {
-				console.error('Failed to send refund initiated email:', emailError)
+		
+		if (refund.status === 'pending' || refund.status === 'requires_action') {
+			// Refund is processing - send initiated email
+			if (!booking.refundInitiatedEmailSent) {
+				try {
+					console.log(`Sending refund initiated email for booking ${bookingId} (status: ${refund.status})`)
+					await sendRefundInitiatedEmail(booking, bookingId, refund, booking.refundReason)
+					
+					// Mark initial email as sent
+					await db.collection('bookings').doc(bookingId).update({
+						refundInitiatedEmailSent: true,
+						refundInitiatedEmailSentAt: new Date().toISOString()
+					})
+				} catch (emailError) {
+					console.error('Failed to send refund initiated email:', emailError)
+				}
+			}
+		} else if (refund.status === 'succeeded') {
+			// Refund succeeded immediately - send completed email
+			if (!booking.refundCompletedEmailSent) {
+				try {
+					console.log(`Refund succeeded immediately for booking ${bookingId} - sending completion email`)
+					await sendRefundCompletionEmail(booking, bookingId, refund)
+					
+					// Mark completion email as sent
+					await db.collection('bookings').doc(bookingId).update({
+						refundCompletedEmailSent: true,
+						refundCompletedEmailSentAt: new Date().toISOString()
+					})
+				} catch (emailError) {
+					console.error('Failed to send refund completion email:', emailError)
+				}
 			}
 		}
 		
@@ -1125,26 +1163,8 @@ async function handleRefundUpdated(refund: Stripe.Refund) {
 				
 				await db.collection('bookings').doc(bookingId).update(updateData)
 				
-				// Send refund success email only if not already sent
-				// Check if email was already sent to prevent duplicates
-				if (!booking.refundEmailSent) {
-					try {
-						console.log(`Webhook handleRefundUpdated: Sending refund email with booking.refundReason: "${booking.refundReason}"`)
-						// await sendRefundEmail(booking, bookingId, refund, booking.refundReason)
-						console.log('Skipping email from charge.refund.updated - emails sent by other webhooks')
-						console.log('Refund success email sent')
-						
-						// Mark email as sent to prevent duplicates
-						await db.collection('bookings').doc(bookingId).update({
-							refundEmailSent: true,
-							refundEmailSentAt: new Date().toISOString()
-						})
-					} catch (emailError) {
-						console.error('Failed to send refund success email:', emailError)
-					}
-				} else {
-					console.log('Refund email already sent, skipping duplicate')
-				}
+				// Don't send email from charge.refund.updated - emails are sent by refund.created and charge.refunded
+				console.log('charge.refund.updated webhook - refund succeeded, status updated (no email sent)')
 				break
 				
 			case 'failed':
