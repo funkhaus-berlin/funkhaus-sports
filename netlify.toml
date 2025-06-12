@@ -1,7 +1,7 @@
 [functions]
   external_node_modules = [ "dayjs","@netlify/functions", "react", "react/jsx-runtime", "react-dom/server", "firebase-admin", "stripe", "pdfkit", "qrcode", "resend", "moment", "uuid", "pug", "ical-generator", "nodemailer", "pdf-lib","rxjs"]
   node_bundler = "esbuild"
-  included_files = ["netlify/functions/_shared/ticket.pug", "netlify/functions/_shared/assets/**", "netlify/functions/_shared/data/**"]
+  included_files = ["netlify/functions/_shared/ticket.pug", "netlify/functions/_shared/refund-delay.pug", "netlify/functions/_shared/refund-initiated.pug", "netlify/functions/_shared/refund-completed.pug", "netlify/functions/_shared/assets/**", "netlify/functions/_shared/data/**"]
 
 # Scheduled function to cleanup abandoned bookings
 # Runs every minute to check for bookings older than 8 minutes

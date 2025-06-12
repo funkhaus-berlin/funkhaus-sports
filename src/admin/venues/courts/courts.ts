@@ -8,7 +8,7 @@ import { Court } from 'src/types/booking/court.types'
 import { createCourt } from 'src/db/courts.collection'
 import { Venue } from 'src/types/booking/venue.types'
 import { formatEnum } from '../components/venue-form'
-import { venueContext, venuesContext } from '../venue-context'
+import { venueContext, venuesContext, venueWithCourtContext } from '../venue-context'
 import { courtsContext, selectedCourtContext, selectMyCourts } from './context'
 import { CourtForm } from './court-form'
 
@@ -107,20 +107,40 @@ export class VenueCourts extends $LitElement() {
 
 	// Method to navigate to the court detail page for a new court
 	addNewCourt() {
-		selectedCourtContext.set(createCourt(this.venueId))
+		const newCourt = createCourt(this.venueId)
+		
+		// Set in the court-specific context
+		selectedCourtContext.set(newCourt)
+		
+		// Also persist in the venue context (no ID yet for new court)
+		venueWithCourtContext.set({
+			...this.venueData,
+			selectedCourtId: undefined,
+			selectedCourt: newCourt
+		}, true)
 
 		area.push({
-			component: new CourtForm(createCourt(this.venueId)),
-
+			component: new CourtForm(newCourt),
 			area: 'venue',
 		})
 	}
 
 	// Method to navigate to the court detail page for an existing court
 	navigateToCourtDetail(courtId: string) {
-		selectedCourtContext.set(courtsContext.value.get(courtId)!)
+		const court = courtsContext.value.get(courtId)!
+		
+		// Set in the court-specific context
+		selectedCourtContext.set(court)
+		
+		// Also persist in the venue context with the selected court
+		venueWithCourtContext.set({
+			...this.venueData,
+			selectedCourtId: courtId,
+			selectedCourt: court
+		}, true)
+		
 		area.push({
-			component: new CourtForm(courtsContext.value.get(courtId)!),
+			component: new CourtForm(court),
 			area: 'venue',
 		})
 	}

@@ -1,6 +1,11 @@
 // netlify/functions/stripe-webhook.ts
 import { Handler } from '@netlify/functions'
+import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 import admin from 'firebase-admin'
+import { resolve } from 'path'
+import pug from 'pug'
 import { defer, forkJoin, from, of, throwError } from 'rxjs'
 import {
   catchError,
@@ -15,14 +20,9 @@ import {
 import type { Stripe } from 'stripe'
 import { corsHeaders } from './_shared/cors'
 import { db } from './_shared/firebase-admin'
+import resend from './_shared/resend'
 import stripe from './_shared/stripe'
 import { handler as emailHandler } from './send-booking-email'
-import { renderFile } from 'pug'
-import { resolve } from 'path'
-import resend from './_shared/resend'
-import dayjs from 'dayjs'
-import timezone from 'dayjs/plugin/timezone'
-import utc from 'dayjs/plugin/utc'
 
 // Set up dayjs plugins
 dayjs.extend(utc)
@@ -952,24 +952,34 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
 			cancellationReason: `Refunded via Stripe: ${isFullRefund ? 'Full refund' : 'Partial refund'}`,
 			updatedAt: new Date().toISOString(),
 			// Preserve original refund reason if it was set by admin
-			...(booking.refundReason ? {} : { refundReason: 'Refunded via Stripe webhook' })
+			...(booking.refundReason ? {} : {})
 		})
 		
 		console.log(`Updated booking ${bookingId} with refund status: ${isFullRefund ? 'fully refunded' : 'partially refunded'} (€${refundAmount})`)
 		
-		// Send refund email to customer
-		try {
-			const refund = charge.refunds?.data?.[0] || { 
-				id: 'unknown', 
-				amount: charge.amount_refunded, 
-				status: 'succeeded' 
+		// Send refund completion email only if not already sent
+		if (!booking.refundCompletedEmailSent) {
+			try {
+				const refund = charge.refunds?.data?.[0]
+				if (refund) {
+					console.log(`Webhook charge.refunded: Sending refund completion email`)
+					await sendRefundCompletionEmail(booking, bookingId, refund)
+					console.log('Refund completion email sent successfully via webhook')
+					
+					// Mark completion email as sent to prevent duplicates
+					await db.collection('bookings').doc(bookingId).update({
+						refundCompletedEmailSent: true,
+						refundCompletedEmailSentAt: new Date().toISOString()
+					})
+				} else {
+					console.warn('No refund data found in charge object, skipping email')
+				}
+			} catch (emailError) {
+				console.error('Failed to send refund completion email via webhook:', emailError)
+				// Don't fail the webhook processing if email fails
 			}
-			
-			await sendRefundEmail(booking, bookingId, refund, booking.refundReason)
-			console.log('Refund email sent successfully via webhook')
-		} catch (emailError) {
-			console.error('Failed to send refund email via webhook:', emailError)
-			// Don't fail the webhook processing if email fails
+		} else {
+			console.log('Refund completion email already sent, skipping duplicate from charge.refunded')
 		}
 		
 		// Log refund transaction
@@ -1024,7 +1034,6 @@ async function handleRefundCreated(refund: Stripe.Refund) {
 		
 		const bookingDoc = bookingsSnapshot.docs[0]
 		const bookingId = bookingDoc.id
-		const booking = bookingDoc.data()
 		
 		// Update booking with initial refund status
 		const updateData: any = {
@@ -1045,14 +1054,20 @@ async function handleRefundCreated(refund: Stripe.Refund) {
 		
 		console.log(`Booking ${bookingId} updated with refund creation: ${refund.status}`)
 		
-		// Don't send email yet if refund is pending - wait for succeeded status
-		if (refund.status === 'pending') {
-			console.log('Refund is pending, will send email when succeeded')
-			return {
-				success: true,
-				action: 'refund_initiated_pending',
-				bookingId,
-				refundStatus: refund.status
+		// Send refund initiated email
+		const booking = bookingDoc.data()
+		if (!booking.refundInitiatedEmailSent) {
+			try {
+				console.log(`Sending refund initiated email for booking ${bookingId}`)
+				await sendRefundInitiatedEmail(booking, bookingId, refund, booking.refundReason)
+				
+				// Mark initial email as sent
+				await db.collection('bookings').doc(bookingId).update({
+					refundInitiatedEmailSent: true,
+					refundInitiatedEmailSentAt: new Date().toISOString()
+				})
+			} catch (emailError) {
+				console.error('Failed to send refund initiated email:', emailError)
 			}
 		}
 		
@@ -1076,7 +1091,7 @@ async function handleRefundCreated(refund: Stripe.Refund) {
  * Handle refund status update webhook
  */
 async function handleRefundUpdated(refund: Stripe.Refund) {
-	console.log('Refund updated:', refund.id, 'Status:', refund.status)
+	console.log('Refund updated:', refund.id, 'Status:', refund.status, 'Details', refund)
 	
 	try {
 		// Find booking by payment intent ID
@@ -1106,16 +1121,29 @@ async function handleRefundUpdated(refund: Stripe.Refund) {
 				// Refund has succeeded - mark booking as cancelled and send email
 				updateData.status = 'cancelled'
 				updateData.refundedAt = new Date().toISOString()
-				updateData.cancellationReason = booking.cancellationReason || `Refunded: ${booking.refundReason || 'Customer request'}`
+				updateData.cancellationReason = booking.cancellationReason || (booking.refundReason ? `Refunded: ${booking.refundReason}` : 'Refunded')
 				
 				await db.collection('bookings').doc(bookingId).update(updateData)
 				
-				// Send refund success email
-				try {
-					await sendRefundEmail(booking, bookingId, refund, booking.refundReason)
-					console.log('Refund success email sent')
-				} catch (emailError) {
-					console.error('Failed to send refund success email:', emailError)
+				// Send refund success email only if not already sent
+				// Check if email was already sent to prevent duplicates
+				if (!booking.refundEmailSent) {
+					try {
+						console.log(`Webhook handleRefundUpdated: Sending refund email with booking.refundReason: "${booking.refundReason}"`)
+						// await sendRefundEmail(booking, bookingId, refund, booking.refundReason)
+						console.log('Skipping email from charge.refund.updated - emails sent by other webhooks')
+						console.log('Refund success email sent')
+						
+						// Mark email as sent to prevent duplicates
+						await db.collection('bookings').doc(bookingId).update({
+							refundEmailSent: true,
+							refundEmailSentAt: new Date().toISOString()
+						})
+					} catch (emailError) {
+						console.error('Failed to send refund success email:', emailError)
+					}
+				} else {
+					console.log('Refund email already sent, skipping duplicate')
 				}
 				break
 				
@@ -1197,7 +1225,7 @@ async function handleRefundFailed(refund: Stripe.Refund) {
 		})
 		
 		// Log critical failure for admin attention
-		await db.collection('refundFailures').add({
+		const failureDoc = await db.collection('refundFailures').add({
 			bookingId,
 			refundId: refund.id,
 			paymentIntentId: refund.payment_intent,
@@ -1205,13 +1233,25 @@ async function handleRefundFailed(refund: Stripe.Refund) {
 			failureReason: refund.failure_reason,
 			failureBalanceTransaction: refund.failure_balance_transaction,
 			customerEmail: booking.customerEmail || booking.userEmail,
+			courtName: booking.courtName || 'Unknown',
+			venueName: booking.venueName || 'Unknown', 
+			bookingDate: booking.date,
 			timestamp: admin.firestore.FieldValue.serverTimestamp(),
-			needsManualIntervention: true
+			needsManualIntervention: true,
+			retryable: isRetryableRefundError(refund.failure_reason),
+			customerNotified: false,
+			adminNotified: false
 		})
 		
 		console.error(`Critical: Refund failed for booking ${bookingId}. Manual intervention required.`)
 		
-		// TODO: Send notification to admin about failed refund requiring manual processing
+		// Send customer notification about delay
+		try {
+			await sendRefundDelayEmail(booking, bookingId, refund)
+			await failureDoc.update({ customerNotified: true })
+		} catch (emailError) {
+			console.error('Failed to send refund delay notification:', emailError)
+		}
 		
 		return {
 			success: true,
@@ -1230,9 +1270,95 @@ async function handleRefundFailed(refund: Stripe.Refund) {
 }
 
 /**
- * Send refund notification email to customer with venue CC
+ * Check if refund error is retryable
  */
-async function sendRefundEmail(booking: any, bookingId: string, refund: any, reason?: string): Promise<void> {
+function isRetryableRefundError(failureReason?: string): boolean {
+  const retryableReasons = [
+    'insufficient_funds',
+    'processing_error',
+    'api_error',
+    'rate_limit_error',
+    'bank_timeout'
+  ]
+  
+  return failureReason ? retryableReasons.some(reason => 
+    failureReason.toLowerCase().includes(reason)
+  ) : false
+}
+
+/**
+ * Send refund delay notification to customer
+ */
+async function sendRefundDelayEmail(booking: any, bookingId: string, refund: Stripe.Refund): Promise<void> {
+  try {
+    // Get court and venue details
+    let courtName = 'Court'
+    let venueName = 'Funkhaus Sports'
+    
+    if (booking.courtId) {
+      const courtDoc = await db.collection('courts').doc(booking.courtId).get()
+      if (courtDoc.exists) {
+        const courtData = courtDoc.data()
+        courtName = courtData?.name || 'Court'
+        
+        if (courtData?.venueId) {
+          const venueDoc = await db.collection('venues').doc(courtData.venueId).get()
+          if (venueDoc.exists) {
+            venueName = venueDoc.data()?.name || 'Funkhaus Sports'
+          }
+        }
+      }
+    }
+    
+    // Format booking date
+    const bookingDate = new Date(booking.date)
+    const formattedDate = bookingDate.toLocaleDateString('en-GB', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    })
+    
+    // Compile and render the delay notification template
+    const compileFunction = pug.compileFile(resolve(__dirname, './_shared/refund-delay.pug'), {
+      cache: false
+    })
+    
+    const html = compileFunction({
+      customer: {
+        name: booking.userName || 'Customer',
+        email: booking.customerEmail || booking.userEmail
+      },
+      bookingId: bookingId,
+      booking: {
+        date: formattedDate,
+        court: courtName,
+        venue: venueName
+      },
+      refund: {
+        amount: (refund.amount / 100).toFixed(2)
+      }
+    })
+    
+    // Send email via Resend
+    await resend.emails.send({
+      from: 'Funkhaus Sports <ticket@funkhaus-berlin.net>',
+      to: booking.customerEmail || booking.userEmail || '',
+      subject: `Funkhaus Sports - Refund Processing Update - Booking #${bookingId}`,
+      html: html
+    })
+    
+    console.log(`Refund delay notification sent to ${booking.customerEmail || booking.userEmail}`)
+  } catch (error) {
+    console.error('Error sending refund delay email:', error)
+    throw error
+  }
+}
+
+/**
+ * Send refund completion email to customer
+ */
+async function sendRefundCompletionEmail(booking: any, bookingId: string, refund: Stripe.Refund): Promise<void> {
   try {
     // Get court and venue details
     let courtName = 'Court'
@@ -1250,7 +1376,105 @@ async function sendRefundEmail(booking: any, bookingId: string, refund: any, rea
           if (venueDoc.exists) {
             const venueData = venueDoc.data()
             venueName = venueData?.name || 'Funkhaus Sports'
-            venueEmail = venueData?.email || null
+            venueEmail = venueData?.contactEmail || null
+          }
+        }
+      }
+    }
+    
+    // Format times for display
+    const userTimezone = 'Europe/Berlin' // Default timezone
+    let startTime = booking.startTime
+    let endTime = booking.endTime
+    
+    // Convert to 24-hour format
+    if (startTime && startTime.includes('T')) {
+      startTime = dayjs(startTime).tz(userTimezone).format('HH:mm')
+    }
+    if (endTime && endTime.includes('T')) {
+      endTime = dayjs(endTime).tz(userTimezone).format('HH:mm')
+    }
+    
+    const timeDisplay = `${startTime} - ${endTime}`
+    
+    // Format booking date
+    const bookingDate = new Date(booking.date)
+    const formattedDate = bookingDate.toLocaleDateString('en-GB', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    })
+    
+    // Compile and render the refund completion email template
+    const compileFunction = pug.compileFile(resolve(__dirname, './_shared/refund-completed.pug'), {
+      cache: false
+    })
+    
+    const html = compileFunction({
+      customer: {
+        name: booking.userName || 'Customer',
+        email: booking.customerEmail || booking.userEmail
+      },
+      bookingId: bookingId,
+      booking: {
+        date: formattedDate,
+        court: courtName,
+        venue: venueName,
+        price: booking.price?.toFixed(2) || '0.00'
+      },
+      timeDisplay,
+      refund: {
+        amount: (refund.amount / 100).toFixed(2),
+        id: refund.id
+      }
+    })
+    
+    // Prepare recipients - customer email + venue CC if available
+    const toEmails = [booking.customerEmail || booking.userEmail || '']
+    const ccEmails = venueEmail ? [venueEmail] : []
+    
+    // Send email via Resend
+    await resend.emails.send({
+      from: 'Funkhaus Sports <ticket@funkhaus-berlin.net>',
+      to: toEmails,
+      cc: ccEmails.length > 0 ? ccEmails : undefined,
+      subject: `Funkhaus Sports - Refund Completed - ${formattedDate}`,
+      html: html
+    })
+    
+    console.log(`Refund completion email sent to ${booking.customerEmail || booking.userEmail} with CC to ${venueEmail || 'no venue email'}`)
+  } catch (error) {
+    console.error('Error sending refund completion email:', error)
+    throw error
+  }
+}
+
+/**
+ * Send refund notification email to customer with venue CC
+ */
+/**
+ * Send refund initiated email to customer with venue CC
+ */
+async function sendRefundInitiatedEmail(booking: any, bookingId: string, refund: Stripe.Refund, reason?: string): Promise<void> {
+  try {
+    // Get court and venue details
+    let courtName = 'Court'
+    let venueName = 'Funkhaus Sports'
+    let venueEmail: string | null = null
+    
+    if (booking.courtId) {
+      const courtDoc = await db.collection('courts').doc(booking.courtId).get()
+      if (courtDoc.exists) {
+        const courtData = courtDoc.data()
+        courtName = courtData?.name || 'Court'
+        
+        if (courtData?.venueId) {
+          const venueDoc = await db.collection('venues').doc(courtData.venueId).get()
+          if (venueDoc.exists) {
+            const venueData = venueDoc.data()
+            venueName = venueData?.name || 'Funkhaus Sports'
+            venueEmail = venueData?.contactEmail || null
           }
         }
       }
@@ -1285,8 +1509,12 @@ async function sendRefundEmail(booking: any, bookingId: string, refund: any, rea
                                refund.status === 'pending' ? 'Pending' : 
                                'In Progress'
     
-    // Render the refund email template
-    const html = renderFile(resolve(__dirname, './_shared/refund.pug'), {
+    // Compile and render the refund initiated email template
+    const refundCompileFunction = pug.compileFile(resolve(__dirname, './_shared/refund-initiated.pug'), {
+      cache: false
+    })
+    
+    const html = refundCompileFunction({
       customer: {
         name: booking.userName || 'Customer',
         email: booking.customerEmail || booking.userEmail
@@ -1303,9 +1531,11 @@ async function sendRefundEmail(booking: any, bookingId: string, refund: any, rea
         amount: (refund.amount / 100).toFixed(2),
         status: refundStatusDisplay,
         id: refund.id,
-        reason: reason || 'Refunded via payment processor'
+        reason: reason || ''
       }
     })
+    
+    console.log(`Webhook sendRefundEmail - reason parameter: "${reason}", final reason in template: "${reason || '(no reason provided)'}"`)
     
     // Prepare recipients - customer email + venue CC if available
     const toEmails = [booking.customerEmail || booking.userEmail || '']
@@ -1316,7 +1546,7 @@ async function sendRefundEmail(booking: any, bookingId: string, refund: any, rea
       from: 'Funkhaus Sports <ticket@funkhaus-berlin.net>',
       to: toEmails,
       cc: ccEmails.length > 0 ? ccEmails : undefined,
-      subject: `Funkhaus Sports - Booking Cancelled & Refund Processed - ${formattedDate}`,
+      subject: `Funkhaus Sports - Refund Initiated - ${formattedDate}`,
       html: html
     })
     

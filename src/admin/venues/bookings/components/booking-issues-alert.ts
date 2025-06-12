@@ -5,7 +5,7 @@ import { customElement, property, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 import { when } from 'lit/directives/when.js'
 import { of } from 'rxjs'
-import { catchError, map, tap, takeUntil } from 'rxjs/operators'
+import { catchError, map, takeUntil, tap } from 'rxjs/operators'
 import { BookingsDB } from 'src/db/bookings.collection'
 import { Booking } from 'src/types/booking/booking.types'
 

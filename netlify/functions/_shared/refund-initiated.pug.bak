@@ -1,0 +1,59 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport" content="width=device-width, initial-scale=1.0")
+    title Funkhaus Sports - Refund Initiated
+    style.
+      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+      .header { background-color: #f8f9fa; padding: 20px; text-align: center; }
+      .content { padding: 20px; }
+      .details { background-color: #f8f9fa; padding: 15px; margin: 20px 0; }
+      .footer { text-align: center; padding: 20px; color: #666; font-size: 14px; }
+  body
+    .container
+      .header
+        h1 Refund Initiated
+        
+      .content
+        p Dear #{customer.name},
+        
+        p We have initiated a refund for your booking. The refund is currently being processed and you should receive the funds within 5-10 business days depending on your bank.
+        
+        .details
+          h3 Refund Details:
+          p
+            strong Booking ID: 
+            | #{bookingId}
+          p
+            strong Amount: 
+            | €#{refund.amount}
+          p
+            strong Date: 
+            | #{booking.date}
+          p
+            strong Time: 
+            | #{timeDisplay}
+          p
+            strong Court: 
+            | #{booking.court}
+          p
+            strong Venue: 
+            | #{booking.venue}
+          if refund.reason
+            p
+              strong Reason: 
+              | #{refund.reason}
+              
+        p You will receive another email confirmation once the refund has been completed.
+        
+        p If you have any questions, please don't hesitate to contact us.
+        
+        p
+          | Best regards,
+          br
+          | Funkhaus Sports Team
+          
+      .footer
+        p © 2024 Funkhaus Sports. All rights reserved.

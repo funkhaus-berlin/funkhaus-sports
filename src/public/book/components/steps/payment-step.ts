@@ -134,8 +134,7 @@ export class CheckoutForm extends $LitElement() {
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValues): void {
-		// Set default country if not set
-		this.setDefaultCountry()
+
 
 		// Initialize Stripe elements
 		this.initializeStripe()
@@ -163,21 +162,7 @@ export class CheckoutForm extends $LitElement() {
 		}
 	}
 
-	// Setup methods
-
-	private setDefaultCountry(): void {
-		if (!this.booking.customerAddress?.country) {
-			bookingContext.set(
-				{
-					customerAddress: {
-						...this.booking.customerAddress!,
-						country: 'DE', // Default to Germany
-					},
-				},
-				true,
-			)
-		}
-	}
+	
 
 	private async initializeStripe(): Promise<void> {
 		try {

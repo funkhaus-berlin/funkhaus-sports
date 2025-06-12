@@ -616,6 +616,28 @@ BookingsDB.get(qrCode)
    - Serverless functions deployed to Netlify
    - Stripe webhook endpoints need proper configuration
 
+### Netlify Function Configuration
+
+When adding new Pug templates or static assets to Netlify functions:
+
+1. **Include template files in netlify.toml**: Any `.pug` templates used by functions must be explicitly included in the `included_files` array:
+   ```toml
+   [functions]
+   included_files = [
+     "netlify/functions/_shared/ticket.pug",
+     "netlify/functions/_shared/refund.pug", 
+     "netlify/functions/_shared/refund-delay.pug",
+     "netlify/functions/_shared/assets/**",
+     "netlify/functions/_shared/data/**"
+   ]
+   ```
+
+2. **Path resolution**: In Netlify's function environment, use `../` for relative paths:
+   ```typescript
+   // Correct path for Netlify functions
+   const html = renderFile(resolve(__dirname, '../_shared/template.pug'), data)
+   ```
+
 ## Debugging & Testing
 
 - Use browser console for frontend debugging

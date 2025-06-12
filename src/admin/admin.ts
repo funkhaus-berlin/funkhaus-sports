@@ -24,8 +24,6 @@ export default class FunkhausAdmin extends $LitElement() {
 	connectedCallback(): void {
 		super.connectedCallback()
 		
-		// Register PWA service worker for admin routes
-		this.registerPWA()
 		
 		// Set up auth state listener
 		from(auth.authStateReady())
@@ -113,31 +111,6 @@ export default class FunkhausAdmin extends $LitElement() {
 			})
 	}
 
-	private async registerPWA(): Promise<void> {
-		// Only register service worker on admin routes
-		if ('serviceWorker' in navigator && window.location.pathname.startsWith('/admin')) {
-			try {
-				// Import the PWA registration module dynamically
-				const { registerSW } = await import('virtual:pwa-register')
-				
-				const updateSW = registerSW({
-					immediate: true,
-					onNeedRefresh() {
-						// Prompt user to refresh
-						const shouldUpdate = confirm('New version available! Refresh to update?')
-						if (shouldUpdate) {
-							updateSW(true)
-						}
-					},
-					onOfflineReady() {
-						console.log('Admin dashboard ready for offline use')
-					},
-				})
-			} catch (error) {
-				console.error('PWA registration failed:', error)
-			}
-		}
-	}
 
 	protected render() {
 		const contentDrawerClasses = {

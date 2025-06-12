@@ -14,7 +14,7 @@ import { Booking } from 'src/types/booking/booking.types'
 import { courtsContext } from '../../courts/context'
 import { venueContext } from '../../venue-context'
 import { bookingFilterContext, BookingsContext } from '../bookings.context'
-import { BookingDetails } from './booking-details'
+import './booking-details'
 
 // Initialize dayjs plugins
 dayjs.extend(relativeTime)
@@ -323,8 +323,10 @@ export class BookingDayView extends $LitElement() {
                               <div 
                                 class="rounded  bg-secondary-container/90 p-2 cursor-pointer  hover:scale-110 transition-all duration-100"
                                 @click=${() => {
+                                  const detailsElement = document.createElement('booking-details')
+                                  detailsElement.booking = booking
                                   sheet.open({
-                                    component:new BookingDetails(booking)
+                                    component: detailsElement
                                   })
                                 }}
                               >

@@ -7,7 +7,6 @@
 		"dev": "vite --host",
 		"build": "vite build",
 		"preview": "vite preview",
-		"generate-pwa-assets": "pwa-assets-generator",
 		"ncu": "npx ncu -u && npx npm i",
 		"emulators": "firebase emulators:start",
 		"dev:emulators": "concurrently \"npm run emulators\" \"npm run dev\""
@@ -53,7 +52,6 @@
 		"@types/nodemailer": "^6",
 		"@types/pdfkit": "^0.13.9",
 		"@types/qrcode": "^1",
-		"@vite-pwa/assets-generator": "^1.0.0",
 		"autoprefixer": "^10.4.21",
 		"concurrently": "^9.1.2",
 		"firebase-tools": "^14.6.0",
@@ -61,8 +59,7 @@
 		"sass": "^1.89.1",
 		"tailwindcss": "^4.1.8",
 		"typescript": "^5.8.3",
-		"vite": "^6.3.5",
-		"vite-plugin-pwa": "^1.0.0"
+		"vite": "^6.3.5"
 	},
 	"packageManager": "npm@11.4.1"
 }

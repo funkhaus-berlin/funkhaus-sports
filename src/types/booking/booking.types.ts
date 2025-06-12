@@ -79,6 +79,11 @@ export interface Booking {
 	refundFailureReason?: string // Why refund failed
 	refundCanceledAt?: string // When refund was canceled
 	refundRequiresAction?: boolean // If customer action is required
+	refundInitiatedAt?: string // When refund was first initiated (before Stripe processing)
+	refundInitiatedBy?: string // User ID who initiated the refund request
+	refundInitiatedByEmail?: string // Email of user who initiated the refund
+	refundEmailSent?: boolean // Whether refund notification email was sent
+	refundEmailSentAt?: string // When refund email was sent
 }
 
 
