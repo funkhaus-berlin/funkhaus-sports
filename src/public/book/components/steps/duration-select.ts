@@ -515,18 +515,15 @@ export class DurationSelectionStep extends $LitElement(css`
 		}
 		
 		return html`
-			<div class="w-full bg-surface-low/50 rounded-lg transition-all duration-300 p-2">
-				${!this.hasValidSelection() && this.durations.length > 0 ? html`
-					<div class="mb-2">
+			<div class="w-full relative inset-0 bg-surface-low/50 rounded-lg transition-all duration-300 p-2 py-3">
+				<div class="px-2">
 						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
-							Select Duration
+							Choose how long you'd like to play
 						</schmancy-typography>
-						<div class="text-xs text-surface-on-variant mt-1">Choose how long you'd like to play</div>
 					</div>
-				` : nothing}
 				
 				<div ${ref(this.scrollContainerRef)} 
-					class="flex py-2 overflow-x-auto scrollbar-hide gap-3 first:pl-2 last:pr-2" 
+					class="flex py-2 overflow-x-auto scrollbar-hide gap-3 px-2" 
 					role="listbox"
 					aria-label="Available Duration Options">
 					${this.renderDurations(this.durations)}
@@ -539,7 +536,7 @@ export class DurationSelectionStep extends $LitElement(css`
 				` : nothing}
 				
 				${this.hasValidSelection() ? html`
-					<div class="mt-4 flex justify-center">
+					<div class="mt-2 lg:mt-4 flex justify-center">
 						<schmancy-button 
 							variant="filled" 
 							@click=${() => this.proceedToPayment()}

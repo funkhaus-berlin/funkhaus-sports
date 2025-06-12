@@ -642,12 +642,12 @@ export class TimeSelectionStep extends $LitElement(css`
 				` : nothing}
 
 				${timeSlots.length > 0 ? html`
-					<div class="flex items-center justify-between mb-2">
+					<div class="flex items-center justify-between px-2">
 						<schmancy-typography type="label" token="lg" class="font-medium text-primary-default">
 							Select Time
 						</schmancy-typography>
 						<div class="text-xs text-surface-on-variant">
-							Times shown in your local timezone (${getUserTimezone()})
+							  (${getUserTimezone()})
 						</div>
 					</div>
 				` : nothing}
