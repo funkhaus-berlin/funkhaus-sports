@@ -6,6 +6,7 @@ import { BehaviorSubject, EMPTY, Subject, combineLatest, from, fromEvent, merge,
 import { catchError, debounceTime, distinctUntilChanged, filter, finalize, map, switchMap, take, takeUntil, tap, toArray } from 'rxjs/operators'
 import { Court, SportTypeEnum } from 'src/types/booking/court.types'
 import { VenueAddress } from 'src/types/booking/venue.types'
+import { bookingContext } from '../../context'
 
 type CourtAvailabilityType = 'full' | 'partial' | 'none'
 
@@ -1112,15 +1113,9 @@ export class CourtMapGoogle extends $LitElement(css`
 	 * Handle court selection
 	 */
 	private handleCourtSelect(court: Court): void {
-		// Dispatch event to parent - let the parent component handle availability checks
-		// and all selection logic including confirmation dialogs
-		const event = new CustomEvent('court-select', {
-			detail: { court },
-			bubbles: true,
-			composed: true,
-		})
-		console.log('Dispatching court-select event')
-		this.dispatchEvent(event)
+		// Just save the court ID to booking context
+		// The parent component will handle the rest via subscription
+		bookingContext.set({ courtId: court.id }, true)
 	}
 
 	render() {

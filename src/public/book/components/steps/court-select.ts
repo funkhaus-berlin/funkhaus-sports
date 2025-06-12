@@ -111,9 +111,6 @@ export class CourtSelectStep extends $LitElement(css`
 
 	private lastSuccessfulData: { courts: Court[] } | null = null
 
-	// Configuration flags // keep this true 
-	private switchToListOnMapSelection: boolean = true // Set to true to automatically switch from map to list view after selection
-
 	// Refs for scroll functionality
 	private scrollContainerRef: Ref<HTMLElement> = createRef<HTMLElement>()
 	private courtRefs = new Map<string, HTMLElement>()
@@ -128,6 +125,7 @@ export class CourtSelectStep extends $LitElement(css`
 	connectedCallback(): void {
 		super.connectedCallback()
 		this.subscribeToAvailabilityUpdates()
+		this.subscribeToCourtSelection()
 
 		// Add subscription to BookingProgressContext to track active state
 		BookingProgressContext.$.pipe(
@@ -221,6 +219,49 @@ export class CourtSelectStep extends $LitElement(css`
 	//#endregion
 
 	//#region Data Subscription Methods
+
+	/**
+	 * Subscribe to court selection changes
+	 * This reacts to court ID changes in the booking context
+	 */
+	private subscribeToCourtSelection(): void {
+		// Subscribe to court ID changes with distinct filtering
+		bookingContext.$.pipe(
+			takeUntil(this.disconnecting),
+			map(booking => booking.courtId),
+			distinctUntilChanged(),
+			filter(courtId => !!courtId), // Only process when a court is selected
+			// Get the court data from the courts context
+			switchMap(courtId => 
+				courtsContext.$.pipe(
+					filter(courts => courts.size > 0),
+					map(courts => ({ courtId, court: courts.get(courtId) })),
+					take(1)
+				)
+			),
+			filter(({ court }) => !!court), // Ensure court exists
+			tap(({ court }) => {
+				console.log('Court selection changed to:', court!.name)
+				
+				// Handle filter conflicts
+				this.handleFilterConflicts(court!)
+				
+				// Check if court is partially available when both time and duration selected
+				const availabilityStatus = this.getCourtAvailabilityStatus(court!.id)
+				const hasDuration = !!this.booking?.startTime && !!this.booking?.endTime
+				
+				if (availabilityStatus === 'partial' && hasDuration) {
+					// Show confirmation dialog for partially available courts
+					this.pendingCourtSelection = court!
+					this.showConfirmationDialog = true
+					return
+				}
+				
+				// For fully available courts, proceed directly
+				this.confirmCourtSelection(court!)
+			})
+		).subscribe()
+	}
 
 	/**
 	 * Subscribe to booking and availability context updates
@@ -466,62 +507,23 @@ export class CourtSelectStep extends $LitElement(css`
 
 	/**
 	 * Handle selection of a court
-	 * Shows confirmation dialog for partially available courts
+	 * Only saves the court ID to booking context
 	 */
 	private handleCourtSelect(court: Court): void {
-
-		console.log('handleCourtSelect called with court:', court.name, 'viewMode:', this.viewMode)
+		console.log('handleCourtSelect called with court:', court.name)
 		
 		// Don't allow selecting unavailable courts
 		if (!this.canSelectCourt(court.id)) {
-      alert()
+			$notify.error('This court is not available at the selected time')
 			console.log('Court not available, returning early')
 			return
 		}
 
-		// If we're in map view and flag is enabled, switch to list view first
-		if (this.viewMode === ViewMode.MAP && this.switchToListOnMapSelection) {
-			console.log('Switching from map to list view before selection')
-			this.viewMode = ViewMode.LIST
-			// Request update and wait for the next render cycle before proceeding
-			this.requestUpdate()
-			// Wait for the component to finish updating before processing selection
-			this.updateComplete.then(() => {
-				console.log('Processing selection after view switch and render complete')
-				this.handleCourtSelectInternal(court)
-			})
-		} else if (this.viewMode === ViewMode.MAP) {
-			// Stay in map view but still handle the selection
-			console.log('Handling selection in map view')
-			this.handleCourtSelectInternal(court)
-     
-
-		} else {
-			console.log('Handling selection in list view')
-			this.handleCourtSelectInternal(court)
-		}
+		// Just save the court ID to booking context
+		// The subscription will handle the rest of the logic
+		bookingContext.set({ courtId: court.id }, true)
 	}
 
-	/**
-	 * Internal court selection handler after view mode is ensured
-	 */
-	private handleCourtSelectInternal(court: Court): void {
-		// Handle filter conflicts
-		this.handleFilterConflicts(court)
-
-		// Check if court is partially available when both time and duration selected
-		const availabilityStatus = this.getCourtAvailabilityStatus(court.id)
-		const hasDuration = !!this.booking?.startTime && !!this.booking?.endTime
-		if (availabilityStatus === 'partial' && hasDuration) {
-			// Show confirmation dialog for partially available courts
-			this.pendingCourtSelection = court
-			this.showConfirmationDialog = true
-			return
-		}
-
-		// For fully available courts, proceed directly
-		this.confirmCourtSelection(court)
-	}
 
 	/**
 	 * Handle conflicts between court selection and active filters
@@ -574,30 +576,39 @@ export class CourtSelectStep extends $LitElement(css`
 	 * Confirm court selection with optional time slot
 	 */
 	private confirmCourtSelection(court: Court, timeSlot?: TimeSlot): void {
-		this.processCourtSelection(court, timeSlot)
+		// If we're in map view, switch to list view first
+		if (this.viewMode === ViewMode.MAP) {
+			console.log('Switching from map to list view after selection')
+			this.viewMode = ViewMode.LIST
+			// Request update and wait for the next render cycle before proceeding
+			this.requestUpdate()
+			// Wait for the component to finish updating before processing selection
+			this.updateComplete.then(() => {
+				console.log('Processing selection after view switch')
+				this.processCourtSelection(court, timeSlot)
+			})
+		} else {
+			this.processCourtSelection(court, timeSlot)
+		}
 	}
 
 	/**
 	 * Process court selection and update booking context
-	 * This method is responsible for updating the booking with the selected court
-	 * and transitioning to the next step in the flow
+	 * This method handles the UI updates and transitions after court selection
 	 */
 	private processCourtSelection(court: Court, timeSlot?: TimeSlot): void {
 		console.log('processCourtSelection called for court:', court.name)
 		
-		// Update booking context with selected court
-		const bookingUpdate: Partial<Booking> = {
-			courtId: court.id,
-		}
-
 		// Check if we need to clear duration for non-fully available courts
 		const availabilityStatus = this.getCourtAvailabilityStatus(court.id)
-
-		// If court is not fully available and duration was previously selected, clear it
 		const hasDuration = !!this.booking?.startTime && !!this.booking?.endTime
+		
 		if (availabilityStatus !== 'full' && hasDuration && !timeSlot) {
-			bookingUpdate.endTime = ''
-			bookingUpdate.price = 0
+			// Update booking to clear duration
+			bookingContext.set({
+				endTime: '',
+				price: 0
+			}, true)
 
 			// Notify user that duration was cleared
 			$notify.info('Duration selection cleared. This court has limited availability.', {
@@ -606,10 +617,6 @@ export class CourtSelectStep extends $LitElement(css`
 		}
 
 		// Note: timeSlot parameter is legacy and not used in current implementation
-
-		// Update booking context
-		console.log('Updating booking context with:', bookingUpdate)
-		bookingContext.set(bookingUpdate, true)
 
 		// Reset dialog state if applicable
 		this.pendingCourtSelection = null
@@ -1251,10 +1258,6 @@ export class CourtSelectStep extends $LitElement(css`
 					.courtAvailability=${this.courtAvailability}
 					.venueAddress=${this.venue?.address}
 					.venueName=${this.venue?.name || 'Venue'}
-					@court-select=${(e: CustomEvent) => {
-            console.log(e.detail)
-            this.handleCourtSelect(e.detail.court)
-          }}
 				></court-map-google>
 			`
 		} else {

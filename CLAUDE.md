@@ -271,6 +271,74 @@ someObservable$
   })
 ```
 
+### Reactive Selection Pattern
+
+When implementing selection mechanisms (e.g., selecting items from a list or map), follow this reactive pattern:
+
+1. **Decouple Selection Trigger from Logic**:
+   - Selection handlers should only update the state/context with the selected ID
+   - All selection logic should be handled via reactive subscriptions
+
+```typescript
+// Bad - mixing concerns
+private handleItemSelect(item: Item): void {
+  // Don't do complex logic here
+  if (!this.canSelect(item)) return
+  this.processSelection(item)
+  this.updateUI(item)
+  this.transitionToNext()
+}
+
+// Good - separation of concerns
+private handleItemSelect(item: Item): void {
+  // Only update state
+  if (!this.canSelect(item.id)) {
+    notify.error('Cannot select this item')
+    return
+  }
+  selectionContext.set({ selectedId: item.id }, true)
+}
+
+// Handle logic reactively
+private subscribeToSelection(): void {
+  selectionContext.$.pipe(
+    takeUntil(this.disconnecting),
+    map(state => state.selectedId),
+    distinctUntilChanged(),
+    filter(id => !!id),
+    switchMap(id => 
+      // Fetch full data if needed
+      itemsContext.$.pipe(
+        filter(items => items.size > 0),
+        map(items => ({ id, item: items.get(id) })),
+        take(1)
+      )
+    ),
+    filter(({ item }) => !!item),
+    tap(({ item }) => {
+      // All selection logic here
+      this.processFilters(item)
+      this.checkAvailability(item)
+      this.updateUI(item)
+      this.transitionToNext()
+    })
+  ).subscribe()
+}
+```
+
+2. **Benefits of This Pattern**:
+   - Multiple UI components can trigger selection without duplicating logic
+   - Selection logic is centralized and testable
+   - Easy to add new selection triggers (e.g., keyboard shortcuts, different UI views)
+   - Reactive flow ensures consistency across the application
+
+3. **Implementation Steps**:
+   - Create simple event handlers that only update state
+   - Use RxJS subscriptions with `distinctUntilChanged()` to react to changes
+   - Place all business logic in the subscription pipeline
+   - Use `switchMap` to fetch additional data if needed
+   - Keep side effects in `tap()` operators
+
 Below is an example from the codebase showing how QR scanning is implemented:
 
 ```typescript
