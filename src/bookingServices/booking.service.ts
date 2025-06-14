@@ -1,30 +1,19 @@
 // src/bookingServices/booking.service.ts
 import {
-	Firestore,
-	collection,
-	doc,
-	getDoc,
 	getDocs,
-	getFirestore,
 	query,
-	runTransaction,
-	updateDoc,
 	where
 } from 'firebase/firestore'
-import { Observable, from, of, throwError } from 'rxjs'
+import { Observable, of, throwError } from 'rxjs'
 import { catchError, map, switchMap } from 'rxjs/operators'
-import { db } from 'src/firebase/firebase'
-import { Booking } from '../public/book/context'
+import { BookingsDB } from 'src/db/bookings.collection'
+import { Booking, BookingStatus } from '../public/book/context'
 
 /**
  * Service responsible for managing bookings and interacting with Firestore
  */
 export class BookingService {
-	private firestore: Firestore
-
-	constructor() {
-		this.firestore = db || getFirestore()
-	}
+	constructor() {}
 
 	/**
 	 * Create a new booking and reserve the time slots.
@@ -38,54 +27,63 @@ export class BookingService {
 		}
 
 		// Generate a new booking ID if not provided
-		const bookingsRef = collection(this.firestore, 'bookings')
-		const bookingId = booking.id || doc(bookingsRef).id
+		const bookingId = booking.id || BookingsDB.ref().id
 		
 		// If this is a holding booking (payment not confirmed yet), check for conflicts
 		// with ALL existing bookings (confirmed, paid, or holding) to prevent any overlapping bookings
 		if (booking.status === 'holding') {
 			console.log('Creating holding booking with conflict check:', bookingId)
 			
-			return from(
-				runTransaction(this.firestore, async transaction => {
-					// Query for ALL existing bookings (including holding) on the same court and date
-					// to prevent any overlapping bookings
-					const bookingsQuery = query(
-						bookingsRef,
-						where('courtId', '==', booking.courtId),
-						where('date', '==', booking.date),
-						where('status', 'in', ['confirmed', 'paid', 'holding'])
-					)
+			return BookingsDB.runTransaction(async (transaction, collectionRef) => {
+				// Query for potential conflicts
+				const bookingsQuery = query(
+					collectionRef,
+					where('courtId', '==', booking.courtId),
+					where('date', '==', booking.date),
+					where('status', 'in', ['confirmed', 'paid', 'holding'])
+				)
+				
+				// Get potential conflicts (this happens outside the transaction)
+				const potentialConflicts = await getDocs(bookingsQuery)
+				
+				// Parse new booking times once
+				const newStart = new Date(booking.startTime).getTime()
+				const newEnd = new Date(booking.endTime).getTime()
+				
+				// Check each booking within the transaction for consistency
+				for (const docSnapshot of potentialConflicts.docs) {
+					// Re-read within transaction to ensure consistency
+					const docRef = BookingsDB.docRef(docSnapshot.id)
+					const transactionalDoc = await transaction.get(docRef)
 					
-					// Note: We need to use getDocs for queries, not transaction.get
-		const conflictingBookingsSnapshot = await getDocs(bookingsQuery)
-					
-					// Check each existing booking for time overlap
-					for (const docSnap of conflictingBookingsSnapshot.docs) {
-						const existingBooking = docSnap.data() as Booking
+					if (transactionalDoc.exists()) {
+						const existingBooking = transactionalDoc.data() as Booking
 						
-						// Parse times for comparison
-						const newStart = new Date(booking.startTime).getTime()
-						const newEnd = new Date(booking.endTime).getTime()
-						const existingStart = new Date(existingBooking.startTime).getTime()
-						const existingEnd = new Date(existingBooking.endTime).getTime()
-						
-						// Check for any overlap (start1 < end2 AND end1 > start2)
-						if (newStart < existingEnd && newEnd > existingStart) {
-							throw new Error('This time slot is already booked. Please select another time.')
+						// Verify it still matches our conflict criteria
+						if (existingBooking.courtId === booking.courtId && 
+							existingBooking.date === booking.date &&
+							['confirmed', 'paid', 'holding'].includes(existingBooking.status)) {
+							
+							// Check for time overlap
+							const existingStart = new Date(existingBooking.startTime).getTime()
+							const existingEnd = new Date(existingBooking.endTime).getTime()
+							
+							// Check for any overlap (start1 < end2 AND end1 > start2)
+							if (newStart < existingEnd && newEnd > existingStart) {
+								throw new Error('This time slot is already booked. Please select another time.')
+							}
 						}
 					}
-					
-					// No conflicts found, create the holding booking
-					const bookingData = this.prepareBookingData(booking, bookingId)
-					const newBookingRef = doc(bookingsRef, bookingId)
-					transaction.set(newBookingRef, bookingData)
-					
-					console.log(`Created holding booking ${bookingId} after checking for conflicts`)
-					return { ...bookingData, id: bookingId }
-				})
-			).pipe(
-				map(result => result as Booking),
+				}
+				
+				// No conflicts found, create the holding booking
+				const bookingData = this.prepareBookingData(booking, bookingId)
+				const newBookingRef = BookingsDB.docRef(bookingId)
+				transaction.set(newBookingRef, bookingData)
+				
+				console.log(`Created holding booking ${bookingId} after checking for conflicts`)
+				return { ...bookingData, id: bookingId }
+			}).pipe(
 				catchError(error => {
 					console.error('Error creating holding booking:', error)
 					if (error.message.includes('already booked')) {
@@ -98,45 +96,58 @@ export class BookingService {
 		
 		// For confirmed/paid bookings, check for conflicts and create
 		// Use the same logic as holding bookings to ensure consistency
-		return from(
-			runTransaction(this.firestore, async transaction => {
-				// Query for existing bookings to check availability
-				const bookingsQuery = query(
-					bookingsRef,
-					where('courtId', '==', booking.courtId),
-					where('date', '==', booking.date),
-					where('status', 'in', ['confirmed', 'paid', 'holding'])
-				)
+		return BookingsDB.runTransaction(async (transaction, collectionRef) => {
+			// Query for potential conflicts
+			const bookingsQuery = query(
+				collectionRef,
+				where('courtId', '==', booking.courtId),
+				where('date', '==', booking.date),
+				where('status', 'in', ['confirmed', 'paid', 'holding'])
+			)
+			
+			// Get potential conflicts (this happens outside the transaction)
+			const potentialConflicts = await getDocs(bookingsQuery)
+			
+			// Parse new booking times once
+			const newStart = new Date(booking.startTime).getTime()
+			const newEnd = new Date(booking.endTime).getTime()
+			
+			// Check each booking within the transaction for consistency
+			for (const docSnapshot of potentialConflicts.docs) {
+				// Re-read within transaction to ensure consistency
+				const docRef = BookingsDB.docRef(docSnapshot.id)
+				const transactionalDoc = await transaction.get(docRef)
 				
-				const existingBookings = await getDocs(bookingsQuery)
-				
-				// Check for time conflicts
-				for (const docSnap of existingBookings.docs) {
-					const existing = docSnap.data() as Booking
+				if (transactionalDoc.exists()) {
+					const existingBooking = transactionalDoc.data() as Booking
 					
-					const newStart = new Date(booking.startTime).getTime()
-					const newEnd = new Date(booking.endTime).getTime()
-					const existingStart = new Date(existing.startTime).getTime()
-					const existingEnd = new Date(existing.endTime).getTime()
-					
-					// Check for overlap
-					if (newStart < existingEnd && newEnd > existingStart) {
-						throw new Error('This time slot is already booked. Please select another time.')
+					// Verify it still matches our conflict criteria
+					if (existingBooking.courtId === booking.courtId && 
+						existingBooking.date === booking.date &&
+						['confirmed', 'paid', 'holding'].includes(existingBooking.status)) {
+						
+						// Check for time overlap
+						const existingStart = new Date(existingBooking.startTime).getTime()
+						const existingEnd = new Date(existingBooking.endTime).getTime()
+						
+						// Check for any overlap (start1 < end2 AND end1 > start2)
+						if (newStart < existingEnd && newEnd > existingStart) {
+							throw new Error('This time slot is already booked. Please select another time.')
+						}
 					}
 				}
-				
-				// No conflicts, create the booking
-				const bookingData = this.prepareBookingData(booking, bookingId)
-				const newBookingRef = doc(bookingsRef, bookingId)
-				transaction.set(newBookingRef, bookingData)
+			}
+			
+			// No conflicts found, create the booking
+			const bookingData = this.prepareBookingData(booking, bookingId)
+			const newBookingRef = BookingsDB.docRef(bookingId)
+			transaction.set(newBookingRef, bookingData)
 
-				return {
-					...bookingData,
-					id: bookingId,
-				}
-			}),
-		).pipe(
-			map(result => result as Booking),
+			return {
+				...bookingData,
+				id: bookingId,
+			}
+		}).pipe(
 			catchError(error => {
 				console.error('Error creating booking:', error)
 
@@ -153,7 +164,7 @@ export class BookingService {
 	/**
 	 * Prepare booking data with required fields
 	 */
-	private prepareBookingData(booking: Booking, bookingId: string) {
+	private prepareBookingData(booking: Booking, bookingId: string): any {
 		const isGuestBooking = booking.userId && booking.userId.startsWith('guest-')
 
 		const now = new Date().toISOString()
@@ -161,7 +172,7 @@ export class BookingService {
 		return {
 			...booking,
 			id: bookingId,
-			status: booking.status || 'confirmed',
+			status: (booking.status || 'confirmed') as BookingStatus,
 			paymentStatus: booking.paymentStatus || 'pending',
 			createdAt: booking.createdAt || now,
 			updatedAt: now,
@@ -218,13 +229,8 @@ export class BookingService {
 	 * Get a booking by ID
 	 */
 	getBooking(bookingId: string): Observable<Booking | null> {
-		const bookingRef = doc(this.firestore, 'bookings', bookingId)
-
-		return from(getDoc(bookingRef)).pipe(
-			map(docSnap => {
-				if (!docSnap.exists()) return null
-				return { ...docSnap.data(), id: docSnap.id } as Booking
-			}),
+		return BookingsDB.get(bookingId).pipe(
+			map(booking => booking ? { ...booking, id: bookingId } : null),
 			catchError(error => {
 				console.error('Error fetching booking:', error)
 				return throwError(() => new Error(`Failed to fetch booking: ${error.message}`))
@@ -236,25 +242,21 @@ export class BookingService {
 	 * Update a booking's payment status and reserve slots if transitioning to paid
 	 */
 	updateBookingPaymentStatus(bookingId: string, paymentStatus: string): Observable<Booking> {
-		const bookingRef = doc(this.firestore, 'bookings', bookingId)
-
-		return from(getDoc(bookingRef)).pipe(
-			switchMap(docSnap => {
-				if (!docSnap.exists()) {
+		return BookingsDB.get(bookingId).pipe(
+			switchMap(booking => {
+				if (!booking) {
 					return throwError(() => new Error('Booking not found'))
 				}
-
-				// const booking = docSnap.data() as Booking - not used anymore
 				
 				// Simply update the booking status
 				// No need for separate slot reservation since availability is checked via bookings
-				const updateData = {
+				const updateData: Partial<Booking> = {
 					paymentStatus,
 					updatedAt: new Date().toISOString(),
-					...(paymentStatus === 'paid' ? { status: 'confirmed' } : {}),
+					...(paymentStatus === 'paid' ? { status: 'confirmed' as BookingStatus } : {}),
 				}
 
-				return from(updateDoc(bookingRef, updateData)).pipe(
+				return BookingsDB.updateDocument(bookingId, updateData).pipe(
 					switchMap(() => this.getBooking(bookingId)),
 					map(booking => {
 						if (!booking) throw new Error('Booking not found after update')
@@ -275,13 +277,10 @@ export class BookingService {
 	 * This is used to track user activity on holding bookings
 	 */
 	updateLastActive(bookingId: string): Observable<void> {
-		const bookingRef = doc(this.firestore, 'bookings', bookingId)
-		
-		return from(updateDoc(bookingRef, {
+		return BookingsDB.updateDocument(bookingId, {
 			lastActive: new Date().toISOString(),
 			updatedAt: new Date().toISOString()
-		})).pipe(
-			map(() => undefined),
+		}).pipe(
 			catchError(error => {
 				console.error('Error updating lastActive:', error)
 				// Don't throw error for lastActive updates - it's not critical
@@ -296,19 +295,12 @@ export class BookingService {
 	getUserBookings(userId: string, limit: number = 10): Observable<Booking[]> {
 		if (!userId) return of([])
 
-		const bookingsRef = collection(this.firestore, 'bookings')
-		const userBookingsQuery = query(
-			bookingsRef,
-			where('userId', '==', userId),
-			where('date', '>=', new Date().toISOString().split('T')[0]),
-		)
-
-		return from(getDocs(userBookingsQuery)).pipe(
-			map(querySnapshot => {
-				const bookings: Booking[] = []
-				querySnapshot.forEach(docSnap => {
-					bookings.push({ ...docSnap.data(), id: docSnap.id } as Booking)
-				})
+		return BookingsDB.query([
+			{ key: 'userId', value: userId, operator: '==' },
+			{ key: 'date', value: new Date().toISOString().split('T')[0], operator: '>=' }
+		]).pipe(
+			map(bookingsMap => {
+				const bookings = Array.from(bookingsMap.entries()).map(([id, booking]) => ({ ...booking, id }))
 
 				// Sort by date/time and limit
 				return bookings
@@ -329,19 +321,12 @@ export class BookingService {
 	getBookingsByEmail(email: string, limit: number = 10): Observable<Booking[]> {
 		if (!email) return of([])
 
-		const bookingsRef = collection(this.firestore, 'bookings')
-		const emailBookingsQuery = query(
-			bookingsRef,
-			where('customerEmail', '==', email),
-			where('date', '>=', new Date().toISOString().split('T')[0]),
-		)
-
-		return from(getDocs(emailBookingsQuery)).pipe(
-			map(querySnapshot => {
-				const bookings: Booking[] = []
-				querySnapshot.forEach(docSnap => {
-					bookings.push({ ...docSnap.data(), id: docSnap.id } as Booking)
-				})
+		return BookingsDB.query([
+			{ key: 'customerEmail', value: email, operator: '==' },
+			{ key: 'date', value: new Date().toISOString().split('T')[0], operator: '>=' }
+		]).pipe(
+			map(bookingsMap => {
+				const bookings = Array.from(bookingsMap.entries()).map(([id, booking]) => ({ ...booking, id }))
 
 				// Sort by date/time and limit
 				return bookings
