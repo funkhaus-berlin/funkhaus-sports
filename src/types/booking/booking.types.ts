@@ -85,6 +85,7 @@ export interface Booking {
 	refundInitiatedByEmail?: string // Email of user who initiated the refund
 	refundEmailSent?: boolean // Whether refund notification email was sent
 	refundEmailSentAt?: string // When refund email was sent
+	isGuestBooking?: boolean // Whether this is a guest booking (user not logged in)
 }
 
 
