@@ -556,19 +556,23 @@ export class DateSelectionStep extends $LitElement(css`
 	/**
 	 * Render date tile with Tailwind classes
 	 */
-	private renderDateTile(date: Date, isCompact = false) {
+	private renderDateTile(date: Date, isCompact = false, displayMonth?: string) {
 		const dateDay = dayjs(date)
 		const isSelected = dayjs(this.value).isSame(dateDay, 'day')
 		const isToday = dateDay.isSame(this._today, 'day')
 		const isWeekend = this.isWeekend(date)
 		const isPastDate = dateDay.isBefore(this._today, 'day')
 		const dateValue = dateDay.format('YYYY-MM-DD')
+		
+		// Check if this date is in a different month than the display month
+		const dateMonth = dateDay.format('MMMM')
+		const isOtherMonth = displayMonth ? dateMonth !== displayMonth : false
 
 		// Apply golden ratio to width/height with responsive sizing
 		const compactWidth = 'w-12 sm:w-14'
 		const compactHeight = 'h-20 sm:h-24'
 		const activeWidth = 'w-full'
-		const activeHeight = isCompact ? compactHeight : 'h-16 sm:h-20 md:h-24'
+		const activeHeight = isCompact ? compactHeight : 'h-20 sm:h-24 md:h-28'
 
 		// ARIA attributes for accessibility
 		const ariaSelected = isSelected ? 'true' : 'false'
@@ -636,6 +640,11 @@ export class DateSelectionStep extends $LitElement(css`
 				<div class="${isCompact ? 'text-sm sm:text-base' : 'text-base sm:text-lg md:text-xl'} font-bold">
 					${date.getDate()}
 				</div>
+				${isOtherMonth ? html`
+					<div class="text-xs font-medium opacity-70 mt-1">
+						${dateDay.format('MMM')}
+					</div>
+				` : ''}
 			</div>
 		`
 	}
@@ -734,7 +743,7 @@ export class DateSelectionStep extends $LitElement(css`
 										${repeat(
 											week,
 											date => date.toISOString(), // Use ISO string as key
-											date => this.renderDateTile(date, false),
+											date => this.renderDateTile(date, false, displayMonth),
 										)}
 									</div>
 								`,
@@ -749,7 +758,7 @@ export class DateSelectionStep extends $LitElement(css`
 							${repeat(
 								dates,
 								date => date.toISOString(),
-								date => this.renderDateTile(date, true),
+								date => this.renderDateTile(date, true, displayMonth),
 							)}
 						</div>
 					</div>
