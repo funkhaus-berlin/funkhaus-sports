@@ -54,7 +54,7 @@ export class VenuesLandingPage extends $LitElement() {
 			<schmancy-surface ${fullHeight()} type="container" rounded="all" elevation="0">
 				<div class="flex flex-col items-center px-4 sm:px-6 py-8 max-w-md mx-auto">
 					<!-- Logo Section -->
-					<div class="text-center mb-10">
+					<div class="text-center grid justify-center mb-10">
 						<funkhaus-logo reverse src="/logo.svg" alt="Funkhaus Sports Logo" width="120px" class="mx-auto mb-4" ></funkhaus-logo>
 						<schmancy-typography type="display" token="sm" class="mb-4">
 							<schmancy-animated-text>Funkhaus Sports</schmancy-animated-text>
