@@ -168,7 +168,6 @@ export class BookingsFilter extends $LitElement(css`
           <!-- Status filters -->
           <div class="status-filters">
             <schmancy-chips
-              label="Status"
               .value=${currentStatus}
               @change=${this.handleStatusChange}
             >
