@@ -1,4 +1,5 @@
 // src/db/courts.collection.ts
+import dayjs from 'dayjs'
 import { Observable } from 'rxjs'
 import { FirestoreService } from 'src/firebase/firestore.service'
 import { Court } from 'src/types/booking/court.types'
@@ -15,8 +16,8 @@ export function createCourt(venueId: string): Court {
 			baseHourlyRate: 0
 		},
 		status: 'active',
-		createdAt: new Date().toISOString(),
-		updatedAt: new Date().toISOString()
+		createdAt: dayjs().toISOString(),
+		updatedAt: dayjs().toISOString()
 	}
 }
 

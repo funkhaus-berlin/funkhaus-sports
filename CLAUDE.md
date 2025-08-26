@@ -2,9 +2,45 @@
 
 This file provides comprehensive instructions for Claude when working with the Funkhaus Sports booking application codebase.
 
-## CRITICAL INSTRUCTIONS
+## 🚨 CRITICAL INSTRUCTIONS - ALWAYS USE AGENTS 🚨
 
-**🚨 MOST IMPORTANT - ALWAYS IN YOUR FRONT HEAD 🚨**
+**YOU MUST ALWAYS USE THE APPROPRIATE AGENT FOR CODE CHANGES. NEVER EDIT CODE DIRECTLY.**
+
+### QUICK REFERENCE:
+- `/src/*` files (Frontend) → Use `ui-developer` agent
+- `/netlify/functions/*` files (Backend) → Use `netlify-backend` agent  
+- Both frontend + backend → Use `general-purpose` agent
+- **NEVER EDIT CODE YOURSELF - ALWAYS DELEGATE TO AGENTS**
+
+### 1. **Frontend Tasks** → **USE THE `ui-developer` AGENT**
+   - ANY file in `/src` folder (admin, public, db, firebase, bookingServices, scanner, types)
+   - Lit components
+   - UI changes, forms, validations
+   - RxJS pipelines and reactive patterns
+   - Schmancy components
+   - Context management
+   
+### 2. **Backend Tasks** → **USE THE `netlify-backend` AGENT**
+   - ANY file in `/netlify/functions` folder
+   - API endpoints
+   - Firebase Admin operations
+   - External API integrations (Stripe, Resend, etc.)
+   - Serverless functions
+   
+### 3. **Full-Stack Features** → **USE THE `general-purpose` AGENT**
+   - Tasks requiring BOTH frontend AND backend changes
+   - Shared type definitions
+   - Features that span multiple domains
+   - Complex workflows involving multiple systems
+
+**CRITICAL RULES**:
+- ⛔ NEVER edit code directly - ALWAYS use the appropriate agent
+- ⛔ NEVER mix domains in a single task
+- ✅ ALWAYS delegate to the correct agent based on file location
+- ✅ Let agents handle ALL implementation details
+
+## MOST IMPORTANT - ALWAYS IN YOUR FRONT HEAD
+
 1. **NEVER ASSUME APIs - ALWAYS DOUBLE CHECK DOCUMENTATION/INTERFACES**: 
    - **ALWAYS** check for working examples in the codebase FIRST
    - **ALWAYS** verify the actual implementation before using ANY API
@@ -84,10 +120,11 @@ This file provides comprehensive instructions for Claude when working with the F
 ## Project Overview
 
 Funkhaus Sports is a sports facility booking application built with:
-- **Frontend**: Lit components, TypeScript, Tailwind CSS
+- **Frontend**: Lit components, TypeScript, Tailwind CSS, Schmancy UI
 - **Backend**: Firebase (Auth, Firestore), Netlify Functions
 - **Payment Processing**: Stripe integration
 - **Email Notifications**: Resend
+- **State Management**: RxJS reactive patterns with context providers
 
 The application allows:
 - Venue owners to manage their sports facilities (courts, schedules, pricing)
@@ -96,15 +133,23 @@ The application allows:
 
 ## Project Structure
 
-- `/src/admin/`: Admin dashboard components for venue management
-- `/src/public/`: User-facing components and booking flow
-- `/src/firebase/`: Firebase configuration and authentication services
-- `/src/db/`: Database collection interfaces
-- `/src/scanner/`: QR code scanning for check-in
-- `/src/bookingServices/`: Booking-related services
-- `/netlify/functions/`: Serverless backend functions
-- `/src/types/`: TypeScript type definitions
-- `node_modules/@mhmo91/schmancy/ai`: Schmancy UI component documentation
+```
+├── /src/                        # Frontend (use ui-developer agent)
+│   ├── /admin/                  # Admin dashboard components
+│   ├── /public/                 # User-facing components and booking flow
+│   ├── /firebase/               # Firebase configuration and auth services
+│   ├── /db/                     # Database collection interfaces
+│   ├── /scanner/                # QR code scanning for check-in
+│   ├── /bookingServices/        # Booking-related services
+│   └── /types/                  # TypeScript type definitions
+├── /netlify/functions/          # Backend (use netlify-backend agent)
+│   └── /_shared/                # Shared backend utilities
+│       ├── ticket.pug           # Email templates
+│       ├── assets/              # Static assets
+│       └── data/                # Static data files
+├── /shared/types/               # Shared types (either agent)
+└── node_modules/@mhmo91/schmancy/ai  # Schmancy UI documentation
+```
 
 ## Development Commands
 
@@ -114,6 +159,8 @@ The application allows:
 - `npm run emulators`: Start Firebase emulators
 - `npm run dev:emulators`: Run development server with Firebase emulators
 - `stripe listen --forward-to http://localhost:8888/api/stripe-webhook`: Forward Stripe webhooks to local server
+
+**Note**: The development server is typically already running. Do NOT restart it unless necessary.
 
 ## Architecture Patterns
 
@@ -164,6 +211,9 @@ The application allows:
   - camelCase for methods/properties
 - **CSS**: Use Tailwind utility classes in templates
 - **Error Handling**: Use BookingErrorService with appropriate ErrorCategory
+- **Imports**:
+  - Frontend (`/src`): Use module aliases when available (e.g., 'src/db/...')
+  - Backend (`/netlify/functions`): Use relative paths (e.g., '../../shared/...')
 
 ## Lit Component Structure
 
@@ -407,7 +457,7 @@ BookingsDB.get(qrCode)
 ### Booking Flow
 
 1. Sport selection
-2. Court selection
+2. Court selection  
 3. Date/time selection
 4. Duration selection
 5. User details
@@ -430,7 +480,7 @@ BookingsDB.get(qrCode)
 
 ## Common Tasks & Patterns
 
-1. **Adding new components**:
+### 1. Adding new components:
    - Create new .ts file with @customElement decorator
    - Register in global HTMLElementTagNameMap interface
    - Follow single render function pattern
@@ -504,7 +554,7 @@ BookingsDB.get(qrCode)
    }
    ```
 
-2. **Working with Firebase**:
+### 2. Working with Firebase:
    - Use collection services for data operations
    - Subscribe to observables for reactive updates
    - Unsubscribe in disconnectedCallback
@@ -539,7 +589,7 @@ BookingsDB.get(qrCode)
    }
    ```
 
-3. **Component State Management**:
+### 3. Component State Management:
    - Use @property for externally accessible properties
    - Use @state for internal component state
    - Use @query for DOM element references
@@ -587,7 +637,7 @@ BookingsDB.get(qrCode)
    }
    ```
 
-4. **Lifecycle Management**:
+### 4. Lifecycle Management:
    - Initialize in connectedCallback
    - Clean up in disconnectedCallback
    - Use firstUpdated for DOM operations after render
@@ -611,7 +661,7 @@ BookingsDB.get(qrCode)
    }
    ```
 
-5. **Deployment**:
+### 5. Deployment:
    - Frontend deployed to Firebase Hosting
    - Serverless functions deployed to Netlify
    - Stripe webhook endpoints need proper configuration
@@ -651,3 +701,53 @@ When adding new Pug templates or static assets to Netlify functions:
 - Use Firebase security rules for data access control
 - Validate all user input on both client and server
 - Sanitize data displayed to users
+
+## 📋 MANDATORY CODING STANDARDS
+
+### Types & Interfaces
+- **ONE definition per type** - no duplicates EVER
+- Shared types MUST go in `/src/types/` or `/shared/types/`
+- Frontend uses module path imports (e.g., 'src/types/...')
+- Backend uses relative path imports (e.g., '../../shared/types/...')
+- **NEVER use `any` type** - use proper types or `unknown` with type guards
+- API contracts (Request/Response) belong in shared types, NOT in service files
+
+### Component Architecture
+- Components use context via `@select`, NOT props for shared state
+- NO intermediate wrapper objects or interfaces
+- Components access state directly from context
+- Avoid prop drilling - use context for shared data
+
+### Date Handling
+- **ALWAYS use dayjs**, NEVER use `new Date()`
+- Import: `import dayjs from 'dayjs'`
+- Use dayjs methods for all date operations
+
+### Shadow DOM & Type Assertions
+- Use proper generic types with querySelector: `querySelector<MyElement>('my-element')`
+- NEVER use `as any` casts
+- If element type is unknown, define it properly
+
+### Context Management
+- Don't duplicate contexts for similar features
+- Public views should use main app contexts when possible
+- Avoid creating view-specific contexts unless absolutely necessary
+
+### ❌ Anti-Patterns to AVOID
+- Duplicate interface definitions
+- Using `any` type or `as any` casts
+- Creating wrapper interfaces for props
+- Using `new Date()` instead of dayjs
+- Defining types in service files instead of shared
+- Shadow DOM queries without proper typing
+- Creating duplicate contexts for the same data
+- Prop drilling instead of using context
+
+## 🛑 FINAL REMINDER 🛑
+
+**DELEGATE ALL CODE CHANGES TO THE APPROPRIATE AGENT:**
+- Frontend (`/src/*`) → `ui-developer` agent
+- Backend (`/netlify/functions/*`) → `netlify-backend` agent
+- Full-stack → `general-purpose` agent
+
+**The specialized agents know all the patterns and best practices. Trust them to handle implementation details correctly.**

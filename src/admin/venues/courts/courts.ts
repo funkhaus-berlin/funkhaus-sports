@@ -1,4 +1,4 @@
-import { area, fullHeight, select, TableColumn } from '@mhmo91/schmancy'
+import { area, fullHeight, select, TableColumn, $notify } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
 import { html } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
@@ -107,6 +107,16 @@ export class VenueCourts extends $LitElement() {
 
 	// Method to navigate to the court detail page for a new court
 	addNewCourt() {
+		// Ensure we have a venueId before creating a new court
+		if (!this.venueId) {
+			console.error('Cannot add court: No venue ID available', {
+				venueId: this.venueId,
+				venueData: this.venueData
+			})
+			$notify.error('Please select a venue first')
+			return
+		}
+
 		const newCourt = createCourt(this.venueId)
 		
 		// Set in the court-specific context

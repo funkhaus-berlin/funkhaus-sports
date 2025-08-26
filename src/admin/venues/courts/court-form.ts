@@ -1,29 +1,25 @@
 // src/courts/form.ts
 import { $notify, SchmancyInputChangeEvent, SchmancySelectChangeEvent, select, sheet } from '@mhmo91/schmancy'
 import { $LitElement } from '@mhmo91/schmancy/dist/mixins'
+import dayjs from 'dayjs'
 import { html, TemplateResult } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { when } from 'lit/directives/when.js'
-import { takeUntil } from 'rxjs'
+import { of, EMPTY } from 'rxjs'
+import { tap, switchMap, catchError, finalize, takeUntil, delay } from 'rxjs/operators'
 import { CourtsDB } from 'src/db/courts.collection'
 import { confirm } from 'src/schmancy'
 import { Court, CourtTypeEnum, Pricing, SportTypeEnum } from 'src/types/booking/court.types'
 import { Venue } from 'src/types/booking/venue.types'
 import { v4 as uuidv4 } from 'uuid'
 import '../components/court-map-editor-google'
+import { formatEnum } from '../components/venue-form'
 import { venueContext, venuesContext } from '../venue-context'
 import { courtsContext, selectedCourtContext } from './context'
 
-// Format enum values to display labels
-export const formatEnum = (value: string): string =>
-	value
-		.replace(/([A-Z])/g, ' $1')
-		.replace(/^./, str => str.toUpperCase())
-		.trim()
-
 @customElement('court-form')
 export class CourtForm extends $LitElement() {
-	@state() court: Partial<Court & { recommendedPlayers?: number }> = {
+	@state() court: Partial<Court> & { recommendedPlayers?: number } = {
 		name: '',
 		courtType: 'indoor',
 		pricing: { baseHourlyRate: 0 },
@@ -69,37 +65,45 @@ export class CourtForm extends $LitElement() {
 		}
 	}
 
-	constructor( private editingCourt: Court) {
+	constructor(private editingCourt?: Court) {
 		super()
-			this.court = editingCourt
+		if (editingCourt) {
+			this.court = { ...editingCourt }
+		}
 	}
 
 	connectedCallback() {
 		super.connectedCallback()
 
-    	
-		// Check if we have courtData passed directly
-		if (this.courtData) {
-			console.log('Using court data passed directly in props:', this.courtData);
-			this.court = { ...this.courtData };
-			this.venueId = this.courtData.venueId;
+		// Initialize court data with priority logic
+		this.initializeCourtData()
+		
+		// Ensure venue coordinates for map display
+		if (this.shouldFetchVenueCoordinates()) {
+			this.fetchVenueCoordinates()
 		}
-		// If already using editingCourt from constructor, don't override it
+	}
+
+	private initializeCourtData() {
+		// Priority 1: Court data passed directly as prop
+		if (this.courtData) {
+			this.court = { ...this.courtData }
+			this.venueId = this.courtData.venueId
+		}
+		// Priority 2: Selected court from context (if not using editingCourt)
 		else if (!this.editingCourt && this.selectedCourtData && Object.keys(this.selectedCourtData).length > 0) {
-			console.log('Using court data from selectedCourtContext:', this.selectedCourtData);
-			this.court = { ...this.selectedCourtData };
-			
+			this.court = { ...this.selectedCourtData }
 			if (this.selectedCourtData.venueId) {
-				this.venueId = this.selectedCourtData.venueId;
+				this.venueId = this.selectedCourtData.venueId
 			}
 		}
 		
-		// Set venueId with simple priority logic if not already set
+		// Set venueId from context if not already set
 		if (!this.venueId && this.venueData?.id) {
-			this.venueId = this.venueData.id;
+			this.venueId = this.venueData.id
 		}
 
-		// Set the venueId on the court object
+		// Ensure court has venueId
 		if (this.venueId) {
 			this.court = {
 				...this.court,
@@ -107,72 +111,69 @@ export class CourtForm extends $LitElement() {
 			}
 		}
 
-		// Ensure sportTypes is initialized properly
-		if (!this.court.sportTypes || !Array.isArray(this.court.sportTypes)) {
+		// Initialize sportTypes with default if not set
+		if (!this.court.sportTypes || !Array.isArray(this.court.sportTypes) || this.court.sportTypes.length === 0) {
 			this.court.sportTypes = ['pickleball']
 		}
-		
-		// If venue doesn't have coordinates but has address, try to set the coordinates
-		this._ensureVenueCoordinates();
-		
-		// Log the initialized court data
-		console.log('Court form initialized with data:', this.court);
 	}
-	
-	/**
-	 * Ensure venue has coordinates, fetch them from address if needed
-	 */
-	private async _ensureVenueCoordinates() {
-		if ((!this.venueData?.latitude || !this.venueData?.longitude) && 
-			this.venueData?.address && !this.venueData?.address?.coordinates) {
-			
-			const { street, city, postalCode, country } = this.venueData.address;
-			
-			if (street && city && country) {
-				try {
-					const addressStr = `${street}, ${city}, ${postalCode || ''}, ${country}`;
-					const encodedAddress = encodeURIComponent(addressStr);
-					const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}`;
+
+	private shouldFetchVenueCoordinates(): boolean {
+		return (
+			(!this.venueData?.latitude || !this.venueData?.longitude) && 
+			Boolean(this.venueData?.address) && 
+			!this.venueData?.address?.coordinates
+		)
+	}
+
+	private fetchVenueCoordinates() {
+		if (!this.venueData?.address) return
+		
+		const { street, city, postalCode, country } = this.venueData.address
+		
+		if (!street || !city || !country) return
+		
+		const addressStr = `${street}, ${city}, ${postalCode || ''}, ${country}`
+		const encodedAddress = encodeURIComponent(addressStr)
+		const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}`
+		
+		of(url).pipe(
+			// Rate limiting delay
+			delay(1000),
+			switchMap(url => 
+				fetch(url, {
+					headers: {
+						'User-Agent': 'FunkhausSports/1.0'
+					}
+				}).then(res => res.json())
+			),
+			tap(data => {
+				if (data && data.length > 0) {
+					const { lat, lon } = data[0]
 					
-					// Add delay to respect rate limits
-					await new Promise(resolve => setTimeout(resolve, 1000));
-					
-					const response = await fetch(url, {
-						headers: {
-							'User-Agent': 'FunkhausSports/1.0'
-						}
-					});
-					
-					if (response.ok) {
-						const data = await response.json();
-						if (data && data.length > 0) {
-							const { lat, lon } = data[0];
-							
-							// Update venue data with coordinates
-							if (typeof this.venueData === 'object') {
-								this.venueData = {
-									...this.venueData,
-									latitude: parseFloat(lat),
-									longitude: parseFloat(lon),
-									address: {
-										...this.venueData.address,
-										coordinates: {
-											lat: parseFloat(lat),
-											lng: parseFloat(lon)
-										}
-									}
-								};
-								
-								// Force update
-								this.requestUpdate();
+					// Update venue data with coordinates
+					if (typeof this.venueData === 'object') {
+						this.venueData = {
+							...this.venueData,
+							latitude: parseFloat(lat),
+							longitude: parseFloat(lon),
+							address: {
+								...this.venueData.address!,
+								coordinates: {
+									lat: parseFloat(lat),
+									lng: parseFloat(lon)
+								}
 							}
 						}
+						this.requestUpdate()
 					}
-				} catch (error) {
-					console.error('Error geocoding venue address:', error);
 				}
-			}
-		}
+			}),
+			catchError(error => {
+				console.error('Error geocoding venue address:', error)
+				return EMPTY
+			}),
+			takeUntil(this.disconnecting)
+		).subscribe()
 	}
 
 	// Handle sport type change for single selection
@@ -217,11 +218,11 @@ export class CourtForm extends $LitElement() {
 					<!-- Header -->
 					<div class="mb-8">
 						<schmancy-typography type="headline" token="md" class="mb-2">
-							${this.isCloning ? 'Clone Court' : this.editingCourt ? 'Edit Court' : 'Add Court'}
+							${this.isCloning ? 'Clone Court' : (this.editingCourt && this.editingCourt.id && this.editingCourt.id.trim() !== '') ? 'Edit Court' : 'Add Court'}
 						</schmancy-typography>
 						<schmancy-typography type="body" token="md" class="text-surface-on-variant">
 							${this.isCloning ? 'Create a copy of this court with customized settings.' : 
-							this.editingCourt ? 'Modify court details and settings.' : 'Create a new court for this venue.'}
+							(this.editingCourt && this.editingCourt.id && this.editingCourt.id.trim() !== '') ? 'Modify court details and settings.' : 'Create a new court for this venue.'}
 						</schmancy-typography>
 						<schmancy-divider class="mt-4"></schmancy-divider>
 					</div>
@@ -499,7 +500,7 @@ export class CourtForm extends $LitElement() {
 					<!-- Actions Footer -->
 					<div class="flex justify-between mt-10 pt-6 border-t border-surface-outline-variant">
 						<div>
-							${this.editingCourt && !this.isCloning
+							${this.editingCourt && this.editingCourt.id && this.editingCourt.id.trim() !== '' && !this.isCloning
 								? html`
 										<schmancy-button @click=${() => this.confirmDelete(this.editingCourt!.id)}>
 											<span class="text-error-default flex gap-2 items-center">
@@ -512,7 +513,7 @@ export class CourtForm extends $LitElement() {
 						</div>
 						<div class="flex gap-3">
 							<schmancy-button variant="outlined" @click=${() => sheet.dismiss(this.tagName)}>Cancel</schmancy-button>
-							${this.editingCourt && !this.isCloning
+							${this.editingCourt && this.editingCourt.id && this.editingCourt.id.trim() !== '' && !this.isCloning
 								? html`
 										<schmancy-button variant="outlined" @click=${this.cloneCourt}>
 											<span class="flex gap-2 items-center">
@@ -537,7 +538,7 @@ export class CourtForm extends $LitElement() {
 		`
 	}
 
-	updateProps(prop: keyof (Court & { recommendedPlayers?: number }), val: string | number | string[]) {
+	updateProps(prop: keyof Court | 'recommendedPlayers', val: string | number | string[]) {
 		this.court = { ...this.court, [prop]: val }
 	}
 
@@ -595,92 +596,155 @@ export class CourtForm extends $LitElement() {
 	}
 
 	onSave = () => {
-		this.busy = true
-
-		// Basic validation
-		if (!this.court.name?.trim()) {
-			$notify.error('Court name is required')
-			this.busy = false
+		// Validate form data
+		if (!this.validateForm()) {
 			return
 		}
 
-		// Get venue ID from context if not already set
-		if (!this.court.venueId) {
-			this.court.venueId = this.venueData?.id
-		}
-
-		// Final validation for venue ID
-		if (!this.court.venueId) {
-			$notify.error('Unable to determine the venue. Please try again or refresh the page.')
-			this.busy = false
-			return
-		}
-
-		if (!this.court.pricing || this.court.pricing.baseHourlyRate <= 0) {
-			$notify.error('Base hourly rate must be greater than zero')
-			this.busy = false
-			return
-		}
-
-		// Ensure sportTypes array exists (default to pickleball)
-		if (!this.court.sportTypes || !Array.isArray(this.court.sportTypes) || this.court.sportTypes.length === 0) {
-			this.court.sportTypes = ['pickleball']
-		}
-
-		// Prepare court data for saving
-		const court = {
-			...this.court,
-			updatedAt: new Date().toISOString(),
-			...(this.isCloning || !this.editingCourt ? { createdAt: new Date().toISOString() } : {}),
-		}
+		// Prepare court data
+		const courtToSave = this.prepareCourtForSave()
+		// Check if it's a new court (including when editingCourt exists but has empty ID)
+		const isNewCourt = this.isCloning || !this.editingCourt || !this.editingCourt.id || this.editingCourt.id.trim() === ''
 		
-		// Ensure we have a valid recommended players value (if provided)
-		if (court.recommendedPlayers !== undefined && isNaN(court.recommendedPlayers)) {
-			delete court.recommendedPlayers;
+		// Generate or get court ID with defensive checks
+		let courtId: string
+		if (isNewCourt) {
+			courtId = uuidv4()
+			console.log('Generated new court ID:', courtId) // Debug log
+			// Defensive check: ensure UUID generation succeeded
+			if (!courtId || typeof courtId !== 'string' || courtId.trim() === '') {
+				console.error('Failed to generate UUID for new court')
+				$notify.error('Failed to generate court ID. Please try again.')
+				return
+			}
+		} else {
+			courtId = this.editingCourt!.id
+			// Defensive check: ensure existing court has valid ID
+			if (!courtId || typeof courtId !== 'string' || courtId.trim() === '') {
+				console.error('Invalid court ID for existing court:', this.editingCourt)
+				$notify.error('Invalid court ID. Please refresh and try again.')
+				return
+			}
 		}
-		
-		// Ensure map coordinates are properly stored
-		if (this.court.mapCoordinates) {
-			court.mapCoordinates = this.court.mapCoordinates;
+
+		// Additional validation: ensure courtId is valid before proceeding
+		if (!courtId || courtId.length === 0) {
+			console.error('Court ID validation failed:', { courtId, isNewCourt, editingCourt: this.editingCourt })
+			$notify.error('Unable to save court: Invalid ID. Please try again.')
+			return
 		}
 
-		// Determine if we're creating a new court (either adding or cloning)
-		const isNewCourt = this.isCloning || !this.editingCourt
-
-		// Save to database
-		// If creating a new court, just use the court object without an ID
-    if (isNewCourt && !court.id) {
-      court.id = uuidv4()
-    }
-		const saveOperation = isNewCourt ? CourtsDB.upsert(court, court.id!) : CourtsDB.upsert(court, this.editingCourt!.id)
-
-		saveOperation.pipe(takeUntil(this.disconnecting)).subscribe({
-			next: (savedCourt) => {
-				let action = 'added'
-				if (this.isCloning) {
-					action = 'cloned'
-				} else if (this.editingCourt) {
-					action = 'updated'
+		// Save to database using RxJS pipeline
+		of({ court: courtToSave, id: courtId }).pipe(
+			tap(() => { 
+				this.busy = true
+				console.log('Saving court with ID:', courtId, 'Court data:', courtToSave)
+			}),
+			switchMap(({ court, id }) => {
+				// Final check before Firebase call
+				if (!id || id.trim() === '') {
+					throw new Error('Invalid court ID: Cannot save court with empty ID')
 				}
+				// Ensure the court has the correct ID before saving
+				const courtWithId = { ...court, id }
+				console.log('Calling CourtsDB.upsert with:', { courtWithId, id })
+				return CourtsDB.upsert(courtWithId, id)
+			}),
+			tap(savedCourt => {
+				// Determine action for success message
+				const action = this.isCloning ? 'cloned' : isNewCourt ? 'added' : 'updated'
 				
-				// Update the selectedCourtContext with the saved court data
+				// Update context with saved court
 				if (savedCourt) {
-					console.log('Setting selected court in context after save:', savedCourt);
-					selectedCourtContext.set(savedCourt);
+					selectedCourtContext.set(savedCourt)
 				}
 
 				$notify.success(`Court ${action} successfully`)
 				sheet.dismiss(this.tagName)
-			},
-			error: err => {
+			}),
+			catchError(err => {
 				console.error('Error saving court:', err)
-				$notify.error(`Failed to save court. Please try again.`)
-				this.busy = false
-			},
-			complete: () => {
-				this.busy = false
-			},
-		})
+				// More specific error message based on error type
+				const errorMessage = err.message?.includes('Invalid court ID') 
+					? 'Unable to save court: Invalid ID generated. Please try again.'
+					: 'Failed to save court. Please try again.'
+				$notify.error(errorMessage)
+				return EMPTY
+			}),
+			finalize(() => { this.busy = false }),
+			takeUntil(this.disconnecting)
+		).subscribe()
+	}
+
+	private validateForm(): boolean {
+		// Validate court name
+		if (!this.court.name?.trim()) {
+			$notify.error('Court name is required')
+			return false
+		}
+
+		// Ensure venue ID is set
+		if (!this.court.venueId) {
+			this.court.venueId = this.venueId || this.venueData?.id
+		}
+
+		if (!this.court.venueId) {
+			console.error('Validation failed - no venue ID:', {
+				courtVenueId: this.court.venueId,
+				propVenueId: this.venueId,
+				contextVenueId: this.venueData?.id
+			})
+			$notify.error('Unable to determine the venue. Please try again or refresh the page.')
+			return false
+		}
+
+		// Validate pricing
+		if (!this.court.pricing || typeof this.court.pricing.baseHourlyRate !== 'number' || this.court.pricing.baseHourlyRate <= 0) {
+			$notify.error('Base hourly rate must be greater than zero')
+			return false
+		}
+
+		return true
+	}
+
+	private prepareCourtForSave(): Court {
+		// Ensure sportTypes has a default value
+		if (!this.court.sportTypes || !Array.isArray(this.court.sportTypes) || this.court.sportTypes.length === 0) {
+			this.court.sportTypes = ['pickleball']
+		}
+
+		// Ensure venueId is set (critical for new courts)
+		if (!this.court.venueId) {
+			this.court.venueId = this.venueId || this.venueData?.id || ''
+		}
+
+		// Prepare court data - exclude recommendedPlayers as it's not part of Court interface
+		const { recommendedPlayers, ...courtWithoutExtra } = this.court
+		
+		// Build the court object ensuring all required fields are present
+		const court: Court = {
+			id: '', // Will be set later
+			venueId: courtWithoutExtra.venueId || '',
+			name: courtWithoutExtra.name || '',
+			courtType: courtWithoutExtra.courtType || 'indoor',
+			sportTypes: courtWithoutExtra.sportTypes || ['pickleball'],
+			pricing: courtWithoutExtra.pricing || { baseHourlyRate: 0 },
+			status: courtWithoutExtra.status || 'active',
+			updatedAt: dayjs().toISOString(),
+			createdAt: (this.isCloning || !this.editingCourt || !this.editingCourt.id || this.editingCourt.id.trim() === '') ? dayjs().toISOString() : (courtWithoutExtra.createdAt || dayjs().toISOString()),
+			// Optional fields
+			...(courtWithoutExtra.number && { number: courtWithoutExtra.number }),
+			...(courtWithoutExtra.description && { description: courtWithoutExtra.description }),
+			...(courtWithoutExtra.surfaceType && { surfaceType: courtWithoutExtra.surfaceType }),
+			...(courtWithoutExtra.dimensions && { dimensions: courtWithoutExtra.dimensions }),
+			...(courtWithoutExtra.maintenance && { maintenance: courtWithoutExtra.maintenance }),
+			...(courtWithoutExtra.amenities && { amenities: courtWithoutExtra.amenities }),
+			...(courtWithoutExtra.images && { images: courtWithoutExtra.images }),
+			...(courtWithoutExtra.layout && { layout: courtWithoutExtra.layout }),
+			...(courtWithoutExtra.mapCoordinates && { mapCoordinates: courtWithoutExtra.mapCoordinates })
+		}
+
+		return court
 	}
 
 	// Court map control methods
@@ -745,33 +809,43 @@ export class CourtForm extends $LitElement() {
 		}
 	}
 
-	private async confirmDelete(id: string) {
-		const confirmed = await confirm({
-			message: 'Are you sure you want to delete this court? This action cannot be undone.',
-			title: 'Delete Court',
-			confirmText: 'Delete',
-			confirmColor: 'error',
-			showIcon: true,
-			icon: 'delete',
-		})
-
-		if (confirmed) {
-			this.busy = true
-			CourtsDB.delete(id)
-				.pipe(takeUntil(this.disconnecting))
-				.subscribe({
-					next: () => {
-						$notify.success('Court deleted successfully')
-						sheet.dismiss(this.tagName)
-					},
-					error: () => {
-						$notify.error('Failed to delete court')
-						this.busy = false
-					},
-					complete: () => {
-						this.busy = false
-					},
+	private confirmDelete = (id: string) => {
+		of(null).pipe(
+			switchMap(() => 
+				confirm({
+					message: 'Are you sure you want to delete this court? This action cannot be undone.',
+					title: 'Delete Court',
+					confirmText: 'Delete',
+					confirmColor: 'error',
+					showIcon: true,
+					icon: 'delete',
 				})
-		}
+			),
+			tap(confirmed => {
+				if (confirmed) {
+					this.busy = true
+				}
+			}),
+			switchMap(confirmed => 
+				confirmed ? CourtsDB.delete(id) : EMPTY
+			),
+			tap(() => {
+				$notify.success('Court deleted successfully')
+				sheet.dismiss(this.tagName)
+			}),
+			catchError(err => {
+				console.error('Error deleting court:', err)
+				$notify.error('Failed to delete court')
+				return EMPTY
+			}),
+			finalize(() => { this.busy = false }),
+			takeUntil(this.disconnecting)
+		).subscribe()
+	}
+}
+
+declare global {
+	interface HTMLElementTagNameMap {
+		'court-form': CourtForm;
 	}
 }
